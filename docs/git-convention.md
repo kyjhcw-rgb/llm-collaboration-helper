@@ -3,7 +3,7 @@
 ## 브랜치 전략
 - main: 발표/배포용
 - develop: 통합 개발 브랜치
-- feature/*: 개인 작업 브랜치
+- feature/*: 개인 작업 브랜치 (ex. feature/backend-swagger)
 
 ## develop 브랜치 규칙
 - develop 브랜치에 직접 push 금지
