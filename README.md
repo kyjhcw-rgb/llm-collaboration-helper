@@ -53,13 +53,6 @@ LLM Agent를 활용해 이를 이해하기 쉬운 설명과 행동 조언으로 
 - Notion (업무 관리)
 - Cloudtype (배포)
 
-## 레포지토리 구조
-
-```text
-llm-collaboration-helper/
-├─ frontend/        
-├─ back요└└
-
 ## 협업 방식
 
 - feature/* 브랜치에서 개인 작업
