@@ -55,13 +55,10 @@ LLM Agent를 활용해 이를 이해하기 쉬운 설명과 행동 조언으로 
 
 ## 레포지토리 구조
 
+```text
 llm-collaboration-helper/
-├─ frontend/        # React Frontend
-├─ backend/         # Spring Boot Backend
-├─ llm/             # Python LLM Server
-├─ docs/            # Project Documentation
-├─ .github/         # PR Template
-└─ README.md
+├─ frontend/        
+├─ back요└└
 
 ## 협업 방식
 
