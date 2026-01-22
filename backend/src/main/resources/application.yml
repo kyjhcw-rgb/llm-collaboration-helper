@@ -1,0 +1,54 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: collaboration-helper
+
+  # 1. DB 설정 (환경변수 사용)
+  datasource:
+    url: jdbc:postgresql://localhost:5432/capstone_db
+    driver-class-name: org.postgresql.Driver
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+
+  # 2. JPA 설정
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        format_sql: true
+        show_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  # 3. 파일 업로드 설정 (기획서 PDF 등)
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
+
+# 4. Swagger (API 문서) 설정
+springdoc:
+  swagger-ui:
+    path: /swagger-ui/index.html
+    groups-order: DESC
+    operations-sorter: method
+    disable-swagger-default-url: true
+    display-request-duration: true
+  api-docs:
+    path: /api-docs
+  default-consumes-media-type: application/json
+  default-produces-media-type: application/json
+
+# 리액트 & 파이썬 서버 연동 설정
+app:
+  # CORS 설정 (리액트가 접속할 주소)
+  cors:
+    allowed-origins: http://localhost:3000
+
+  # AI 서버 설정 (파이썬 서버 주소)
+  ai-server:
+    url: http://localhost:8000
+    # timeout: 5000 # 필요 시 타임아웃 설정 추가 가능
