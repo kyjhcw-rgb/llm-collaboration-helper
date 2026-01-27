@@ -1,0 +1,12 @@
+.ai/
+venv/
+.venv/
+
+*.gguf
+*.bin
+*.pt
+models/
+
+__pycache__/
+*.csv
+.env
