@@ -1,17 +1,23 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import "../styles/Login.css";
+import "../style/Login.css";
 import githubicon from "../images/깃허브.png";
-import googleicon from "../images/구글.png";
+import googleicon from "../images/구글.png"; 
 
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const navigate = useNavigate();
 
+  // 기존 이메일 로그인 처리 함수
   const handleLogin = (e) => {
     e.preventDefault();
     console.log(email, password);
+    navigate("/lobby");
+  };
+
+  // 깃허브 로그인 버튼용 함수
+  const handleGithubLogin = () => {
     navigate("/lobby");
   };
 
@@ -20,14 +26,14 @@ export default function Login() {
       <div className="login-box">
 
         <div className="login-select">
-          <button>
+          <button onClick={handleGithubLogin}>
             <img src={githubicon} alt="github" className="icon" />
             Github로 로그인
-            </button>
+          </button>
           <button>
             <img src={googleicon} alt="google" className="icon" />
             Google로 로그인
-            </button>
+          </button>
         </div>
 
         <form onSubmit={handleLogin}>
