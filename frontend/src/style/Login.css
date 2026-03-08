@@ -1,12 +1,14 @@
-@charset "utf-8";
-
-button {
-    cursor: pointer;
-}
-body{
-  margin:0;
+#root {
+  max-width: 1280px;
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+  text-align: center;
 }
 .login-background {
+  margin : 0;
+  padding : 0;
   position: relative;
   width: 100vw;
   height: 100vh;
@@ -16,14 +18,13 @@ body{
   align-items: center;
 }
 .login-box {
-  font-size: 20px;
-  gap: 100px; 
   background-color: white;
-  padding: 20px 20px;
+  padding: 20px 30px 0px 30px;
   border-radius: 20px;
-  width: 50%;
+  width: 800px;
+  height: 500px;
   font-family: "Roboto-ExtraBold", sans-serif;
-  
+  font-size: 30px;
 }
 .login-select {
   display: flex;
@@ -32,49 +33,48 @@ body{
   align-items: center;
   gap: 40px; 
 }
-.login-select button img {
-  width: auto;
-  height: 80%;
-}
 .login-select button {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap:5px;
+  gap:10px;
+  background-color: #f5f5f5;
   border : none;
   border-radius: 10px;
-  font-size: 30px;
+  color: black;
   font-family: "Roboto-ExtraBold", sans-serif;
   font-weight: 700;
-  width: 450px; 
-  height: 100px;
-  margin: 50px 20px;
-}
-
-.login-box form input {
-  font-size: 30px;
-  font-family: "Roboto-ExtraBold", sans-serif;
-  font-weight: 700;
-  border-radius: 10px;
-  border: 5px solid #d0dfff;
-  width: 50%;
+  width: 350px; 
+  height: 80px;
+  margin: 30px 10px;
   padding: 10px;
 }
-.login-box form button {
-  font-size: 30px;
-  font-family: "Roboto-ExtraBold", sans-serif;
-  font-weight: 700;
-  border-radius: 10px;
-  background-color: #d0dfff;
-  width: 30%;
-  border: 5px solid #d0dfff;
-  padding: 20px;
+.login-select button img {
+  width: auto;
+  height: 70%;
 }
-.login-box form  {
-  padding: 10px;
-  margin: 15px;
+.login-input {
   display: flex;
   flex-direction: column;  
-  align-items: center;    
-  gap: 50px; 
+  align-items: center; 
+  justify-content: center;  
+}
+.login-input input {
+  width: 50%;  
+  font-size: 30px;
+  padding: 10px;
+  margin: 20px;
+  border : 5px solid #d0dfff;
+  border-radius: 12px;
+  background-color: white;
+  color: black;
+  font-weight: bold;
+  cursor: pointer;
+
+}
+.login-input button {
+  margin: 20px 20px 20px 20px;
+  background-color: #d0dfff;  
+  color:black;
+  font-weight: bold;
 }
