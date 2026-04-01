@@ -16,8 +16,8 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            cd ~/capstone
-            
+            cd ~/capstone/llm-collaboration-helper
             git pull origin main
-            
+
+            cd ..
             docker compose up -d --build
