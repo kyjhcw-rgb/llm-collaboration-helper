@@ -20,4 +20,4 @@ jobs:
             git pull origin main
 
             cd ..
-            docker compose up -d --build
+            docker compose up -d --build 
