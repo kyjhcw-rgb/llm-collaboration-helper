@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: ${BACKEND_PORT}
 
 spring:
   application:
@@ -7,7 +7,7 @@ spring:
 
   # 1. DB 설정 (환경변수 사용)
   datasource:
-    url: jdbc:postgresql://localhost:5432/capstone_db
+    url: ${DB_INTERNAL}
     driver-class-name: org.postgresql.Driver
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
@@ -16,7 +16,7 @@ spring:
   jpa:
     open-in-view: false
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     properties:
       hibernate:
         format_sql: true
@@ -46,9 +46,13 @@ springdoc:
 app:
   # CORS 설정 (리액트가 접속할 주소)
   cors:
-    allowed-origins: http://localhost:3000
+    allowed-origins: ${ALLOWED_ORIGINS}
 
   # AI 서버 설정 (파이썬 서버 주소)
   ai-server:
-    url: http://localhost:8000
+    url: ${PYTHON_INTERNAL}
     # timeout: 5000 # 필요 시 타임아웃 설정 추가 가능
+
+jwt:
+  secret: ${JWT_SECRET}
+  expiration: 86400000
