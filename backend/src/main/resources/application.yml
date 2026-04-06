@@ -2,6 +2,8 @@ server:
   port: ${BACKEND_PORT}
 
 spring:
+  config:
+    import: optional:classpath:application-secret.yml
   application:
     name: collaboration-helper
 
