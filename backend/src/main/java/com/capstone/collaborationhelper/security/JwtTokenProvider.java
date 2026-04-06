@@ -23,8 +23,8 @@ public class JwtTokenProvider {
         this.secretKey = Keys.hmacShaKeyFor(salt.getBytes(StandardCharsets.UTF_8));
     }
 
-    public String createToken(String email) {
-        Claims claims = Jwts.claims().subject(email).build();
+    public String createToken(Integer userId) {
+        Claims claims = Jwts.claims().subject(String.valueOf(userId)).build();
         Date now = new Date();
         Date validity = new Date(now.getTime() + validityInMilliseconds);
 
@@ -36,13 +36,21 @@ public class JwtTokenProvider {
                 .compact();
     }
 
-    public String getEmail(String token) {
-        return Jwts.parser()
+    public Integer getUserId(String token) {
+        String subject = Jwts.parser()
                 .verifyWith(secretKey)
                 .build()
                 .parseSignedClaims(token)
                 .getPayload()
                 .getSubject();
+        if (subject == null || subject.isBlank()) {
+            throw new JwtException("Token subject is missing");
+        }
+        try {
+            return Integer.valueOf(subject.trim());
+        } catch (NumberFormatException e) {
+            throw new JwtException("Token subject is not a valid user id", e);
+        }
     }
 
     public boolean validateToken(String token) {
