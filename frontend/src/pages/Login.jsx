@@ -2,8 +2,8 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "../styles/Login.css";
 
-import githubicon from "../images/깃허브.png";
-import googleicon from "../images/구글.png"; // ← 이거 구글 아이콘으로 바꿔주기!
+import logo1 from "../images/logo1.png";
+import logo2 from "../images/logo2.png";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -16,29 +16,14 @@ export default function Login() {
     navigate("/lobby");
   };
 
-  const handleGithubLogin = () => {
-    navigate("/lobby");
-  };
-
-  const handleGoogleLogin = () => {
-    navigate("/landing");
-  };
 
   return (
     <div className="login-background">
+      
+      <img className="logo1" src={logo1} alt="logo" />
+      <img className="logo2" src={logo2} alt="logo" />
       <div className="login-box">
-        <div className="login-select">
-          <button type="button" onClick={handleGithubLogin}>
-            <img src={githubicon} alt="github" className="icon" />
-            Github로 로그인
-          </button>
-
-          <button type="button" onClick={handleGoogleLogin}>
-            <img src={googleicon} alt="google" className="icon" />
-            Google로 로그인
-          </button>
-        </div>
-
+        
         <form onSubmit={handleLogin}>
         <div className='login-input'>
           <input
@@ -56,7 +41,12 @@ export default function Login() {
             onChange={(e) => setPassword(e.target.value)}
             required
           />
-          <button type="submit">로그인</button>
+          <button className="submit" type="submit">로그인</button>
+          <div className="footer">
+            <button className="newuser">회원가입</button>
+            <span className="division"> | </span>
+            <button className="finduser">아이디/비밀번호 찾기</button>
+          </div>
         
         
         </div>
