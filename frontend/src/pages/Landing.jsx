@@ -1,6 +1,7 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import "../styles/Landing.css";
+import logoimage from "../images/logo1.png";
 
 export default function Landing() {
   const navigate = useNavigate();
@@ -11,22 +12,18 @@ export default function Landing() {
 
   return (
     <div className="landing-container">
+      {/* 로고 이미지 */}
+      <img className="logo-image" src={logoimage} alt="logo" />
 
-      <div className="landing-logo">
-        <span>로고</span>
+      {/* 메인 텍스트 박스 */}
+      <div className="logo-box">
+        <div className="our-diagram">Our Diagram</div>
       </div>
 
-      <div className="landing-text-box">
-        <h1>
-          LLM Agent 기반<br />
-          팀 프로젝트 협업 도우미
-        </h1>
-      </div>
-
+      {/* 시작하기 버튼 */}
       <button className="start-btn" onClick={handleStart}>
         시작하기
       </button>
-
     </div>
   );
 }
