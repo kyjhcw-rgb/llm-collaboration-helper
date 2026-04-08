@@ -1,24 +1,27 @@
-const BASE_URL = "http://localhost:8080/api/v1";
+const BASE_URL = "/api";
 
-/**
- * 공통 fetch 래퍼 함수
- * @param {string} url - API 엔드포인트
- * @param {object} options - fetch 옵션
- */
-export async function request(url, options = {}) {
-  const token = localStorage.getItem("token"); // 나중에 OAuth 연결
+export async function request(endpoint, options = {}) {
+    const token = localStorage.getItem("accessToken");
 
-  const response = await fetch(`${BASE_URL}${url}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(token && { Authorization: `Bearer ${token}` }),
-    },
-    ...options,
-  });
+    const response = await fetch(`${BASE_URL}${endpoint}`, {
+        headers: {
+            "Content-Type": "application/json",
+            ...(token && { Authorization: `Bearer ${token}` }),
+        },
+        ...options,
+    });
 
-  if (!response.ok) {
-    throw new Error(`API Error: ${response.status}`);
-  }
+    if (!response.ok) {
+        let errorMessage = `API 오류: ${response.status}`;
+        try {
+            const errorData = await response.json();
+            if (errorData.message) errorMessage = errorData.message;
+        } catch (e) {
+            // 파싱 실패 시 기본 상태 코드 에러
+        }
+        throw new Error(errorMessage);
+    }
 
-  return response.json();
+    const text = await response.text();
+    return text ? JSON.parse(text) : {};
 }
