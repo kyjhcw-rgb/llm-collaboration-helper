@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import '../styles/ProjectListPage.css'
+import usericon from "../images/usericon.png";
 
 export default function ProjectListPage() {
     const navigate = useNavigate();
@@ -18,19 +20,21 @@ export default function ProjectListPage() {
     };
 
     return (
-        <main>
-            <header>
-                <h2>내 프로젝트</h2>
-                <button type="button" onClick={handleLogout}>로그아웃</button>
+        <main className="ProjectListPage-background">
+            <header className="ProjectListPage-header">
+                <h1>Our Diagram</h1>
+                <h2><img className="usericon" src={usericon} alt="user-icon" />
+                <button type="button" onClick={handleLogout}>로그아웃</button></h2>
             </header>
 
-            <section>
+            <section className="ProjectListPage-contents-top">
+                <h1>내 프로젝트</h1>
                 <button type="button" onClick={() => navigate("/projects/new")}>
-                    + 새 프로젝트 생성
+                    + 새 프로젝트
                 </button>
             </section>
 
-            <section>
+            <section className="ProjectListPage-contents-bottom">
                 {/* 항상 빈 배열이므로 아래 문구가 화면에 표시됩니다. */}
                 <div style={{ textAlign: "center", marginTop: "50px", color: "#888" }}>
                     <p>현재 참여 중인 프로젝트가 없습니다.</p>
