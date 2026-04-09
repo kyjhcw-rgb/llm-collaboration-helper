@@ -1,0 +1,68 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+.SignupBackground{
+    display: flex; 
+    flex-direction: column;
+    justify-content: center; 
+    align-items: center;
+
+    width: 100vw; height: 100vh;
+    background: linear-gradient(
+    224.86deg,
+    rgba(213, 218, 240, 1) 0%,
+    rgba(41, 110, 223, 1) 100%);
+}
+.SignupBox{
+    display: flex; 
+    flex-direction: column;
+    justify-content: center; 
+    align-items: center;
+
+    padding: 30px 60px;
+    background: rgba(236, 240, 248, 0.6);
+    border-radius: 20px;
+    width: auto;
+    height: auto;
+}
+.Signupheader{
+    font-size: 10px;
+    color: #4953BE;
+}
+
+
+section div {
+    display: flex; 
+    flex-direction: row;
+    justify-content: space-between;
+    gap: 10px;
+    width: auto;
+    height: auto;
+}
+section div label {
+    font-size: 20px;
+    font-weight: bold;
+    padding: 10px;
+    color: #4953BE;
+}
+section div input{
+    padding: 10px 20px;
+    border-radius: 10px;
+    border: none;
+    
+    font-size: 20px;
+    font-weight: bold;
+}
+section div button{
+    width: auto;
+    height: auto;
+    padding: 10px 10px;
+    border-radius: 10px;
+    border: none;
+    font-size: 15px;
+    font-weight: bold;
+    background-color: gray;
+    color:white;
+}
