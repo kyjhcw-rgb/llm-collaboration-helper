@@ -40,8 +40,14 @@ public class SecurityConfig {
 
                 // 4. API 권한 설정
                 .authorizeHttpRequests(auth -> auth
-                        // /api/auth/ 하위의 모든 주소(회원가입, 로그인, 이메일 인증)는 모두에게 허용!
-                        .requestMatchers("/api/auth/**", "/error").permitAll()
+                        // /api/auth/ 하위의 모든 주소(회원가입, 로그인, 이메일 인증)는 모두에게 허용! + Swagger 관련 주소
+                        .requestMatchers(
+                                "/api/auth/**",
+                                "/error",
+                                "/v3/api-docs/**",
+                                "/swagger-ui/**",
+                                "/swagger-ui.html"
+                        ).permitAll()
                         // 그 외의 모든 요청은 로그인(토큰)이 필요함!
                         .anyRequest().authenticated()
                 )
