@@ -22,9 +22,11 @@
     align-items: center;
     background: rgba(236, 240, 248, 0.6);
     border-radius: 20px;
-    width: 600px;
-    height: 630px;
-    padding: auto;}
+    width: auto;
+    height: auto;
+    padding: 30px 50px;
+    gap: 10px;
+}
 .LoginHeader{
     display: flex; 
     flex-direction: column;
@@ -68,8 +70,8 @@
     font-size: 20px;
     font-weight: bold;
 }
-.LoginBox section form button{
-    padding: 10px 10px;
+.Loginbutton{
+    padding: 15px;
     margin-top: 20px;
     margin-bottom: 20px;
     border-radius: 10px;
