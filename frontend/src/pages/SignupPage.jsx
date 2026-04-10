@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { request } from "../api/http";
+import logo2 from "../images/logo2.png";
+import '../styles/SignupPage.css'
 
 export default function SignupPage() {
     const navigate = useNavigate();
@@ -49,35 +51,43 @@ export default function SignupPage() {
     };
 
     return (
-        <main>
-            <header><h1>회원가입</h1></header>
+        <main className="SignupBackground">
+            <div className="SignupBox">
+            <header className="Signupheader"><h1>회원가입</h1></header>
             <section>
-                <div>
+                <div className="Signup0">
+                <div className="Signup1">
+                    
                     <label>이메일</label>
                     <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={isEmailVerified} />
-                    <button type="button" onClick={handleSendEmail} disabled={isEmailVerified}>
+                    <button className="Signupsubbutton" type="button" onClick={handleSendEmail} disabled={isEmailVerified}>
                         {isEmailSent ? "재전송" : "인증번호 받기"}
                     </button>
                 </div>
+
                 {isEmailSent && !isEmailVerified && (
-                    <div>
+                    <div className="Signup2">
                         <label>인증번호</label>
                         <input type="text" value={verificationCode} onChange={(e) => setVerificationCode(e.target.value)} />
-                        <button type="button" onClick={handleVerifyCode}>확인</button>
-                    </div>
-                )}
+                        <button className="Signupsubbutton" type="button" onClick={handleVerifyCode}>확인</button>
+                    </div> 
+                )}</div>
             </section>
-
             {isEmailVerified && (
-                <section>
+                <section className="Signup3">
                     <form onSubmit={handleSignup}>
                         <div><label>아이디</label><input name="username" type="text" value={formData.username} onChange={handleChange} required /></div>
                         <div><label>비밀번호</label><input name="password" type="password" value={formData.password} onChange={handleChange} required /></div>
                         <div><label>닉네임 (팀원 표시용)</label><input name="nickname" type="text" value={formData.nickname} onChange={handleChange} required /></div>
-                        <button type="submit">가입하기</button>
+                        <button className="Signupbutton" type="submit">가입하기</button>
                     </form>
                 </section>
             )}
+
+            </div>
+           
+
+            
             <nav><Link to="/login">돌아가기</Link></nav>
         </main>
     );
