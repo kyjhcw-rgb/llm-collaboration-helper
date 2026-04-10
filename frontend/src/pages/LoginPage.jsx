@@ -46,7 +46,7 @@ export default function LoginPage() {
                         <label htmlFor="password">비밀번호</label>
                         <input id="password" name="password" type="password" value={formData.password} onChange={handleChange} required />
                     </div>
-                    <button type="submit">로그인</button>
+                    <button className="Loginbutton" type="submit">로그인</button>
                 </form>
                 </section>
                 <nav>
