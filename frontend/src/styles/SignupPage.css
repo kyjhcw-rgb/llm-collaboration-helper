@@ -20,45 +20,76 @@
     flex-direction: column;
     justify-content: center; 
     align-items: center;
-
-    padding: 30px 60px;
     background: rgba(236, 240, 248, 0.6);
     border-radius: 20px;
     width: auto;
     height: auto;
+    padding: 30px 50px;
+    gap: 10px;
 }
 .Signupheader{
-    font-size: 10px;
+    font-size: 13px;
     color: #4953BE;
+    margin-bottom: 20px;
 }
-
-
-section div {
+.Signup1, .Signup2 , .Signup3 {
     display: flex; 
     flex-direction: row;
     justify-content: space-between;
     gap: 10px;
-    width: auto;
-    height: auto;
+    width: 530px;
 }
-section div label {
-    font-size: 20px;
+.Signup0{
+    display: flex; 
+    flex-direction: column;
+    justify-content:space-between;
+    text-align: center;
+    gap: 15px; 
+    width: 530px;
+}
+.Signup3 form {
+    display: flex; 
+    flex-direction: column;
+    justify-content:space-between;
+    text-align: center;
+    gap: 15px; 
+    width: 530px;
+    margin-top: 15px;
+}
+.Signup3 form input{
+    background-color: antiquewhite;
+}
+div {
+    display: flex; 
+    flex-direction: row;
+    justify-content: space-between; 
+    align-items: center;
+    gap: 20px;
+}
+label {
+    display: flex;
+    font-size: 18px;
     font-weight: bold;
-    padding: 10px;
-    color: #4953BE;
+    padding: auto;
+    color: #000;
 }
-section div input{
+.Signup1 label {width: 20%; }
+
+.Signup2 label {width: 20%;}
+
+.Signup3 label {width: 40%;}
+input{
+    width: quto;
     padding: 10px 20px;
     border-radius: 10px;
     border: none;
-    
     font-size: 20px;
     font-weight: bold;
 }
-section div button{
-    width: auto;
-    height: auto;
-    padding: 10px 10px;
+.Signupsubbutton{
+    width: 120px;
+    height: 40px;
+    padding: auto;
     border-radius: 10px;
     border: none;
     font-size: 15px;
@@ -66,3 +97,17 @@ section div button{
     background-color: gray;
     color:white;
 }
+.Signupbutton{
+    background-color: #4953BE;
+    border-radius: 10px;
+    border: none;
+    color:white;
+    width: 100%;
+    height: auto;
+    height: auto;
+    padding: 15px;
+    font-size: 20px;
+    font-weight: bold;
+    margin-top: 20px;
+}
+.SignupBackground nav{margin-top: 15px;}
