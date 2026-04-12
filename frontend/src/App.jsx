@@ -1,10 +1,10 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-// 페이지들 불러오기
 import Login from './pages/Login';
 import Landing from './pages/Landing';
-import ProjectCreate from './pages/ProjectCreate';
-import Lobby from './pages/Lobby';
+import ProjectCreatePage from './pages/ProjectCreatePage';
+import ProjectListPage from './pages/ProjectListPage';
+import CanvasPage from './pages/CanvasPage'; 
 
 function App() {
   return (
@@ -12,8 +12,9 @@ function App() {
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
-        <Route path="/projectcreate" element={<ProjectCreate />} />
-        <Route path="/lobby" element={<Lobby />} />
+        <Route path="/projects/new" element={<ProjectCreatePage />} />  
+        <Route path="/lobby" element={<ProjectListPage />} />
+        <Route path="/canvas" element={<CanvasPage />} />
       </Routes>
     </BrowserRouter>
   );
