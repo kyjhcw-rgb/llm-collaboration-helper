@@ -1,0 +1,83 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+.LoginBackground{
+    display: flex; 
+    flex-direction: column;
+    justify-content: center; 
+    align-items: center;
+
+    width: 100vw; height: 100vh;
+    background: linear-gradient(
+    224.86deg,
+    rgba(213, 218, 240, 1) 0%,
+    rgba(41, 110, 223, 1) 100%);
+}
+.LoginBox{
+    display: flex; 
+    flex-direction: column;
+    justify-content: center; 
+    align-items: center;
+    background: rgba(236, 240, 248, 0.6);
+    border-radius: 20px;
+    width: auto;
+    height: auto;
+    padding: 30px 50px;
+    gap: 10px;
+}
+.LoginHeader{
+    display: flex; 
+    flex-direction: column;
+    justify-content: center; 
+    align-items: center;
+}
+.logo1{
+  width: auto;
+  height: auto;
+  
+}
+.logo2{
+  width: 350px;
+  height: auto;
+  margin-bottom: 50px;
+}
+
+.LoginBox section form {
+    display: flex; 
+    flex-direction: column;
+    gap: 20px; 
+}
+.LoginBox section form div {
+    display: flex; 
+    flex-direction: row;
+    justify-content: space-between;
+    gap: 20px;
+}
+.LoginBox section form div label {
+    display: flex; 
+    font-size: 20px;
+    font-weight: bold;
+    padding: 10px;
+    color: #4953BE;
+}
+.LoginBox section form div input{
+    width: 350px;
+    padding: 10px 20px;
+    border-radius: 10px;
+    border: none;
+    font-size: 20px;
+    font-weight: bold;
+}
+.Loginbutton{
+    padding: 15px;
+    margin-top: 20px;
+    margin-bottom: 20px;
+    border-radius: 10px;
+    border: none;
+    font-size: 23px;
+    font-weight: bold;
+    background-color: #4953BE;
+    color:white;
+}
