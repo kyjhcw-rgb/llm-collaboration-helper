@@ -60,9 +60,8 @@
 }
 
 .ProjectListPage-contents-bottom{
-    display: flex; align-items: center; justify-content: start; flex-direction: row;
+    display: flex; align-items: start; justify-content: start; flex-direction: row;
     width: 100vw;
-    height: auto;
-    padding: 20px 25px;
-    background-color: aquamarine;
+    height: 30vh;
+    padding: 25px 25px;
 }
