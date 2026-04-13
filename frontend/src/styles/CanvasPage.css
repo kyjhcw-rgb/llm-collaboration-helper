@@ -33,10 +33,9 @@ body {
     font-size: 25px;
     margin: 0;
 }
-
 .header-right {
     display: flex;
-    align-items: center;
+    align-items: end;
     gap: 20px;
 }
 
@@ -134,6 +133,7 @@ body {
     display: flex;
     flex: 1;
     overflow: hidden;
+    width: 100%;
 }
 
 /* 왼쪽 사이드바 레이아웃 */
