@@ -1,27 +1,19 @@
-const BASE_URL = "/api";
+const BASE_URL = "http://localhost:8080/api/v1";
 
-export async function request(endpoint, options = {}) {
-    const token = localStorage.getItem("accessToken");
+export async function request(url, options = {}) {
+  const token = localStorage.getItem("token"); // 나중에 OAuth 연결할 때 쓸 토큰임
 
-    const response = await fetch(`${BASE_URL}${endpoint}`, {
-        headers: {
-            "Content-Type": "application/json",
-            ...(token && { Authorization: `Bearer ${token}` }),
-        },
-        ...options,
-    });
+  const response = await fetch(`${BASE_URL}${url}`, {
+    headers: {
+      "Content-Type": "application/json",
+      ...(token && { Authorization: `Bearer ${token}` }),
+    },
+    ...options,
+  });
 
-    if (!response.ok) {
-        let errorMessage = `API 오류: ${response.status}`;
-        try {
-            const errorData = await response.json();
-            if (errorData.message) errorMessage = errorData.message;
-        } catch (e) {
-            // 파싱 실패 시 기본 상태 코드 에러
-        }
-        throw new Error(errorMessage);
-    }
+  if (!response.ok) {
+    throw new Error(`API Error: ${response.status}`);
+  }
 
-    const text = await response.text();
-    return text ? JSON.parse(text) : {};
+  return response.json();
 }

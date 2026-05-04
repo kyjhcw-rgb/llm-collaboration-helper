@@ -1,0 +1,522 @@
+/* 화면 전체를 스크롤 없이 꽉 채우기 위한 기본 설정 */
+body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+}
+
+.CanvasPage-container {
+    display: flex;
+    flex-direction: column;
+    width: 100vw;
+    height: 100vh;
+}
+
+.CanvasPage-header {
+    width: 100vw;
+    height: auto;
+    padding: 20px 25px;
+    background-color: #4953BE;
+    color: #fff;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    box-sizing: border-box;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    z-index: 10;
+}
+
+.CanvasPage-header h1 {
+    display: flex; 
+    align-items: center;
+    font-size: 25px;
+    margin: 0;
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.online-members {
+    display: flex;
+    align-items: center;
+    gap: 12px; 
+}
+
+.member-avatar {
+    position: relative;
+    width: 38px;
+    height: 38px;
+    transition: transform 0.2s;
+    cursor: pointer;
+}
+
+.member-avatar:hover {
+    transform: translateY(-3px);
+    z-index: 10;
+}
+
+.member-avatar img {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    border: 2px solid #4CAF50;
+    background-color: white;
+    object-fit: cover;
+}
+
+.online-dot {
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+    width: 12px;
+    height: 12px;
+    background-color: #4CAF50;
+    border: 2px solid #4953BE;
+    border-radius: 50%;
+}
+
+.tooltip {
+    visibility: hidden;
+    opacity: 0;
+    position: absolute;
+    top: 120%;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: #333;
+    color: #fff;
+    text-align: center;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    white-space: nowrap;
+    transition: opacity 0.2s, visibility 0.2s;
+    z-index: 100;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+.tooltip::after {
+    content: "";
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: transparent transparent #333 transparent;
+}
+
+.member-avatar:hover .tooltip {
+    visibility: visible;
+    opacity: 1;
+}
+
+.logout-btn {
+    background-color: #fff;
+    border-radius: 10px;
+    border: none;
+    padding: 7px 15px;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+    color: #333;
+    margin-left: 10px;
+}
+
+.logout-btn:hover {
+    background-color: #f0f0f0;
+}
+
+.CanvasPage-body {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+/* 왼쪽 사이드바 레이아웃 */
+.sidebar-left {
+    width: 280px;
+    background-color: #ffffff;
+    border-right: 2px solid #e0e0e0;
+    padding: 25px 20px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    height: 100%;
+    box-sizing: border-box;
+}
+
+.sidebar-title {
+    font-size: 15px;
+    color: #4953BE;
+    margin-top: 0;
+    margin-bottom: 15px;
+    font-weight: bold;
+    border-bottom: 2px solid #f0f0f0;
+    padding-bottom: 8px;
+}
+
+.directory-box {
+    flex: 1;
+    overflow-y: auto;
+    margin-bottom: 20px;
+}
+
+.tree-root {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-size: 14px;
+    color: #333;
+}
+
+.tree-branch {
+    list-style: none;
+    padding-left: 20px;
+    margin: 5px 0 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    border-left: 1px dashed #ccc;
+    margin-left: 8px;
+}
+
+.tree-item {
+    display: flex;
+    align-items: center;
+    padding: 6px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.tree-item:hover {
+    background-color: #f0f2fb;
+    color: #4953BE;
+}
+
+.tree-item.project {
+    font-weight: bold;
+    font-size: 15px;
+    color: #222;
+}
+
+.tree-item.folder {
+    font-weight: 600;
+}
+
+.tree-item.file {
+    color: #555;
+    font-size: 13px;
+}
+
+.block-palette {
+    padding-top: 20px;
+    border-top: 2px solid #f0f0f0;
+}
+
+.block-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* 드래그 블럭 공통 스타일 */
+.drag-block {
+    padding: 12px;
+    border-radius: 8px;
+    text-align: center;
+    font-weight: bold;
+    font-size: 14px;
+    cursor: grab;
+    transition: transform 0.2s, box-shadow 0.2s;
+    border: 1px solid rgba(0,0,0,0.05);
+}
+
+.drag-block:active {
+    cursor: grabbing;
+}
+
+.drag-block:hover {
+    transform: scale(1.02);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+/* 블럭 팔레트 색상 정의 */
+.drag-block.feature {
+    background-color: #DAE8FC;
+    color: #3b5b95;
+    border: 1px solid #7ea6e0;
+}
+
+.drag-block.interface {
+    background-color: #E1D5E7;
+    color: #614d6e;
+    border: 1px solid #b5a3be;
+}
+
+.drag-block.class {
+    background-color: #D5E8D4;
+    color: #4e614c;
+    border: 1px solid #97d077;
+}
+
+.drag-block.method {
+    background-color: #FFD1DC;
+    color: #8a5a65;
+    border: 1px solid #f1a5b8;
+}
+
+/* 중앙 캔버스 영역 */
+.canvas-main {
+    flex: 1;
+    background-color: #ffffff; /* 하얀 배경 */
+    position: relative;
+    overflow: hidden;
+}
+
+.canvas-svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+/* 🌟 중앙 캔버스용 파란색 기능 블럭 스타일 */
+.feature-node {
+    width: 150px !important;
+    height: 50px !important;
+    background-color: #DAE8FC !important; /* 팔레트와 동일한 파란색 */
+    border: 2px solid #7ea6e0 !important;
+    border-radius: 4px !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px !important;
+    font-weight: bold;
+    color: #3b5b95;
+    cursor: pointer;
+    box-shadow: none !important;
+    transition: all 0.2s;
+    position: absolute; /* 캔버스 내 좌표 배치용 */
+}
+
+.feature-node:hover {
+    background-color: #c4dafb !important;
+    transform: scale(1.05);
+}
+
+.feature-node.active {
+    border-color: #4953BE !important; /* 선택 시 강조색 */
+    box-shadow: 0 0 10px rgba(73, 83, 190, 0.3) !important;
+}
+
+.node-body {
+    padding: 0;
+    font-size: inherit;
+    color: inherit;
+    line-height: normal;
+}
+
+/* 오른쪽 패널 레이아웃 */
+.sidebar-right {
+    width: 320px;
+    background-color: #ffffff;
+    border-left: 2px solid #e0e0e0;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+}
+
+.right-tabs {
+    display: flex;
+    border-bottom: 2px solid #eee;
+    background-color: #fafafa;
+}
+
+.tab-btn {
+    flex: 1;
+    padding: 15px 0;
+    background: transparent;
+    border: none;
+    font-size: 15px;
+    font-weight: bold;
+    color: #888;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    transition: color 0.2s, border-color 0.2s;
+}
+
+.tab-btn.active {
+    color: #4953BE;
+    border-bottom: 3px solid #4953BE;
+}
+
+.tab-content {
+    flex: 1;
+    padding: 25px 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+.info-panel {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    height: 100%;
+}
+
+.info-title {
+    font-size: 18px;
+    margin-bottom: 20px;
+    color: #333;
+    font-weight: bold;
+}
+
+.property-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.property-group label {
+    font-size: 13px;
+    font-weight: bold;
+    color: #555;
+}
+
+.property-group input,
+.property-group textarea {
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 14px;
+    background-color: #fff;
+    color: #333;
+    outline: none;
+    resize: none;
+    transition: border-color 0.2s;
+}
+
+.property-group input:focus,
+.property-group textarea:focus {
+    border-color: #4953BE;
+    box-shadow: 0 0 0 3px rgba(73, 83, 190, 0.1);
+}
+
+.save-btn {
+    margin-top: 10px;
+    padding: 12px;
+    background-color: #4953BE;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-weight: bold;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.llm-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.chat-history {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-bottom: 15px;
+    padding-right: 5px;
+}
+
+.chat-msg {
+    padding: 12px 15px;
+    border-radius: 12px;
+    font-size: 13px;
+    line-height: 1.5;
+    max-width: 85%;
+}
+
+.chat-msg.ai {
+    background-color: #f0f2fb;
+    color: #333;
+    align-self: flex-start;
+    border-top-left-radius: 2px;
+}
+
+.chat-msg.user {
+    background-color: #4953BE;
+    color: white;
+    align-self: flex-end;
+    border-top-right-radius: 2px;
+}
+
+.chat-input-box {
+    display: flex;
+    gap: 8px;
+    margin-top: auto;
+    align-items: center;
+}
+
+.chat-input-box textarea {
+    flex: 1;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 13px;
+    outline: none;
+    resize: none;
+    min-height: 44px;
+    font-family: inherit;
+}
+
+.chat-input-box button {
+    height: 44px;
+    padding: 0 15px;
+    background-color: #4953BE;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-weight: bold;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.extraction-section {
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 2px dashed #eee;
+}
+
+.foundation-btn {
+    width: 100%;
+    padding: 16px;
+    background-color: #4953BE;
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-weight: bold;
+    font-size: 16px;
+    cursor: pointer;
+    box-shadow: 0 4px 15px rgba(73, 83, 190, 0.3);
+    transition: transform 0.2s, background-color 0.2s, box-shadow 0.2s;
+}
+
+.foundation-btn:hover {
+    background-color: #3b449e;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(73, 83, 190, 0.4);
+}
