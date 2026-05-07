@@ -22,10 +22,8 @@
 **/build
 **/out
 **/target
-**/.gradle
 **/.mvn
 **/gradlew
-**/gradlew.bat
 
 **/__pycache__
 **/*.py[cod]
