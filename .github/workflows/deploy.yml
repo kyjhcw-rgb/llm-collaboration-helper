@@ -2,8 +2,7 @@ name: Deploy to EC2
 
 on:
   push:
-    branches:
-      - main 
+    branches: [ "main" ]
 
 jobs:
   deploy:
@@ -17,7 +16,9 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             cd ~/capstone/llm-collaboration-helper
-            git pull origin main
+            git fetch origin develop
+            git reset --hard origin/develop
 
             cd ..
-            docker compose up -d --build 
+            docker compose up -d --build backend
+            docker image prune -f
