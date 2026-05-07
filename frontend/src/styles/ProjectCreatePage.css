@@ -1,5 +1,10 @@
+/* 폰트를 깔끔하게 통일하기 위해 웹 폰트를 불러왔어 */
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+
+/* 전체 요소에 폰트를 적용하고 너비 계산을 통일해 */
 * {
   box-sizing: border-box;
+  font-family: 'Pretendard', 'Noto Sans KR', sans-serif;
 }
 
 .create-container {
@@ -18,23 +23,37 @@
   padding: 50px 60px;
   border-radius: 20px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-  width: 700px; 
+  width: 800px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 25px;
 }
 
 .create-title {
   text-align: center;
-  font-size: 32px;
-  margin-top: 0;
+  font-size: 28px;
   margin-bottom: 20px;
+  color: #000;
+  font-weight: 800;
+}
+
+.input-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+}
+
+.input-group label {
+  font-size: 18px;
+  font-weight: 600;
   color: #333;
 }
 
 .row-group {
   display: flex;
-  gap: 20px;
+  gap: 30px;
   width: 100%;
 }
 
@@ -42,56 +61,56 @@
   flex: 1; 
 }
 
-.input-group {
+.label-with-link {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  gap: 10px;
+  align-items: center;
 }
 
-.input-group label {
-  font-size: 16px;
-  font-weight: bold;
-  color: #555;
+.guide-link {
+  font-size: 14px;
+  color: #4953BE;
+  text-decoration: none;
 }
 
 .input-group input,
 .input-group textarea {
-  padding: 15px;
+  padding: 12px 20px;
   font-size: 16px;
-  border: 1px solid #ccc;
-  border-radius: 8px;
+  border: 1px solid #ddd;
+  border-radius: 12px;
   outline: none;
-  font-family: inherit;
+  width: 100%;
+  background-color: #fff;
+  /* 입력창 안쪽 글씨도 폰트를 동일하게 상속받도록 해 */
+  font-family: inherit; 
 }
 
-.input-group textarea {
-  min-height: 200px;
-  resize: vertical;
-  line-height: 1.5;
-}
-
-.input-group input:focus,
-.input-group textarea:focus {
-  border-color: #4953BE;
-  box-shadow: 0 0 5px rgba(73, 83, 190, 0.3);
+.auto-resize-textarea {
+  min-height: 50px; 
+  max-height: 300px;
+  overflow-y: hidden; 
+  resize: none; 
+  line-height: 1.6;
 }
 
 .button-group {
   display: flex;
   justify-content: center;
-  gap: 20px;
-  margin-top: 10px;
+  gap: 30px;
+  margin-top: 20px;
 }
 
 .button-group button {
-  width: 150px;
-  padding: 15px;
+  width: 120px;
+  padding: 12px;
   font-size: 18px;
   font-weight: bold;
-  border-radius: 10px;
+  border-radius: 8px;
   border: none;
   cursor: pointer;
-  transition: background-color 0.2s;
+  /* 버튼 글씨 폰트도 상속 */
+  font-family: inherit; 
 }
 
 .submit-btn {
@@ -99,36 +118,32 @@
   color: white;
 }
 
-.submit-btn:hover {
-  background-color: #3a4298;
-}
-
 .cancel-btn {
-  background-color: #e0e0e0;
-  color: #333;
+  background-color: #999;
+  color: white;
 }
 
-.cancel-btn:hover {
-  background-color: #c8c8c8;
-}
-
-/* --- 로딩 화면 전용 CSS 추가 --- */
+/* =========================================
+   로딩 화면 전용 CSS (중앙 정렬 및 스피너)
+========================================= */
 .loading-container {
   width: 100vw;
   height: 100vh;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  align-items: center;
+  justify-content: center; /* 세로 중앙 정렬 */
+  align-items: center;     /* 가로 중앙 정렬 */
   background-color: #f4f7fc;
+  margin: 0;
+  padding: 0;
 }
 
-/* 빙글빙글 도는 로딩 애니메이션 (스피너) */
+/* 빙글빙글 도는 원형 애니메이션 효과야 */
 .spinner {
-  width: 70px;
-  height: 70px;
-  border: 7px solid #e0e0e0;
-  border-top: 7px solid #4953BE;
+  width: 60px;
+  height: 60px;
+  border: 6px solid #e0e0e0;
+  border-top: 6px solid #4953BE; /* 위쪽만 파란색으로 줘서 돌아가는 느낌을 내 */
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin-bottom: 30px;
@@ -140,12 +155,12 @@
 }
 
 .loading-container h2 {
-  font-size: 28px;
+  font-size: 26px;
   color: #333;
   margin-bottom: 10px;
 }
 
 .loading-container p {
-  font-size: 18px;
+  font-size: 16px;
   color: #666;
 }

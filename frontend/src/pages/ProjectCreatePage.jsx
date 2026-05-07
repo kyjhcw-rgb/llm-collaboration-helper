@@ -1,23 +1,33 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useRef, useCallback } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import '../styles/ProjectCreatePage.css';
 
 export default function ProjectCreatePage() {
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  
+  // 텍스트 박스 높이 자동 조절을 위해 DOM 요소에 접근할 ref를 만들어줘
+  const textareaRef = useRef(null); 
+
+  // 사용자가 타이핑할 때마다 실행되어서 텍스트 박스 높이를 늘려주는 함수야
+  const handleResizeHeight = useCallback(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'; // 높이를 한 번 초기화하고
+      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px'; // 스크롤 길이만큼 늘려줘
+    }
+  }, []);
 
   const handleCreate = () => {
     setIsLoading(true);
 
-    /* 백엔드 연결할 때 수정할 곳 시작 */
-    // 나중에 백엔드 API가 완성되면 아래 타이머 부분을 지우고 진짜 API 호출 코드를 넣음
+    /* 백엔드 연결 시 진짜 API 호출로 대체할 부분이야 */
     setTimeout(() => {
-      // 3초 뒤에 완료되었다고 치고 다음 페이지로 넘김
+      // 3초 뒤에 완료되었다고 치고 캔버스 페이지로 넘겨
       navigate('/canvas');
     }, 3000);
-    /* 백엔드 연결할 때 수정할 곳 끝 */
   };
 
+  // 로딩 상태일 때는 이 화면(중앙 정렬 스피너)을 보여줘
   if (isLoading) {
     return (
       <div className="loading-container">
@@ -33,12 +43,13 @@ export default function ProjectCreatePage() {
       <div className="create-box">
         <h1 className="create-title">새 프로젝트 생성</h1>
         
+        {/* 첫 번째 열: 프로젝트 이름 */}
         <div className="input-group">
           <label>프로젝트 이름</label>
           <input type="text" placeholder="프로젝트 이름을 입력하세요" />
         </div>
 
-        {/* 두 칸을 한 줄로 나란히 묶기 위한 그룹 박스 */}
+        {/* 두 번째 열: 프레임워크 & 자유도 */}
         <div className="row-group">
           <div className="input-group">
             <label>프레임워크</label>
@@ -46,16 +57,21 @@ export default function ProjectCreatePage() {
           </div>
 
           <div className="input-group">
-            <label>자유도 (1~5)</label>
-            <input type="number" min="1" max="5" defaultValue="1" />
+            <div className="label-with-link">
+                <label>자유도</label>
+                <Link to="/guideline" target="_blank" className="guide-link">(How to use)</Link>
+            </div>
+            <input type="number" min="1" max="3" defaultValue="1" placeholder="1: 기능, 2: 클래스, 3: 메소드" />
           </div>
         </div>
 
+        {/* 세 번째 열: 초안 설명 */}
         <div className="input-group">
           <label>초안 설명</label>
-          {/* 높이를 넉넉하게 잡아둔 커다란 상자 */}
           <textarea 
-            rows="8" 
+            ref={textareaRef}
+            onChange={handleResizeHeight}
+            className="auto-resize-textarea"
             placeholder="프로젝트에 대한 자세한 설명을 자유롭게 적어주세요. (예: 로그인 기능이 있는 쇼핑몰 메인 페이지)"
           ></textarea>
         </div>
