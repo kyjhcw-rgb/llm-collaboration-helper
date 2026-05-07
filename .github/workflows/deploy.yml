@@ -16,8 +16,8 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             cd ~/capstone/llm-collaboration-helper
-            git fetch origin develop
-            git reset --hard origin/develop
+            git fetch origin main
+            git reset --hard origin/main
 
             cd ..
             docker compose up -d --build backend
