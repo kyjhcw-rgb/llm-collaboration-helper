@@ -109,15 +109,14 @@ export default function ProjectListPage() {
       <section className="ProjectListPage-contents-top">
         <h1>내 프로젝트</h1>
 
-        <button
-  type="button"
-  onClick={() => {
-    resetProject();
-    navigate('/projects/new');
-  }}
+        <button type="button"
+        onClick={() => {
+            resetProject();
+            navigate('/projects/new');
+            }}
 >
-  + 새 프로젝트
-            </button>
+    + 새 프로젝트
+    </button>
       </section>
 
       <section className="ProjectListPage-contents-bottom">

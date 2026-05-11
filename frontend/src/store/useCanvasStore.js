@@ -15,7 +15,9 @@ export const useCanvasStore = create(
         setProjectName: (name) =>
           set({ projectName: name }),
 
-        resetProject: () =>
+        resetProject: () => {
+  localStorage.removeItem('canvas-storage');
+
   set({
     currentProjectId: null,
     projectName: '',
@@ -30,21 +32,17 @@ export const useCanvasStore = create(
               description:
                 '새로운 사용자를 등록합니다.',
             },
-            position: {
-              x: 260,
-              y: 80,
-            },
-            className:
-              'feature-node',
+            position: { x: 260, y: 80 },
+            className: 'feature-node',
           },
         ],
         edges: [],
       },
     },
-    currentPageId:
-      'default_page',
+    currentPageId: 'default_page',
     selectedNodeId: null,
-          }),
+  });
+          },
 
         // 페이지별 데이터 구조
         pages: {
