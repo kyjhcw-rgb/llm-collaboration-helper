@@ -55,7 +55,6 @@ const SidebarRight = () => {
             <div className="tab-content">
                 {activeTab === "info" ? (
                     <div className="info-panel">
-                        <h3 className="info-title">객체 정보 수정</h3>
                         {selectedNodeId ? (
                             <div className="info-form">
                                 <div className="property-group">
@@ -74,7 +73,7 @@ const SidebarRight = () => {
                                         value={info.description} 
                                         onChange={handleChange} 
                                         placeholder="내용을 입력하세요"
-                                        rows="10"
+                                        rows="auto"
                                     />
                                 </div>
                                 <button className="save-btn" onClick={handleSave}>
