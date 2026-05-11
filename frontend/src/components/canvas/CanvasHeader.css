@@ -20,7 +20,7 @@
     margin: 0;
 }
 
-.header-right {
+.header-right,.header-left {
     display: flex;
     align-items: center;
     gap: 20px;
@@ -89,11 +89,13 @@
     opacity: 1;
 }
 
-.logout-btn {
+.logout-btn ,.save-btn {
+    width: auto;
+    height: auto;
     background-color: #fff;
     border-radius: 10px;
     border: none;
-    padding: 7px 15px;
+    padding: 10px 15px;
     font-size: 14px;
     font-weight: bold;
     cursor: pointer;

@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import './CanvasHeader.css';
+import { useCanvasStore } from '../../store/useCanvasStore';
 
 const CanvasHeader = () => {
   const navigate = useNavigate();
@@ -20,15 +21,27 @@ const CanvasHeader = () => {
   const goToProjectList = () => {
     navigate('/projects');
   };
+  const saveProject = useCanvasStore(
+  (state) => state.saveProject);
+
+const handleSave = () => {
+  saveProject();
+  alert('저장 완료!');};
 
   return (
     <header className="CanvasPage-header">
-      {/* 로고 영역을 클릭하면 이동 */}
+      <div className="header-left">
+        {/* 로고 영역을 클릭하면 이동 */}
       <h1 onClick={goToProjectList} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }}>
         Our Diagram
       </h1>
-      
+      <button className="save-btn" onClick={handleSave}>
+          저장
+        </button>
+      </div>
+        
       <div className="header-right">
+        
         {/* 접속 중인 멤버 목록을 보여주는 영역 */}
         <div className="online-members">
           {onlineUsers.map(user => (
