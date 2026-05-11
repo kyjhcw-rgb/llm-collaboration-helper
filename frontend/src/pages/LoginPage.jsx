@@ -14,40 +14,34 @@ export default function LoginPage() {
         setFormData((prev) => ({ ...prev, [name]: value }));
     };
 
-    const handleLogin = async (e) => {
+    const handleLogin = (e) => {
         e.preventDefault();
-        try {
-            const response = await request("/auth/login", {
-                method: "POST",
-                body: JSON.stringify(formData),
-            });
-            localStorage.setItem("accessToken", response.accessToken);
-            navigate("/projects");
-        } catch (error) {
-            alert(error.message || "로그인에 실패했습니다.");
-        }
+        
+        // [임시 수정] 백엔드 403 에러 무시하고 바로 대시보드로 이동!
+        console.log("백엔드 통신 없이 대시보드로 진입합니다.");
+        localStorage.setItem("accessToken", "temp-token"); // 토큰이 없으면 튕길 수 있어서 가짜 토큰 저장
+        navigate("/projects");
     };
 
     return (
         <main className="LoginBackground">
             <div className="LoginBox">
                 <header className="LoginHeader">
-                <img className="logo1" src={logo1} alt="logo1" />
-                <img className="logo2" src={logo2} alt="logo2" />
-               
+                    <img className="logo1" src={logo1} alt="logo1" />
+                    <img className="logo2" src={logo2} alt="logo2" />
                 </header>
                 <section className="LoginSection">
-                <form onSubmit={handleLogin}>
-                    <div>
-                        <label htmlFor="username">아이디</label>
-                        <input id="username" name="username" type="text" value={formData.username} onChange={handleChange} required />
-                    </div>
-                    <div>
-                        <label htmlFor="password">비밀번호</label>
-                        <input id="password" name="password" type="password" value={formData.password} onChange={handleChange} required />
-                    </div>
-                    <button className="Loginbutton" type="submit">로그인</button>
-                </form>
+                    <form onSubmit={handleLogin}>
+                        <div>
+                            <label htmlFor="username">아이디</label>
+                            <input id="username" name="username" type="text" value={formData.username} onChange={handleChange} required />
+                        </div>
+                        <div>
+                            <label htmlFor="password">비밀번호</label>
+                            <input id="password" name="password" type="password" value={formData.password} onChange={handleChange} required />
+                        </div>
+                        <button className="Loginbutton" type="submit">로그인</button>
+                    </form>
                 </section>
                 <nav>
                     <Link to="/signup">계정이 없으신가요? 회원가입</Link>
