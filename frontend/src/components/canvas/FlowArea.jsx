@@ -1,42 +1,74 @@
 import React, { useCallback } from 'react';
-import ReactFlow, { Background, Controls, applyNodeChanges, applyEdgeChanges, addEdge, useReactFlow, ReactFlowProvider } from 'reactflow';
+import ReactFlow, { Background, Controls, applyNodeChanges, applyEdgeChanges, addEdge, useReactFlow, ReactFlowProvider, MarkerType, ConnectionMode } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useCanvasStore } from '../../store/useCanvasStore';
-
 import './FlowArea.css'; 
+import CustomNode from './CustomNode';
+
+const nodeTypes = {
+    custom: CustomNode,
+};
 
 const FlowContents = () => {
     const { pages, currentPageId, setNodes, setEdges, setSelectedNodeId } = useCanvasStore();
-    const { project } = useReactFlow();
+    const { screenToFlowPosition } = useReactFlow();
 
     const nodes = pages[currentPageId]?.nodes || [];
     const edges = pages[currentPageId]?.edges || [];
 
+    const defaultEdgeOptions = {
+        type: 'straight',
+        style: { strokeWidth: 3, stroke: '#4953BE' }, 
+        markerEnd: {
+            type: MarkerType.ArrowClosed,
+            color: '#4953BE',
+        },
+        zIndex: 50, 
+    };
+
     const onDrop = (event) => {
         event.preventDefault();
-        // 사이드바에서 끌어온 블록의 타입(기능, 클래스, 메소드)을 받아옴
         const type = event.dataTransfer.getData('application/reactflow');
         if (!type) return;
 
-        const position = project({
-            x: event.clientX - 280, 
-            y: event.clientY - 70,  
+        let nodeClass = 'canvas-node method-node';
+        let initialWidth = 150;
+        let initialHeight = 50;
+        let zIndex = 30; 
+
+        if (type === '기능') {
+            nodeClass = 'canvas-node feature-node';
+            initialWidth = 400;  
+            initialHeight = 300;
+            zIndex = 10;         
+        } else if (type === '클래스') {
+            nodeClass = 'canvas-node class-node';
+            initialWidth = 250;  
+            initialHeight = 150;
+            zIndex = 20;         
+        }
+
+        const projectedPosition = screenToFlowPosition({
+            x: event.clientX,
+            y: event.clientY,
         });
 
-        // 끌어온 타입에 따라 노드의 클래스명을 동적으로 변경함
-        let nodeClass = 'canvas-node feature-node'; // 기본 파란색
-        if (type === '클래스') {
-            nodeClass = 'canvas-node class-node'; // 초록색
-        } else if (type === '메소드') {
-            nodeClass = 'canvas-node method-node'; // 핑크색
-        }
+        const position = {
+            x: projectedPosition.x - (initialWidth / 2),
+            y: projectedPosition.y - 320
+        };
 
         const newNode = {
             id: `node_${Date.now()}`,
-            type: 'default',
-            position,
-            data: { label: `${type} 블록`, description: '' },
-            className: nodeClass // 동적으로 결정된 클래스 적용
+            type: 'custom',
+            position, 
+            data: { label: `${type} 블록`, description: '' , blockType: type},
+            className: nodeClass,
+            style: {
+                width: initialWidth,
+                height: initialHeight,
+                zIndex: zIndex, 
+            }
         };
 
         setNodes(nodes.concat(newNode));
@@ -52,6 +84,9 @@ const FlowContents = () => {
             <ReactFlow
                 nodes={nodes}
                 edges={edges}
+                nodeTypes={nodeTypes}
+                defaultEdgeOptions={defaultEdgeOptions}
+                connectionMode={ConnectionMode.Loose}
                 onNodesChange={(chs) => setNodes(applyNodeChanges(chs, nodes))}
                 onEdgesChange={(chs) => setEdges(applyEdgeChanges(chs, edges))}
                 onConnect={(params) => setEdges(addEdge(params, edges))}

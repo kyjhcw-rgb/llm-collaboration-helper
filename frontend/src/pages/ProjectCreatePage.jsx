@@ -117,12 +117,23 @@ export default function ProjectCreatePage() {
         <div className="input-group">
           <label>초안 설명</label>
 
-          <textarea
-            ref={textareaRef}
-            onChange={handleResizeHeight}
-            className="auto-resize-textarea"
-            placeholder="프로젝트에 대한 자세한 설명을 자유롭게 적어주세요."
-          ></textarea>
+          {/* 텍스트창과 버튼을 묶어줄 래퍼를 추가했어 */}
+          <div className="textarea-wrapper">
+            <textarea
+              ref={textareaRef}
+              onChange={handleResizeHeight}
+              className="auto-resize-textarea project-description-textarea"
+              placeholder="프로젝트에 대한 자세한 설명을 자유롭게 적어주세요."
+            ></textarea>
+            
+            {/* 우측 하단에 들어갈 마이크 버튼 추가 */}
+            <button type="button" className="voice-mic-btn" title="음성으로 입력하기">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" fill="currentColor"/>
+                <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" fill="currentColor"/>
+              </svg>
+            </button>
+          </div>
         </div>
 
         <div className="button-group">
