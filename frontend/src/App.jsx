@@ -10,7 +10,6 @@ import CanvasPage from "./pages/CanvasPage";
 export default function App() {
     useEffect(() => {
         const handleKeyDown = (e) => {
-            // 입력창(input, textarea)에서 입력 중일 때는 단축키가 작동하지 않게 막아야 해
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
             const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
@@ -18,10 +17,8 @@ export default function App() {
 
             if (modifier && e.key.toLowerCase() === 'z') {
                 if (e.shiftKey) {
-                    // Ctrl + Shift + Z: 다시 실행(Redo)이야
                     useCanvasStore.temporal.getState().redo();
                 } else {
-                    // Ctrl + Z: 되돌리기(Undo)야
                     useCanvasStore.temporal.getState().undo();
                 }
             }

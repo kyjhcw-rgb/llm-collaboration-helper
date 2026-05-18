@@ -8,8 +8,8 @@ const CanvasHeader = () => {
 
   // 접속 중인 유저 더미 데이터 배열
   const onlineUsers = [
-    { id: 1, name: '홍길동', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Hong' },
-    { id: 2, name: '전우치', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Jeon' }
+    { id: 1, name: 'USER 1', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Hong' },
+    { id: 2, name: 'USER 2', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Jeon' }
   ];
 
   // 로그아웃 버튼을 누르면 첫 화면(랜딩 페이지)으로 돌아가게 해주는 함수
@@ -26,7 +26,7 @@ const CanvasHeader = () => {
 
 const handleSave = () => {
   saveProject();
-  alert('저장 완료!');};
+  alert('저장 완료되었습니다!');};
 
   return (
     <header className="CanvasPage-header">
@@ -49,7 +49,7 @@ const handleSave = () => {
               <img src={user.avatar} alt={`${user.name} 프로필`} />
               {/* 초록색 온라인 상태 표시 콩알 */}
               <div className="online-dot"></div>
-              {/* 마우스 올리면 나오는 이름표(툴팁) */}
+              {/* 마우스 올리면 나오는 이름표*/}
               <span className="tooltip">{user.name}</span>
             </div>
           ))}
