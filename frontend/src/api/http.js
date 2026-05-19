@@ -1,19 +1,29 @@
-const BASE_URL = "/api/v1";
+const BASE_URL = "/api";
 
 export async function request(url, options = {}) {
-  const token = localStorage.getItem("token"); // 나중에 OAuth 연결할 때 쓸 토큰임
+    const token = localStorage.getItem("accessToken");
 
-  const response = await fetch(`${BASE_URL}${url}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(token && { Authorization: `Bearer ${token}` }),
-    },
-    ...options,
-  });
+    // URL이 /auth로 시작하는 요청(로그인, 회원가입, 이메일 인증)은 토큰을 보내지 않음
+    const isAuthApi = url.startsWith("/auth");
 
-  if (!response.ok) {
-    throw new Error(`API Error: ${response.status}`);
-  }
+    const headers = {
+        "Content-Type": "application/json",
+    };
 
-  return response.json();
+    // 인증 API가 아니고, 토큰이 존재할 때만 헤더에 추가
+    if (!isAuthApi && token) {
+        headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${BASE_URL}${url}`, {
+        headers,
+        ...options,
+    });
+
+    if (!response.ok) {
+        throw new Error(`API Error: ${response.status}`);
+    }
+
+    const text = await response.text();
+    return text ? JSON.parse(text) : {};
 }

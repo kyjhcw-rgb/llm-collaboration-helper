@@ -4,21 +4,21 @@
     box-sizing: border-box;
 }
 .SignupBackground{
-    display: flex; 
+    display: flex;
     flex-direction: column;
-    justify-content: center; 
+    justify-content: center;
     align-items: center;
 
     width: 100vw; height: 100vh;
     background: linear-gradient(
-    224.86deg,
-    rgba(213, 218, 240, 1) 0%,
-    rgba(41, 110, 223, 1) 100%);
+            224.86deg,
+            rgba(213, 218, 240, 1) 0%,
+            rgba(41, 110, 223, 1) 100%);
 }
 .SignupBox{
-    display: flex; 
+    display: flex;
     flex-direction: column;
-    justify-content: center; 
+    justify-content: center;
     align-items: center;
     background: rgba(236, 240, 248, 0.6);
     border-radius: 20px;
@@ -33,26 +33,26 @@
     margin-bottom: 20px;
 }
 .Signup1, .Signup2 , .Signup3 {
-    display: flex; 
+    display: flex;
     flex-direction: row;
     justify-content: space-between;
     gap: 10px;
     width: 530px;
 }
 .Signup0{
-    display: flex; 
+    display: flex;
     flex-direction: column;
     justify-content:space-between;
     text-align: center;
-    gap: 15px; 
+    gap: 15px;
     width: 530px;
 }
 .Signup3 form {
-    display: flex; 
+    display: flex;
     flex-direction: column;
     justify-content:space-between;
     text-align: center;
-    gap: 15px; 
+    gap: 15px;
     width: 530px;
     margin-top: 15px;
 }
@@ -60,9 +60,9 @@
     background-color: antiquewhite;
 }
 div {
-    display: flex; 
+    display: flex;
     flex-direction: row;
-    justify-content: space-between; 
+    justify-content: space-between;
     align-items: center;
     gap: 20px;
 }

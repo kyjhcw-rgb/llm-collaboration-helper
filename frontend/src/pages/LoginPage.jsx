@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { request } from "../api/http";
-import '../styles/LoginPage.css'
+import '../styles/LoginPage.css';
 import logo2 from "../images/logo2.png";
 import logo1 from "../images/logo1.png";
 
@@ -14,13 +14,22 @@ export default function LoginPage() {
         setFormData((prev) => ({ ...prev, [name]: value }));
     };
 
-    const handleLogin = (e) => {
+    const handleLogin = async (e) => {
         e.preventDefault();
-        
-        // [임시 수정] 백엔드 403 에러 무시하고 바로 대시보드로 이동!
-        console.log("백엔드 통신 없이 대시보드로 진입합니다.");
-        localStorage.setItem("accessToken", "temp-token"); // 토큰이 없으면 튕길 수 있어서 가짜 토큰 저장
-        navigate("/projects");
+        try {
+            // 실제 백엔드 로그인 API 호출
+            const res = await request("/auth/login", {
+                method: "POST",
+                body: JSON.stringify(formData)
+            });
+
+            // 발급받은 실제 JWT 토큰 저장
+            localStorage.setItem("accessToken", res.accessToken);
+            navigate("/projects");
+        } catch (error) {
+            console.error(error);
+            alert("로그인에 실패했습니다. 아이디와 비밀번호를 확인해주세요.");
+        }
     };
 
     return (
