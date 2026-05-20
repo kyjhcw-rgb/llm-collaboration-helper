@@ -1,115 +1,233 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { temporal } from 'zundo';
+import { request } from '../api/http';
 
 export const useCanvasStore = create(
-  persist(
-    temporal(
-      (set, get) => ({
-        // 프로젝트 이름
-        projectName: '',
+    persist(
+        temporal(
+            (set, get) => ({
+                projectName: '',
+                currentProjectId: null,
+                currentVersion: 1,
+                availableVersions: [],
 
-        setProjectName: (name) =>
-          set({ projectName: name }),
+                nodes: [],
+                edges: [],
 
-        // 페이지별 데이터 구조
-        pages: {
-          default_page: {
-            nodes: [
-              {
-                id: '1',
-                type: 'default',
-                data: {
-                  label: '회원가입',
-                  description: '새로운 사용자를 등록합니다.',
+                selectedNodeId: null,
+                selectedEdgeId: null,
+
+                setProjectName: (name) => set({ projectName: name }),
+
+                resetProject: () => {
+                    localStorage.removeItem('canvas-storage');
+                    set({
+                        currentProjectId: null,
+                        projectName: '',
+                        currentVersion: 1,
+                        availableVersions: [],
+                        nodes: [],
+                        edges: [],
+                        selectedNodeId: null,
+                        selectedEdgeId: null,
+                    });
                 },
-                position: { x: 260, y: 80 },
-                className: 'feature-node',
-              },
-            ],
-            edges: [],
-          },
-        },
 
-        currentPageId: 'default_page',
-        selectedNodeId: null,
+                // 노드와 엣지 선택은 상호 배타적으로 동작하도록 설정
+                setSelectedNodeId: (id) => set({ selectedNodeId: id, selectedEdgeId: null }),
+                setSelectedEdgeId: (id) => set({ selectedEdgeId: id, selectedNodeId: null }),
 
-        // 페이지 전환 및 노드 선택
-        setCurrentPageId: (id) =>
-          set({ currentPageId: id }),
+                setNodes: (nodes) => set({ nodes }),
+                setEdges: (edges) => set({ edges }),
 
-        setSelectedNodeId: (id) =>
-          set({ selectedNodeId: id }),
+                // 노드 데이터 로컬 업데이트
+                updateNodeData: (nodeId, newData) =>
+                    set((state) => ({
+                        nodes: state.nodes.map((node) => {
+                            if (node.id === nodeId) {
+                                const updatedData = { ...node.data, ...newData };
+                                if (newData.name) updatedData.label = newData.name;
+                                if (newData.label) updatedData.name = newData.label;
+                                return { ...node, data: updatedData };
+                            }
+                            return node;
+                        }),
+                    })),
 
-        // 데이터 업데이트
-        setNodes: (nodes) =>
-          set((state) => ({
-            pages: {
-              ...state.pages,
-              [state.currentPageId]: {
-                ...state.pages[state.currentPageId],
-                nodes,
-              },
-            },
-          })),
+                // 엣지 데이터(타입 등) 로컬 업데이트
+                updateEdgeData: (edgeId, newData) =>
+                    set((state) => ({
+                        edges: state.edges.map((edge) => {
+                            if (edge.id === edgeId) {
+                                return { ...edge, data: { ...edge.data, ...newData } };
+                            }
+                            return edge;
+                        }),
+                    })),
 
-        setEdges: (edges) =>
-          set((state) => ({
-            pages: {
-              ...state.pages,
-              [state.currentPageId]: {
-                ...state.pages[state.currentPageId],
-                edges,
-              },
-            },
-          })),
-
-        // 노드 상세 수정
-        updateNodeData: (nodeId, newData) =>
-          set((state) => {
-            const page =
-              state.pages[state.currentPageId];
-
-            if (!page) return state;
-
-            const updatedNodes = page.nodes.map(
-              (node) =>
-                node.id === nodeId
-                  ? {
-                      ...node,
-                      data: {
-                        ...node.data,
-                        ...newData,
-                      },
+                loadVersionsFromServer: async (projectId) => {
+                    try {
+                        const versions = await request(`/projects/${projectId}/canvas/versions`, { method: "GET" });
+                        set({ availableVersions: versions || [] });
+                    } catch (error) {
+                        console.error("버전 목록 로드 실패:", error);
                     }
-                  : node
-            );
-
-            return {
-              pages: {
-                ...state.pages,
-                [state.currentPageId]: {
-                  ...page,
-                  nodes: updatedNodes,
                 },
-              },
-            };
-          }),
-      }),
-      {
-        partialize: (state) => {
-          const {
-            selectedNodeId,
-            currentPageId,
-            ...rest
-          } = state;
 
-          return rest;
-        },
-      }
-    ),
-    {
-      name: 'canvas-storage',
-    }
-  )
+                loadProjectFromServer: async (projectId, version = null) => {
+                    try {
+                        const url = version
+                            ? `/projects/${projectId}/canvas?version=${version}`
+                            : `/projects/${projectId}/canvas`;
+
+                        const data = await request(url, { method: "GET" });
+
+                        const nodes = (data.blocks || []).map(block => {
+                            let nodeClass = 'canvas-node method-node';
+                            let initialWidth = 150;
+                            let initialHeight = 50;
+                            let zIndex = 30;
+
+                            if (block.type === 'feature') {
+                                nodeClass = 'canvas-node feature-node';
+                                initialWidth = 400;
+                                initialHeight = 300;
+                                zIndex = 10;
+                            } else if (block.type === 'class') {
+                                nodeClass = 'canvas-node class-node';
+                                initialWidth = 250;
+                                initialHeight = 150;
+                                zIndex = 20;
+                            }
+
+                            return {
+                                id: block.frontendId,
+                                parentNode: block.parentFrontendId || undefined,
+                                type: 'custom',
+                                position: { x: block.posX || 0, y: block.posY || 0 },
+                                className: nodeClass,
+                                style: { width: initialWidth, height: initialHeight, zIndex: zIndex },
+                                data: {
+                                    label: block.name,
+                                    type: block.type,
+                                    name: block.name,
+                                    description: block.description || '',
+                                    parameters: block.parameters || '',
+                                    returnType: block.returnType || '',
+                                    annotations: block.annotations || ''
+                                }
+                            };
+                        });
+
+                        // 엣지 데이터를 스토어에 맞게 변환 (CustomEdge가 읽을 수 있도록 data 필드 활용)
+                        const edges = (data.edges || []).map(edge => ({
+                            id: edge.frontendId,
+                            source: edge.sourceFrontendId,
+                            target: edge.targetFrontendId,
+                            sourceHandle: edge.sourceHandle || null,
+                            targetHandle: edge.targetHandle || null,
+                            type: 'custom',
+                            data: {
+                                type: edge.type || 'call',
+                                badgeCount: edge.badgeCount || 1
+                            }
+                        }));
+
+                        set({
+                            currentProjectId: projectId,
+                            currentVersion: data.version || 1,
+                            nodes: nodes,
+                            edges: edges
+                        });
+
+                        get().loadVersionsFromServer(projectId);
+
+                    } catch (error) {
+                        console.error("서버에서 데이터를 불러오는 중 오류 발생:", error);
+                        alert("다이어그램 데이터를 불러오지 못했습니다.");
+                    }
+                },
+
+                saveProjectToServer: async () => {
+                    const state = get();
+                    const projectId = state.currentProjectId;
+
+                    if (!projectId) {
+                        alert("현재 연결된 프로젝트 ID가 없습니다.");
+                        return;
+                    }
+
+                    const blocks = state.nodes.map(node => ({
+                        frontendId: node.id,
+                        parentFrontendId: node.parentNode || null,
+                        type: node.data?.type || 'feature',
+                        name: node.data?.name || node.data?.label || 'Untitled',
+                        description: node.data?.description || '',
+                        parameters: node.data?.parameters || null,
+                        returnType: node.data?.returnType || null,
+                        annotations: node.data?.annotations || null,
+                        posX: node.position.x,
+                        posY: node.position.y,
+                    }));
+
+                    // 엣지 데이터를 백엔드 DTO에 맞게 변환
+                    const edges = state.edges.map(edge => ({
+                        frontendId: edge.id,
+                        sourceFrontendId: edge.source,
+                        targetFrontendId: edge.target,
+                        sourceHandle: edge.sourceHandle || null,
+                        targetHandle: edge.targetHandle || null,
+                        type: edge.data?.type || 'call',
+                        badgeCount: edge.data?.badgeCount || 1,
+                    }));
+
+                    try {
+                        const response = await request(`/projects/${projectId}/canvas/sync`, {
+                            method: "POST",
+                            body: JSON.stringify({ blocks, edges })
+                        });
+
+                        if (response && response.newVersion) {
+                            set({ currentVersion: response.newVersion });
+                            get().loadVersionsFromServer(projectId);
+                        }
+                        alert(`새로운 버전(v${response.newVersion})으로 성공적으로 저장되었습니다!`);
+                    } catch (error) {
+                        console.error("저장 중 오류 발생:", error);
+                        alert('저장에 실패했습니다.');
+                    }
+                },
+
+                deleteVersionFromServer: async (version) => {
+                    const state = get();
+                    const projectId = state.currentProjectId;
+                    if (!projectId) return;
+
+                    if (!window.confirm(`정말 ${version} 버전을 삭제하시겠습니까?`)) return;
+
+                    try {
+                        await request(`/projects/${projectId}/canvas?version=${version}`, {
+                            method: "DELETE"
+                        });
+                        alert(`${version} 버전이 삭제되었습니다.`);
+                        get().loadVersionsFromServer(projectId);
+                    } catch (error) {
+                        console.error("버전 삭제 실패:", error);
+                        alert("버전 삭제에 실패했습니다.");
+                    }
+                }
+            }),
+            {
+                partialize: (state) => {
+                    // 선택 상태는 로컬 스토리지에 저장하지 않음
+                    const { selectedNodeId, selectedEdgeId, ...rest } = state;
+                    return rest;
+                },
+            }
+        ),
+        {
+            name: 'canvas-storage',
+        }
+    )
 );

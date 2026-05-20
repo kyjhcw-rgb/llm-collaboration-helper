@@ -4,21 +4,21 @@
     box-sizing: border-box;
 }
 .LoginBackground{
-    display: flex; 
+    display: flex;
     flex-direction: column;
-    justify-content: center; 
+    justify-content: center;
     align-items: center;
 
     width: 100vw; height: 100vh;
     background: linear-gradient(
-    224.86deg,
-    rgba(213, 218, 240, 1) 0%,
-    rgba(41, 110, 223, 1) 100%);
+            224.86deg,
+            rgba(213, 218, 240, 1) 0%,
+            rgba(41, 110, 223, 1) 100%);
 }
 .LoginBox{
-    display: flex; 
+    display: flex;
     flex-direction: column;
-    justify-content: center; 
+    justify-content: center;
     align-items: center;
     background: rgba(236, 240, 248, 0.6);
     border-radius: 20px;
@@ -28,35 +28,35 @@
     gap: 10px;
 }
 .LoginHeader{
-    display: flex; 
+    display: flex;
     flex-direction: column;
-    justify-content: center; 
+    justify-content: center;
     align-items: center;
 }
 .logo1{
-  width: 300px;
-  height: auto;
-  
+    width: 300px;
+    height: auto;
+
 }
 .logo2{
-  width: 350px;
-  height: auto;
-  margin-bottom: 50px;
+    width: 350px;
+    height: auto;
+    margin-bottom: 50px;
 }
 
 .LoginBox section form {
-    display: flex; 
+    display: flex;
     flex-direction: column;
-    gap: 20px; 
+    gap: 20px;
 }
 .LoginBox section form div {
-    display: flex; 
+    display: flex;
     flex-direction: row;
     justify-content: space-between;
     gap: 20px;
 }
 .LoginBox section form div label {
-    display: flex; 
+    display: flex;
     font-size: 20px;
     font-weight: bold;
     padding: 10px;

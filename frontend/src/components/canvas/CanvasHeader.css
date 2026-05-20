@@ -14,13 +14,13 @@
 }
 
 .CanvasPage-header h1 {
-    display: flex; 
+    display: flex;
     align-items: center;
     font-size: 25px;
     margin: 0;
 }
 
-.header-right {
+.header-right,.header-left {
     display: flex;
     align-items: center;
     gap: 20px;
@@ -29,7 +29,7 @@
 .online-members {
     display: flex;
     align-items: center;
-    gap: 10px; 
+    gap: 10px;
 }
 
 .member-avatar {
@@ -89,11 +89,13 @@
     opacity: 1;
 }
 
-.logout-btn {
+.logout-btn ,.save-btn {
+    width: auto;
+    height: auto;
     background-color: #fff;
     border-radius: 10px;
     border: none;
-    padding: 7px 15px;
+    padding: 10px 15px;
     font-size: 14px;
     font-weight: bold;
     cursor: pointer;
@@ -102,4 +104,33 @@
 
 .logout-btn:hover {
     background-color: #f0f0f0;
+}
+
+/*버전 선택 드롭다운 스타일 추가 */
+.version-select-container {
+    display: flex;
+    align-items: center;
+    margin-left: 10px;
+}
+
+.version-dropdown {
+    padding: 9px 12px;
+    font-size: 14px;
+    border-radius: 8px;
+    border: none;
+    background-color: rgba(255, 255, 255, 0.9);
+    color: #333;
+    font-weight: bold;
+    cursor: pointer;
+    outline: none;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    transition: all 0.2s;
+}
+
+.version-dropdown:hover {
+    background-color: #ffffff;
+}
+
+.version-dropdown:focus {
+    box-shadow: 0 0 0 2px #fff;
 }

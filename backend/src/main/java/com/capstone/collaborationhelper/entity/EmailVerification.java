@@ -1,10 +1,16 @@
 package com.capstone.collaborationhelper.entity;
+
 import jakarta.persistence.*;
 import lombok.*;
-import java.time.ZonedDateTime;
+import java.time.LocalDateTime;
 
 @Entity
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+@Table(name = "email_verification")
 public class EmailVerification {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
@@ -12,20 +18,15 @@ public class EmailVerification {
     @Column(nullable = false)
     private String email;
 
-    @Column(nullable = false, length = 10)
+    @Column(name = "verification_code", nullable = false)
     private String verificationCode;
 
-    @Builder.Default
-    private Boolean isVerified = false;
+    @Column(name = "is_verified")
+    private boolean isVerified;
 
-    private ZonedDateTime createdAt;
+    @Column(name = "created_at", insertable = false, updatable = false)
+    private LocalDateTime createdAt;
 
-    @Column(nullable = false)
-    private ZonedDateTime expiresAt;
-
-    @PrePersist
-    protected void onCreate() {
-        this.createdAt = ZonedDateTime.now();
-        if(this.expiresAt == null) this.expiresAt = ZonedDateTime.now().plusMinutes(5); // 5분 뒤 만료
-    }
+    @Column(name = "expires_at", nullable = false)
+    private LocalDateTime expiresAt;
 }

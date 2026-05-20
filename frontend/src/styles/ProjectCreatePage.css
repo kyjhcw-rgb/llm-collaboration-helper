@@ -3,164 +3,218 @@
 
 /* 전체 요소에 폰트를 적용하고 너비 계산을 통일해 */
 * {
-  box-sizing: border-box;
-  font-family: 'Pretendard', 'Noto Sans KR', sans-serif;
+    box-sizing: border-box;
+    font-family: 'Pretendard', 'Noto Sans KR', sans-serif;
 }
 
 .create-container {
-  width: 100vw;
-  height: 100vh;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  background-color: #f4f7fc;
-  margin: 0;
-  padding: 0;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: #f4f7fc;
+    margin: 0;
+    padding: 0;
 }
 
 .create-box {
-  background: white;
-  padding: 50px 60px;
-  border-radius: 20px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-  width: 800px;
-  display: flex;
-  flex-direction: column;
-  gap: 25px;
+    background: white;
+    padding: 50px 60px;
+    border-radius: 20px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+    width: 800px;
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
 }
 
 .create-title {
-  text-align: center;
-  font-size: 28px;
-  margin-bottom: 20px;
-  color: #000;
-  font-weight: 800;
+    text-align: center;
+    font-size: 28px;
+    margin-bottom: 20px;
+    color: #000;
+    font-weight: 800;
 }
 
 .input-group {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 12px;
-  width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    width: 100%;
 }
 
 .input-group label {
-  font-size: 18px;
-  font-weight: 600;
-  color: #333;
+    font-size: 18px;
+    font-weight: 600;
+    color: #333;
 }
 
 .row-group {
-  display: flex;
-  gap: 30px;
-  width: 100%;
+    display: flex;
+    gap: 30px;
+    width: 100%;
 }
 
 .row-group .input-group {
-  flex: 1; 
+    flex: 1;
 }
 
 .label-with-link {
-  display: flex;
-  gap: 10px;
-  align-items: center;
+    display: flex;
+    gap: 10px;
+    align-items: center;
 }
 
 .guide-link {
-  font-size: 14px;
-  color: #4953BE;
-  text-decoration: none;
+    font-size: 14px;
+    color: #4953BE;
+    text-decoration: none;
 }
 
 .input-group input,
 .input-group textarea {
-  padding: 12px 20px;
-  font-size: 16px;
-  border: 1px solid #ddd;
-  border-radius: 12px;
-  outline: none;
-  width: 100%;
-  background-color: #fff;
-  /* 입력창 안쪽 글씨도 폰트를 동일하게 상속받도록 해 */
-  font-family: inherit; 
+    padding: 12px 20px;
+    font-size: 16px;
+    border: 1px solid #ddd;
+    border-radius: 12px;
+    outline: none;
+    width: 100%;
+    background-color: #fff;
+    /* 입력창 안쪽 글씨도 폰트를 동일하게 상속받도록 해 */
+    font-family: inherit;
 }
 
 .auto-resize-textarea {
-  min-height: 50px; 
-  max-height: 300px;
-  overflow-y: hidden; 
-  resize: none; 
-  line-height: 1.6;
+    min-height: 50px;
+    max-height: 300px;
+    overflow-y: hidden;
+    resize: none;
+    line-height: 1.6;
 }
 
 .button-group {
-  display: flex;
-  justify-content: center;
-  gap: 30px;
-  margin-top: 20px;
+    display: flex;
+    justify-content: center;
+    gap: 30px;
+    margin-top: 20px;
 }
 
 .button-group button {
-  width: 120px;
-  padding: 12px;
-  font-size: 18px;
-  font-weight: bold;
-  border-radius: 8px;
-  border: none;
-  cursor: pointer;
-  /* 버튼 글씨 폰트도 상속 */
-  font-family: inherit; 
+    width: 120px;
+    padding: 12px;
+    font-size: 18px;
+    font-weight: bold;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    /* 버튼 글씨 폰트도 상속 */
+    font-family: inherit;
 }
 
 .submit-btn {
-  background-color: #4953BE;
-  color: white;
+    background-color: #4953BE;
+    color: white;
 }
 
 .cancel-btn {
-  background-color: #999;
-  color: white;
+    background-color: #999;
+    color: white;
 }
 
 /* =========================================
    로딩 화면 전용 CSS (중앙 정렬 및 스피너)
 ========================================= */
 .loading-container {
-  width: 100vw;
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: center; /* 세로 중앙 정렬 */
-  align-items: center;     /* 가로 중앙 정렬 */
-  background-color: #f4f7fc;
-  margin: 0;
-  padding: 0;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center; /* 세로 중앙 정렬 */
+    align-items: center;     /* 가로 중앙 정렬 */
+    background-color: #f4f7fc;
+    margin: 0;
+    padding: 0;
 }
 
 /* 빙글빙글 도는 원형 애니메이션 효과야 */
 .spinner {
-  width: 60px;
-  height: 60px;
-  border: 6px solid #e0e0e0;
-  border-top: 6px solid #4953BE; /* 위쪽만 파란색으로 줘서 돌아가는 느낌을 내 */
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin-bottom: 30px;
+    width: 60px;
+    height: 60px;
+    border: 6px solid #e0e0e0;
+    border-top: 6px solid #4953BE; /* 위쪽만 파란색으로 줘서 돌아가는 느낌을 내 */
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 30px;
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }
 
 .loading-container h2 {
-  font-size: 26px;
-  color: #333;
-  margin-bottom: 10px;
+    font-size: 26px;
+    color: #333;
+    margin-bottom: 10px;
 }
 
 .loading-container p {
-  font-size: 16px;
-  color: #666;
+    font-size: 16px;
+    color: #666;
+}
+
+/* =========================================
+   음성 인식 마이크 버튼 관련 CSS 추가
+========================================= */
+
+/* textarea와 버튼을 함께 감싸는 래퍼 (버튼 위치의 기준점이 됨) */
+.textarea-wrapper {
+    position: relative;
+    width: 100%;
+}
+
+/* 마이크 버튼에 글씨가 가려지지 않도록 우측, 하단 여백을 넉넉하게 줌 */
+.project-description-textarea {
+    padding-right: 45px !important;
+    padding-bottom: 40px !important;
+}
+
+/* 우측 하단에 고정될 마이크 버튼 스타일 */
+.voice-mic-btn {
+    position: absolute;
+    right: 12px;
+    bottom: 12px;
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #f0f2fb;
+    color: #4953BE;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.voice-mic-btn:hover {
+    background-color: #4953BE;
+    color: #ffffff;
+    transform: scale(1.05);
+}
+
+/* 나중에 음성 인식이 시작되었을 때 버튼 색이 변하는 애니메이션 (예비용) */
+.voice-mic-btn.recording {
+    background-color: #ff4d4f;
+    color: white;
+    animation: pulse-red 1.5s infinite;
+}
+
+@keyframes pulse-red {
+    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 77, 79, 0.4); }
+    70% { transform: scale(1.05); box-shadow: 0 0 0 8px rgba(255, 77, 79, 0); }
+    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 77, 79, 0); }
 }

@@ -1,4 +1,5 @@
 package com.capstone.collaborationhelper.controller;
+
 import com.capstone.collaborationhelper.dto.AuthDtos.*;
 import com.capstone.collaborationhelper.service.AuthService;
 import com.capstone.collaborationhelper.service.EmailService;
@@ -7,7 +8,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 
-@RestController @RequestMapping("/api/auth") @RequiredArgsConstructor
+@RestController
+@RequestMapping("/api/auth")
+@RequiredArgsConstructor
 public class AuthController {
     private final AuthService authService;
     private final EmailService emailService;

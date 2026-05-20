@@ -25,7 +25,7 @@ public class AuthService {
         // 이메일이 진짜로 인증되었는지 확인
         EmailVerification verification = verificationRepo.findTopByEmailOrderByCreatedAtDesc(request.getEmail())
                 .orElseThrow(() -> new RuntimeException("이메일 인증을 먼저 진행해주세요."));
-        if (!verification.getIsVerified()) throw new RuntimeException("이메일 인증이 완료되지 않았습니다.");
+        if (!verification.isVerified()) throw new RuntimeException("이메일 인증이 완료되지 않았습니다.");
 
         // 유저 생성
         userRepository.save(User.builder()
