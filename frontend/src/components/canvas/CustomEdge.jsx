@@ -4,22 +4,18 @@ import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, Position } from 'reactf
 export default function CustomEdge({
                                        id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, selected
                                    }) {
-    // ✨ 사용자가 포트를 정확히 안 찍고 블록 덩어리에 연결했을 때 선이 깨지는 것 방지
-    const safeSourcePos = sourcePosition || Position.Bottom;
-    const safeTargetPos = targetPosition || Position.Top;
-
     const [edgePath, labelX, labelY] = getSmoothStepPath({
         sourceX,
         sourceY,
-        sourcePosition: safeSourcePos,
+        sourcePosition: sourcePosition || Position.Bottom,
         targetX,
         targetY,
-        targetPosition: safeTargetPos,
+        targetPosition: targetPosition || Position.Top,
         borderRadius: 10
     });
 
     let strokeColor = '#4953BE';
-    let strokeDasharray = 'none';
+    let strokeDasharray = undefined;
     let markerEnd = 'url(#marker-call)';
 
     if (data?.type === 'inheritance') {
