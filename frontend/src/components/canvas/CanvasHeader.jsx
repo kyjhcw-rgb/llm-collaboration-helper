@@ -14,7 +14,14 @@ const CanvasHeader = () => {
 
     // 로그아웃 버튼을 누르면 첫 화면(랜딩 페이지)으로 돌아가게 해주는 함수
     const handleLogout = () => {
-        navigate('/');
+        // 1. 브라우저에 저장된 JWT 토큰 삭제 (실질적인 로그아웃 처리)
+        localStorage.removeItem('accessToken');
+
+        // 2. 스토어에 남아있는 현재 캔버스 및 프로젝트 정보 완벽 초기화
+        useCanvasStore.getState().resetProject();
+
+        // 3. 로그인 페이지로 이동
+        navigate('/login');
     };
 
     // 로고를 누르면 프로젝트 목록 화면(로비)으로 이동하게 해주는 함수
@@ -29,7 +36,8 @@ const CanvasHeader = () => {
         currentVersion,
         availableVersions,
         loadProjectFromServer,
-        loadVersionsFromServer
+        loadVersionsFromServer,
+        deleteVersionFromServer
     } = useCanvasStore();
 
     // 캔버스 진입 시 버전 목록 불러오기
@@ -73,6 +81,30 @@ const CanvasHeader = () => {
                             </option>
                         ))}
                     </select>
+                    {/* 현재 선택된 버전을 삭제하는 버튼 */}
+                    {availableVersions.length > 0 && (
+                        <button
+                            className="delete-version-btn"
+                            onClick={() => {
+                                // 실수로 삭제하는 것 방지
+                                if (window.confirm(`정말 버전 ${currentVersion}을 삭제하시겠습니까?`)) {
+                                    deleteVersionFromServer(currentVersion);
+                                }
+                            }}
+                            style={{
+                                marginLeft: '10px',
+                                backgroundColor: '#ff4d4f',
+                                color: 'white',
+                                border: 'none',
+                                padding: '6px 12px',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                fontSize: '14px'
+                            }}
+                        >
+                            버전 삭제
+                        </button>
+                    )}
                 </div>
 
                 <button className="save-btn" onClick={handleSave}>

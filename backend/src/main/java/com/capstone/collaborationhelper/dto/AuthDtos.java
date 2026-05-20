@@ -42,4 +42,15 @@ public class AuthDtos {
         private String username;
         private String password;
     }
+
+    // 회원 정보 수정 요청 DTO
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    public static class UserUpdateReq {
+        private String nickname;
+        private String profileImageUrl;
+        private String currentPassword; // 기존 비밀번호
+        private String newPassword;     // 새 비밀번호
+    }
 }

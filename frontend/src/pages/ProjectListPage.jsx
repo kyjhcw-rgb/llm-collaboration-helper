@@ -10,7 +10,7 @@ export default function ProjectListPage() {
     const [projects, setProjects] = useState([]);
 
     const resetProject = useCanvasStore((state) => state.resetProject);
-    const loadProjectFromServer = useCanvasStore((state) => state.loadProjectFromServer); // 추가된 부분
+    const loadProjectFromServer = useCanvasStore((state) => state.loadProjectFromServer);
 
     // 백엔드에서 프로젝트 목록 불러오기
     useEffect(() => {
@@ -27,6 +27,7 @@ export default function ProjectListPage() {
 
     const handleLogout = () => {
         localStorage.removeItem('accessToken');
+        useCanvasStore.getState().resetProject();
         navigate('/login');
     };
 
@@ -43,6 +44,43 @@ export default function ProjectListPage() {
 
         // 3. 데이터 동기화 완료 후 화면 이동
         navigate('/canvas');
+    };
+
+    // 프로젝트 정보 수정 및 단건 조회 API 활용 로직
+    const handleUpdateProject = async (e, project) => {
+        e.stopPropagation(); // 카드 자체의 클릭 이벤트(캔버스 진입) 전파 방지
+
+        try {
+            // 수정 프롬프트를 열기 전, 단건 조회 API를 통해 백엔드의 최신 정보를 가져옴
+            const latestProject = await request(`/projects/${project.id}`, { method: 'GET' });
+
+            const newTitle = window.prompt("새로운 프로젝트 이름을 입력하세요:", latestProject.title);
+            if (newTitle === null) return; // 취소 버튼 선택 시 조기 종료
+            if (!newTitle.trim()) {
+                alert("프로젝트 이름은 필수 입력 항목입니다.");
+                return;
+            }
+
+            // 백엔드 프로젝트 수정 API 호출 (DTO 명세 조율)
+            const updatedProject = await request(`/projects/${project.id}`, {
+                method: 'PUT',
+                body: JSON.stringify({
+                    title: newTitle,
+                    framework: latestProject.framework,
+                    freedomLevel: latestProject.freedomLevel,
+                    descriptionPrompt: latestProject.descriptionPrompt
+                })
+            });
+
+            // 내부 상태 배열 구조 동기화 갱신
+            setProjects((prev) =>
+                prev.map((p) => (p.id === project.id ? updatedProject : p))
+            );
+            alert("프로젝트 이름이 수정되었습니다.");
+        } catch (error) {
+            console.error("수정 실패:", error);
+            alert('프로젝트 수정 처리에 실패했습니다.');
+        }
     };
 
     // 프로젝트 삭제 API 호출
@@ -91,9 +129,31 @@ export default function ProjectListPage() {
                                 <h3>{project.title}</h3>
                                 <small>{project.framework}</small>
 
-                                <button className="delete-btn" onClick={(e) => handleDeleteProject(e, project.id)}>
-                                    삭제
-                                </button>
+                                {/* 하단 액션 버튼 배치 영역 제어 */}
+                                <div className="project-card-actions" style={{ marginTop: '15px', display: 'flex', gap: '10px' }}>
+                                    <button
+                                        type="button"
+                                        className="edit-btn"
+                                        onClick={(e) => handleUpdateProject(e, project)}
+                                        style={{
+                                            padding: '4px 8px',
+                                            backgroundColor: '#4caf50',
+                                            color: 'white',
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        수정
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="delete-btn"
+                                        onClick={(e) => handleDeleteProject(e, project.id)}
+                                    >
+                                        삭제
+                                    </button>
+                                </div>
                             </div>
                         ))}
                     </div>

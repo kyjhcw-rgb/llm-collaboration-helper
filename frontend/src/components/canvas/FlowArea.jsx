@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef } from 'react';
 import ReactFlow, { Background, Controls, applyNodeChanges, applyEdgeChanges, useReactFlow, ReactFlowProvider, ConnectionMode } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useCanvasStore } from '../../store/useCanvasStore';
@@ -15,6 +15,8 @@ const FlowContents = () => {
 
     const nodes = useCanvasStore((state) => state.nodes);
     const edges = useCanvasStore((state) => state.edges);
+
+    const connectingHandleRef = useRef(null);
 
     const handleNodesChange = useCallback((changes) => {
         useCanvasStore.setState((state) => {
@@ -37,29 +39,34 @@ const FlowContents = () => {
         useCanvasStore.setState((state) => ({ edges: applyEdgeChanges(chs, state.edges) }));
     }, []);
 
-    // 선 연결 시 뱃지(중복 연결) 처리 로직
+    // 순수 연결 저장 및 뱃지 로직
     const handleConnect = useCallback((params) => {
         useCanvasStore.setState((state) => {
-            // 이미 동일한 source와 target을 가진 선이 있는지 확인
+            const safeParams = {
+                ...params,
+                sourceHandle: params.sourceHandle || 'bottom',
+                targetHandle: params.targetHandle || 'top'
+            };
+
             const existingEdgeIndex = state.edges.findIndex(
-                e => e.source === params.source && e.target === params.target
+                e => e.source === safeParams.source && e.target === safeParams.target
             );
 
             if (existingEdgeIndex !== -1) {
-                // 선이 있으면 뱃지 카운트 증가
                 const newEdges = [...state.edges];
                 const existingEdge = newEdges[existingEdgeIndex];
                 const currentCount = existingEdge.data?.badgeCount || 1;
 
                 newEdges[existingEdgeIndex] = {
                     ...existingEdge,
+                    sourceHandle: safeParams.sourceHandle,
+                    targetHandle: safeParams.targetHandle,
                     data: { ...existingEdge.data, badgeCount: currentCount + 1 }
                 };
                 return { edges: newEdges };
             } else {
-                // 선이 없으면 새로 생성 (기본은 파란색 call 타입)
                 const newEdge = {
-                    ...params,
+                    ...safeParams,
                     id: `edge_${Date.now()}`,
                     type: 'custom',
                     data: { type: 'call', badgeCount: 1 }
@@ -68,6 +75,66 @@ const FlowContents = () => {
             }
         });
     }, []);
+
+    const onConnectStart = useCallback((event, { nodeId, handleId }) => {
+        connectingHandleRef.current = { nodeId, handleId };
+    }, []);
+
+    // 🌟 화면 절대 좌표 기반 100% 정밀 스냅 로직
+    const onConnectEnd = useCallback((event) => {
+        if (!connectingHandleRef.current) return;
+
+        // 정확히 동그라미 위에 놨을 때는 가로채지 않음
+        if (event.target.classList.contains('react-flow__handle')) {
+            connectingHandleRef.current = null;
+            return;
+        }
+
+        // 블록 몸통에 대충 떨어뜨렸을 때 위치 계산
+        const targetNodeElement = event.target.closest('.react-flow__node');
+        if (targetNodeElement) {
+            const targetNodeId = targetNodeElement.getAttribute('data-id');
+            const sourceNodeId = connectingHandleRef.current.nodeId;
+            const sourceHandleId = connectingHandleRef.current.handleId || 'bottom';
+
+            if (targetNodeId && sourceNodeId !== targetNodeId) {
+                // 현재 마우스 좌표 (화면 기준)
+                const clientX = event.changedTouches ? event.changedTouches[0].clientX : event.clientX;
+                const clientY = event.changedTouches ? event.changedTouches[0].clientY : event.clientY;
+
+                // 타겟 블록의 화면상 절대 박스 영역
+                const rect = targetNodeElement.getBoundingClientRect();
+
+                // 4방향 포트의 절대 좌표
+                const portCoords = {
+                    top: { x: rect.left + rect.width / 2, y: rect.top },
+                    bottom: { x: rect.left + rect.width / 2, y: rect.bottom },
+                    left: { x: rect.left, y: rect.top + rect.height / 2 },
+                    right: { x: rect.right, y: rect.top + rect.height / 2 }
+                };
+
+                let closestPort = 'top';
+                let minDistance = Infinity;
+
+                // 마우스 커서와 가장 가까운 포트 탐색
+                for (const [side, pos] of Object.entries(portCoords)) {
+                    const dist = Math.hypot(clientX - pos.x, clientY - pos.y);
+                    if (dist < minDistance) {
+                        minDistance = dist;
+                        closestPort = side;
+                    }
+                }
+
+                handleConnect({
+                    source: sourceNodeId,
+                    sourceHandle: sourceHandleId,
+                    target: targetNodeId,
+                    targetHandle: closestPort
+                });
+            }
+        }
+        connectingHandleRef.current = null;
+    }, [handleConnect]);
 
     const onDrop = useCallback((event) => {
         event.preventDefault();
@@ -118,20 +185,16 @@ const FlowContents = () => {
             }}
             style={{ flex: 1, width: '100%', height: '100%', position: 'relative' }}
         >
-            {/* 커스텀 화살표 디자인 정의를 위한 SVG 공간 */}
             <svg style={{ position: 'absolute', width: 0, height: 0 }}>
                 <defs>
-                    {/* 파란색 꽉 찬 화살표 (메서드 호출) */}
-                    <marker id="marker-call" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                    <marker id="marker-call" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto">
                         <path d="M 0 0 L 10 5 L 0 10 z" fill="#4953BE" />
                     </marker>
-                    {/* 보라색 빈 화살표 (상속) */}
-                    <marker id="marker-inheritance" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto">
-                        <path d="M 0 0 L 10 5 L 0 10 z" fill="#fff" stroke="#8E44AD" strokeWidth="1.5" />
+                    <marker id="marker-inheritance" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+                        <path d="M 0 0 L 10 5 L 0 10 Z" fill="#fff" stroke="#8E44AD" strokeWidth="2" />
                     </marker>
-                    {/* 초록색 빈 화살표 (구현) */}
-                    <marker id="marker-implementation" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto">
-                        <path d="M 0 0 L 10 5 L 0 10 z" fill="#fff" stroke="#27AE60" strokeWidth="1.5" />
+                    <marker id="marker-implementation" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+                        <path d="M 0 0 L 10 5 L 0 10 Z" fill="#fff" stroke="#27AE60" strokeWidth="2" />
                     </marker>
                 </defs>
             </svg>
@@ -141,13 +204,15 @@ const FlowContents = () => {
                 edges={edges}
                 nodeTypes={nodeTypes}
                 edgeTypes={edgeTypes}
-                connectionMode={ConnectionMode.Loose}
+                connectionMode={ConnectionMode.Loose} /* 이 옵션이 1개의 포트로 양방향 연결을 가능하게 합니다 */
                 nodesConnectable={true}
                 onNodesChange={handleNodesChange}
                 onEdgesChange={handleEdgesChange}
                 onConnect={handleConnect}
+                onConnectStart={onConnectStart}
+                onConnectEnd={onConnectEnd}
                 onNodeClick={(_, node) => setSelectedNodeId(node.id)}
-                onEdgeClick={(_, edge) => setSelectedEdgeId(edge.id)} /* 🌟 선 클릭 이벤트 추가 */
+                onEdgeClick={(_, edge) => setSelectedEdgeId(edge.id)}
                 onPaneClick={() => {
                     setSelectedNodeId(null);
                     setSelectedEdgeId(null);

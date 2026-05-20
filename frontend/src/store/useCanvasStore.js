@@ -200,18 +200,32 @@ export const useCanvasStore = create(
                 },
 
                 deleteVersionFromServer: async (version) => {
-                    const state = get();
-                    const projectId = state.currentProjectId;
-                    if (!projectId) return;
+                    const { currentProjectId, availableVersions, loadProjectFromServer } = get();
+                    if (!currentProjectId) return;
 
                     if (!window.confirm(`정말 ${version} 버전을 삭제하시겠습니까?`)) return;
 
                     try {
-                        await request(`/projects/${projectId}/canvas?version=${version}`, {
+                        // 1. 서버에 삭제 요청
+                        await request(`/projects/${currentProjectId}/canvas?version=${version}`, {
                             method: "DELETE"
                         });
-                        alert(`${version} 버전이 삭제되었습니다.`);
-                        get().loadVersionsFromServer(projectId);
+
+                        // 2. 현재 로컬 상태에서 삭제된 버전 필터링
+                        const remainingVersions = availableVersions.filter(v => v !== version);
+                        set({ availableVersions: remainingVersions });
+
+                        // 3. 삭제 후 화면 갱신 (남은 버전 중 최신 버전 불러오기)
+                        if (remainingVersions.length > 0) {
+                            const latestVersion = Math.max(...remainingVersions);
+                            await loadProjectFromServer(currentProjectId, latestVersion);
+                            alert(`${version} 버전이 삭제되고, 최신 버전(${latestVersion})을 불러왔습니다.`);
+                        } else {
+                            // 남은 버전이 없을 경우 캔버스를 백지로 초기화
+                            set({ nodes: [], edges: [], currentVersion: null });
+                            alert(`${version} 버전이 삭제되었습니다. 남은 버전이 없습니다.`);
+                        }
+
                     } catch (error) {
                         console.error("버전 삭제 실패:", error);
                         alert("버전 삭제에 실패했습니다.");
