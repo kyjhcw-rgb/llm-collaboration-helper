@@ -21,4 +21,6 @@ jobs:
 
             cd ..
             docker compose up -d --build backend
+            docker compose up -d --build frontend
+            docker compose up -d --build python
             docker image prune -f
