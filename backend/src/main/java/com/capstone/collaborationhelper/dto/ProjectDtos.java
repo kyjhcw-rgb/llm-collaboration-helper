@@ -45,7 +45,7 @@ public class ProjectDtos {
 
         public static Res from(Project p) {
             return Res.builder()
-                    .id(p.getId())\n                    .ownerId(p.getOwner().getId())
+                    .id(p.getId()).ownerId(p.getOwner().getId())
                     .ownerUsername(p.getOwner().getUsername())
                     .title(p.getTitle())
                     .framework(p.getFramework())
