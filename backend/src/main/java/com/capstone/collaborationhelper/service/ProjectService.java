@@ -23,7 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.stream.Collectors;
 
-@Slf4j // 💡 로그 기록을 위해 추가
+@Slf4j // 
 @Service
 @RequiredArgsConstructor
 public class ProjectService {
@@ -34,7 +34,6 @@ public class ProjectService {
     private final PartyRepository partyRepository;
     private final UserRepository userRepository;
     
-    // 🔥 [4단계 핵심 추가] 외부 의존성 주입
     private final CanvasService canvasService; // 이미 구현된 대량 저장 로직 활용
     private final LlmClient llmClient;         // FastAPI 통신 비서
 
@@ -62,7 +61,6 @@ public class ProjectService {
         return Res.from(project);
     }
 
-    // 🔥 [4단계 핵심 수정] 프로젝트 생성 시 AI 기능 연동
     @Transactional
     public Res create(CreateReq req) {
         log.info("▶ [ProjectService] 새 프로젝트 생성을 시작합니다. 제목: {}", req.getTitle());
