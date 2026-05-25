@@ -18,7 +18,6 @@ public class Project {
     private String title;
 
     private String framework;
-
     private Integer freedomLevel;
 
     @Column(columnDefinition = "TEXT")
@@ -27,8 +26,8 @@ public class Project {
     @Builder.Default
     private String diagramState = "root";
 
-    @Builder.Default
-    private Integer version = 1;
+    @Column(name = "crdt_snapshot", columnDefinition = "bytea")
+    private byte[] crdtSnapshot; // 라이브 스냅샷 상태
 
     private ZonedDateTime createdAt;
     private ZonedDateTime updatedAt;

@@ -73,7 +73,6 @@ public class ProjectService {
                 .framework(req.getFramework())
                 .freedomLevel(req.getFreedomLevel())
                 .descriptionPrompt(req.getDescriptionPrompt())
-                .version(1) // 💡 초기 버전 세팅 추가
                 .build();
         
         // 2. 프로젝트 기본 정보 DB 저장
@@ -97,13 +96,13 @@ public class ProjectService {
                 syncReq.setBlocks(llmDiagram.getBlocks());
                 syncReq.setEdges(llmDiagram.getEdges());
 
-                // 6. 깃허브처럼 기존 CanvasService가 새로운 1버전 스냅샷을 생성하고 DB에 대량 저장하게끔 패스
-                Integer generatedVersion = canvasService.syncCanvasAndCreateNewVersion(project.getId(), syncReq);
-                
-                // 7. 다이어그램 저장 결과로 나온 실제 최신 버전을 프로젝트 테이블에도 최종 동기화
-                project.setVersion(generatedVersion);
-                projectRepository.save(project);
-                
+                // [기존 6 수정] 바뀐 DB 아키텍처에 맞게 저장 로직 2단계 분리
+                // 1단계: 받아온 다이어그램을 현재 라이브 상태로 동기화(UPSERT)
+                canvasService.syncLiveCanvas(project.getId(), syncReq);
+                // 2단계: 방금 저장한 라이브 상태를 '버전 1.0'으로 통일된 역사에 영구 박제(Commit)
+                canvasService.commitVersion(project.getId(), "초기 AI 다이어그램 생성");
+                // [기존 7 수정] project.setVersion() 및 projectRepository.save(project) 제거됨
+
                 log.info("✔ [ProjectService] AI 다이어그램이 포함된 프로젝트 생성이 최종 완료되었습니다. 프로젝트 ID: {}", project.getId());
             }
         } catch (Exception e) {
@@ -135,9 +134,9 @@ public class ProjectService {
         if (req.getDiagramState() != null) {
             project.setDiagramState(req.getDiagramState());
         }
-        if (req.getVersion() != null) {
-            project.setVersion(req.getVersion());
-        }
+
+        // [수정] req.getVersion()을 통한 업데이트 로직 제거됨 (버전 관리는 Project_Version이 전담)
+
         return Res.from(project);
     }
 

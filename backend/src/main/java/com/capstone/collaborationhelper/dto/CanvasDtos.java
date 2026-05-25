@@ -13,20 +13,22 @@ public class CanvasDtos {
         private List<EdgeDto> edges;
     }
 
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
+    @Data @NoArgsConstructor @AllArgsConstructor
     public static class SyncRes {
-        private Integer version;
         private List<BlockDto> blocks;
         private List<EdgeDto> edges;
     }
 
     @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class SaveRes {
-        private Integer newVersion;
+    public static class CommitReq {
+        private String commitMessage;
+    }
+
+    @Data @NoArgsConstructor @AllArgsConstructor
+    public static class VersionDto {
+        private Integer versionNumber;
+        private String commitMessage;
+        private String createdAt;
     }
 
     @Data
