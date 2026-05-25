@@ -32,6 +32,7 @@ const CanvasHeader = () => {
     // 스토어에서 서버 저장 함수 및 버전 상태/함수 가져오기 추가
     const {
         saveProjectToServer,
+        commitVersionToServer,
         currentProjectId,
         currentVersion,
         availableVersions,
@@ -55,9 +56,23 @@ const CanvasHeader = () => {
         }
     };
 
-    const handleSave = () => {
-        // 백엔드로 저장 요청 전송
-        saveProjectToServer();
+    // [동작 1] 단순히 현재 작업 중인 상태를 DB 라이브 테이블에 덮어씀 (버전 추가 X)
+    const handleLiveSync = async () => {
+        await saveProjectToServer();
+        alert("현재 다이어그램 상태가 캔버스 라이브 DB에 동기화되었습니다.");
+    };
+
+    // [동작 2] 팀원들과 합의된 현재 상태를 불변의 역사(Version)로 영구 박제함
+    const handleCommit = async () => {
+        const commitMessage = window.prompt(
+            "버전 히스토리에 남길 커밋 메시지를 입력하세요 (예: 결제 모듈 완성)",
+            "새로운 다이어그램 구조 업데이트"
+        );
+
+        // 사용자가 취소를 누르지 않고 내용을 입력한 경우에만 박제 진행
+        if (commitMessage !== null) {
+            await commitVersionToServer(commitMessage);
+        }
     };
 
     return (
@@ -76,8 +91,9 @@ const CanvasHeader = () => {
                         className="version-dropdown"
                     >
                         {availableVersions.map((v) => (
-                            <option key={v} value={v}>
-                                Version {v} {v === Math.max(...availableVersions) ? "(최신)" : ""}
+                            // availableVersions 배열이 객체 배열({versionNumber, commitMessage})로 바뀌었음에 대응
+                            <option key={v.versionNumber || v} value={v.versionNumber || v}>
+                                Version {v.versionNumber || v} {(v.versionNumber || v) === Math.max(...availableVersions.map(av => av.versionNumber || av)) ? "(최신)" : ""}
                             </option>
                         ))}
                     </select>
@@ -107,9 +123,15 @@ const CanvasHeader = () => {
                     )}
                 </div>
 
-                <button className="save-btn" onClick={handleSave}>
-                    저장
-                </button>
+                {/* 변경된 저장 버튼 영역: 라이브 동기화 & 버전 박제 */}
+                <div className="action-buttons" style={{ display: 'flex', gap: '8px', marginLeft: '15px' }}>
+                    <button className="sync-btn" onClick={handleLiveSync} style={{ padding: '6px 12px', cursor: 'pointer' }}>
+                        라이브 동기화
+                    </button>
+                    <button className="commit-btn" onClick={handleCommit} style={{ padding: '6px 12px', backgroundColor: '#4CAF50', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+                        버전 박제 (Commit)
+                    </button>
+                </div>
             </div>
 
             <div className="header-right">

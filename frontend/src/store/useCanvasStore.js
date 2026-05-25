@@ -9,8 +9,8 @@ export const useCanvasStore = create(
             (set, get) => ({
                 projectName: '',
                 currentProjectId: null,
-                currentVersion: 1,
-                availableVersions: [],
+                currentVersion: 'live', // 초기 상태를 'live'로 명확히 지정
+                availableVersions: [], // { versionNumber, commitMessage, createdAt } 객체 배열
 
                 nodes: [],
                 edges: [],
@@ -25,7 +25,6 @@ export const useCanvasStore = create(
                     set({
                         currentProjectId: null,
                         projectName: '',
-                        currentVersion: 1,
                         availableVersions: [],
                         nodes: [],
                         edges: [],
@@ -34,14 +33,12 @@ export const useCanvasStore = create(
                     });
                 },
 
-                // 노드와 엣지 선택은 상호 배타적으로 동작하도록 설정
                 setSelectedNodeId: (id) => set({ selectedNodeId: id, selectedEdgeId: null }),
                 setSelectedEdgeId: (id) => set({ selectedEdgeId: id, selectedNodeId: null }),
 
                 setNodes: (nodes) => set({ nodes }),
                 setEdges: (edges) => set({ edges }),
 
-                // 노드 데이터 로컬 업데이트
                 updateNodeData: (nodeId, newData) =>
                     set((state) => ({
                         nodes: state.nodes.map((node) => {
@@ -55,7 +52,6 @@ export const useCanvasStore = create(
                         }),
                     })),
 
-                // 엣지 데이터(타입 등) 로컬 업데이트
                 updateEdgeData: (edgeId, newData) =>
                     set((state) => ({
                         edges: state.edges.map((edge) => {
@@ -75,30 +71,24 @@ export const useCanvasStore = create(
                     }
                 },
 
-                loadProjectFromServer: async (projectId, version = null) => {
+                loadProjectFromServer: async (projectId, versionNumber = null) => {
                     try {
-                        const url = version
-                            ? `/projects/${projectId}/canvas?version=${version}`
+                        const url = versionNumber
+                            ? `/projects/${projectId}/canvas?version=${versionNumber}`
                             : `/projects/${projectId}/canvas`;
 
                         const data = await request(url, { method: "GET" });
 
                         const nodes = (data.blocks || []).map(block => {
                             let nodeClass = 'canvas-node method-node';
-                            let initialWidth = 150;
-                            let initialHeight = 50;
-                            let zIndex = 30;
+                            let initialWidth = 150, initialHeight = 50, zIndex = 30;
 
                             if (block.type === 'feature') {
                                 nodeClass = 'canvas-node feature-node';
-                                initialWidth = 400;
-                                initialHeight = 300;
-                                zIndex = 10;
+                                initialWidth = 400; initialHeight = 300; zIndex = 10;
                             } else if (block.type === 'class') {
                                 nodeClass = 'canvas-node class-node';
-                                initialWidth = 250;
-                                initialHeight = 150;
-                                zIndex = 20;
+                                initialWidth = 250; initialHeight = 150; zIndex = 20;
                             }
 
                             return {
@@ -120,7 +110,6 @@ export const useCanvasStore = create(
                             };
                         });
 
-                        // 엣지 데이터를 스토어에 맞게 변환 (CustomEdge가 읽을 수 있도록 data 필드 활용)
                         const edges = (data.edges || []).map(edge => ({
                             id: edge.frontendId,
                             source: edge.sourceFrontendId,
@@ -136,27 +125,26 @@ export const useCanvasStore = create(
 
                         set({
                             currentProjectId: projectId,
-                            currentVersion: data.version || 1,
+                            // 백엔드 응답에서 버전 번호가 안 오므로, 넘겨받은 파라미터를 그대로 사용해 상태 유지
+                            currentVersion: versionNumber || 'live',
                             nodes: nodes,
-                            edges: edges
+                            edges: edges,
+                            selectedNodeId: null,
+                            selectedEdgeId: null
                         });
 
                         get().loadVersionsFromServer(projectId);
-
                     } catch (error) {
-                        console.error("서버에서 데이터를 불러오는 중 오류 발생:", error);
+                        console.error("데이터 로드 실패:", error);
                         alert("다이어그램 데이터를 불러오지 못했습니다.");
                     }
                 },
 
+                // 1. 단순 라이브 저장 (UPSERT 동기화, 버전 증가는 없음)
                 saveProjectToServer: async () => {
                     const state = get();
                     const projectId = state.currentProjectId;
-
-                    if (!projectId) {
-                        alert("현재 연결된 프로젝트 ID가 없습니다.");
-                        return;
-                    }
+                    if (!projectId) return;
 
                     const blocks = state.nodes.map(node => ({
                         frontendId: node.id,
@@ -171,7 +159,6 @@ export const useCanvasStore = create(
                         posY: node.position.y,
                     }));
 
-                    // 엣지 데이터를 백엔드 DTO에 맞게 변환
                     const edges = state.edges.map(edge => ({
                         frontendId: edge.id,
                         sourceFrontendId: edge.source,
@@ -183,49 +170,65 @@ export const useCanvasStore = create(
                     }));
 
                     try {
-                        const response = await request(`/projects/${projectId}/canvas/sync`, {
+                        await request(`/projects/${projectId}/canvas/sync`, {
                             method: "POST",
                             body: JSON.stringify({ blocks, edges })
                         });
-
-                        if (response && response.newVersion) {
-                            set({ currentVersion: response.newVersion });
-                            get().loadVersionsFromServer(projectId);
-                        }
-                        alert(`새로운 버전(v${response.newVersion})으로 성공적으로 저장되었습니다!`);
+                        console.log("라이브 데이터 스냅샷 동기화 완료");
                     } catch (error) {
-                        console.error("저장 중 오류 발생:", error);
-                        alert('저장에 실패했습니다.');
+                        console.error("동기화 오류:", error);
                     }
                 },
 
-                deleteVersionFromServer: async (version) => {
+                // 2. 버전 박제 (Commit)
+                commitVersionToServer: async (commitMessage = "새로운 버전 저장") => {
+                    const { currentProjectId, saveProjectToServer, loadVersionsFromServer } = get();
+                    if (!currentProjectId) {
+                        alert("연결된 프로젝트가 없습니다.");
+                        return;
+                    }
+
+                    try {
+                        // 박제하기 전에 현재 화면의 최신 상태를 백엔드에 한 번 동기화
+                        await saveProjectToServer();
+
+                        const response = await request(`/projects/${currentProjectId}/canvas/commit`, {
+                            method: "POST",
+                            body: JSON.stringify({ commitMessage })
+                        });
+
+                        if (response && response.newVersion) {
+                            alert(`v${response.newVersion} 버전이 성공적으로 기록(Commit) 되었습니다!`);
+                            // 현재 가리키는 버전 상태를 방금 생성된 최신 버전 번호로 즉시 변경
+                            set({ currentVersion: response.newVersion });
+
+                            // 이후 서버에서 최신 버전 목록 리스트를 다시 받아옴
+                            await get().loadVersionsFromServer(currentProjectId);
+                        }
+                    } catch (error) {
+                        console.error("버전 저장(Commit) 실패:", error);
+                        alert("버전 저장에 실패했습니다.");
+                    }
+                },
+
+                deleteVersionFromServer: async (versionNumber) => {
                     const { currentProjectId, availableVersions, loadProjectFromServer } = get();
                     if (!currentProjectId) return;
 
-                    if (!window.confirm(`정말 ${version} 버전을 삭제하시겠습니까?`)) return;
+                    if (!window.confirm(`정말 ${versionNumber} 버전을 삭제하시겠습니까?`)) return;
 
                     try {
-                        // 1. 서버에 삭제 요청
-                        await request(`/projects/${currentProjectId}/canvas?version=${version}`, {
+                        await request(`/projects/${currentProjectId}/canvas?version=${versionNumber}`, {
                             method: "DELETE"
                         });
 
-                        // 2. 현재 로컬 상태에서 삭제된 버전 필터링
-                        const remainingVersions = availableVersions.filter(v => v !== version);
+                        // 삭제된 버전을 제외한 새로운 배열 구성 (versionNumber 프로퍼티 매칭)
+                        const remainingVersions = availableVersions.filter(v => v.versionNumber !== versionNumber);
                         set({ availableVersions: remainingVersions });
 
-                        // 3. 삭제 후 화면 갱신 (남은 버전 중 최신 버전 불러오기)
-                        if (remainingVersions.length > 0) {
-                            const latestVersion = Math.max(...remainingVersions);
-                            await loadProjectFromServer(currentProjectId, latestVersion);
-                            alert(`${version} 버전이 삭제되고, 최신 버전(${latestVersion})을 불러왔습니다.`);
-                        } else {
-                            // 남은 버전이 없을 경우 캔버스를 백지로 초기화
-                            set({ nodes: [], edges: [], currentVersion: null });
-                            alert(`${version} 버전이 삭제되었습니다. 남은 버전이 없습니다.`);
-                        }
-
+                        alert(`${versionNumber} 버전이 삭제되었습니다.`);
+                        // 삭제 후 안전하게 현재 라이브 상태로 강제 복귀
+                        await loadProjectFromServer(currentProjectId, null);
                     } catch (error) {
                         console.error("버전 삭제 실패:", error);
                         alert("버전 삭제에 실패했습니다.");
@@ -234,14 +237,11 @@ export const useCanvasStore = create(
             }),
             {
                 partialize: (state) => {
-                    // 선택 상태는 로컬 스토리지에 저장하지 않음
                     const { selectedNodeId, selectedEdgeId, ...rest } = state;
                     return rest;
                 },
             }
         ),
-        {
-            name: 'canvas-storage',
-        }
+        { name: 'canvas-storage' }
     )
 );

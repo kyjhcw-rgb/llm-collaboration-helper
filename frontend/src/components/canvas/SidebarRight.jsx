@@ -13,7 +13,8 @@ const SidebarRight = () => {
         selectedEdgeId,
         setSelectedEdgeId,
         updateNodeData,
-        updateEdgeData
+        updateEdgeData,
+        saveProjectToServer // 라이브 DB 즉각 반영을 위해 스토어에서 추가로 가져옴
     } = useCanvasStore();
 
     const [activeTab, setActiveTab] = useState("info");
@@ -55,21 +56,26 @@ const SidebarRight = () => {
         setEdgeInfo((prev) => ({ ...prev, [name]: value }));
     };
 
-    const handleSaveNode = () => {
+    // 블록 속성 저장 시 로컬 스토어 갱신 후, 백엔드 라이브 테이블에도 동기화
+    const handleSaveNode = async () => {
         if (selectedNodeId) {
             updateNodeData(selectedNodeId, info);
-            alert("블록 정보가 성공적으로 저장되었습니다.");
+            await saveProjectToServer(); // DB Block 테이블(UPSERT)에 즉시 반영
+            alert("블록 정보가 성공적으로 저장 및 동기화되었습니다.");
         }
     };
 
-    const handleSaveEdge = () => {
+    // 엣지 속성 저장 시 로컬 스토어 갱신 후, 백엔드 라이브 테이블에도 동기화
+    const handleSaveEdge = async () => {
         if (selectedEdgeId) {
             updateEdgeData(selectedEdgeId, edgeInfo);
-            alert("선 타입이 성공적으로 변경되었습니다.");
+            await saveProjectToServer(); // DB Edge 테이블(UPSERT)에 즉시 반영
+            alert("선 타입이 성공적으로 변경 및 동기화되었습니다.");
         }
     };
 
-    const handleDeleteBlock = () => {
+    // 블록 삭제 (논리적 삭제 흐름 지원)
+    const handleDeleteBlock = async () => {
         if (!selectedNodeId) return;
         const confirmDelete = window.confirm("블록과 연결된 선이 함께 삭제됩니다. 진행하시겠습니까?");
         if (!confirmDelete) return;
@@ -77,15 +83,25 @@ const SidebarRight = () => {
         const updatedEdges = edges.filter(
             (edge) => edge.source !== selectedNodeId && edge.target !== selectedNodeId
         );
+
+        // 상태를 동기적으로 바로 업데이트
         setEdges(updatedEdges);
         setNodes(nodes.filter((node) => node.id !== selectedNodeId));
         setSelectedNodeId(null);
+
+        // 업데이트된 최신 상태를 즉시 읽어서 백엔드로 동기화 전송
+        saveProjectToServer();
     };
 
-    const handleDeleteEdge = () => {
+    // 엣지 삭제 (논리적 삭제 흐름 지원)
+    const handleDeleteEdge = async () => {
         if (!selectedEdgeId) return;
+
         setEdges(edges.filter(edge => edge.id !== selectedEdgeId));
         setSelectedEdgeId(null);
+
+        // 삭제 처리 후 DB 즉시 동기화
+        saveProjectToServer();
     };
 
     return (

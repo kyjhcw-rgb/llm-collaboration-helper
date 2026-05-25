@@ -25,7 +25,6 @@ public class ProjectDtos {
         private Integer freedomLevel;
         private String descriptionPrompt;
         private String diagramState;
-        private Integer version;
     }
 
     @Data
@@ -39,7 +38,6 @@ public class ProjectDtos {
         private Integer freedomLevel;
         private String descriptionPrompt;
         private String diagramState;
-        private Integer version;
         private ZonedDateTime createdAt;
         private ZonedDateTime updatedAt;
 
@@ -52,7 +50,6 @@ public class ProjectDtos {
                     .freedomLevel(p.getFreedomLevel())
                     .descriptionPrompt(p.getDescriptionPrompt())
                     .diagramState(p.getDiagramState())
-                    .version(p.getVersion())
                     .createdAt(p.getCreatedAt())
                     .updatedAt(p.getUpdatedAt())
                     .build();
