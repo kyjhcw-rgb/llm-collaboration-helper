@@ -1,5 +1,5 @@
 import React, { useCallback, useRef } from 'react';
-import ReactFlow, { Background, Controls, applyNodeChanges, applyEdgeChanges, useReactFlow, ReactFlowProvider, ConnectionMode } from 'reactflow';
+import ReactFlow, { Background, Controls, applyNodeChanges, applyEdgeChanges, useReactFlow, ReactFlowProvider, ConnectionMode, useStore, getSmoothStepPath, Position } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useCanvasStore } from '../../store/useCanvasStore';
 import './FlowArea.css';
@@ -8,6 +8,51 @@ import CustomEdge from './CustomEdge';
 
 const nodeTypes = { custom: CustomNode };
 const edgeTypes = { custom: CustomEdge };
+
+// =============================================
+// 연결 미리보기 선 커스텀 (OFFSET 동기화)
+// =============================================
+const OFFSET_BY_TYPE = { feature: 176, class: 252, method: 301 };
+
+function inferPositions(sourceX, sourceY, targetX, targetY) {
+    const dx = targetX - sourceX;
+    const dy = targetY - sourceY;
+    if (Math.abs(dx) >= Math.abs(dy)) {
+        if (dx >= 0) return { sourcePos: Position.Right, targetPos: Position.Left };
+        else         return { sourcePos: Position.Left,  targetPos: Position.Right };
+    } else {
+        if (dy >= 0) return { sourcePos: Position.Bottom, targetPos: Position.Top };
+        else         return { sourcePos: Position.Top,    targetPos: Position.Bottom };
+    }
+}
+
+function CustomConnectionLine({ fromX, fromY, toX, toY }) {
+    const connectionNodeId = useStore((state) => state.connectionNodeId);
+    const nodes = useCanvasStore((state) => state.nodes);
+    const sourceNode = nodes.find((n) => n.id === connectionNodeId);
+    const sourceType = sourceNode?.data?.type || 'method';
+    const OFFSET = OFFSET_BY_TYPE[sourceType] ?? 0;
+
+    const { sourcePos, targetPos } = inferPositions(fromX, fromY + OFFSET, toX, toY + OFFSET);
+
+    const [path] = getSmoothStepPath({
+        sourceX: fromX,
+        sourceY: fromY + OFFSET,
+        sourcePosition: sourcePos,
+        targetX: toX,
+        targetY: toY + OFFSET,
+        targetPosition: targetPos,
+        borderRadius: 10,
+    });
+
+    return (
+        <g>
+            <path fill="none" stroke="#4953BE" strokeWidth={2} strokeDasharray="5 5" d={path} />
+        </g>
+    );
+}
+
+// =============================================
 
 const FlowContents = () => {
     const { setSelectedNodeId, setSelectedEdgeId } = useCanvasStore();
@@ -39,7 +84,6 @@ const FlowContents = () => {
         useCanvasStore.setState((state) => ({ edges: applyEdgeChanges(chs, state.edges) }));
     }, []);
 
-    // 순수 연결 저장 및 뱃지 로직
     const handleConnect = useCallback((params) => {
         useCanvasStore.setState((state) => {
             const safeParams = {
@@ -47,6 +91,9 @@ const FlowContents = () => {
                 sourceHandle: params.sourceHandle || 'bottom',
                 targetHandle: params.targetHandle || 'top'
             };
+
+            const sourceNode = state.nodes.find((n) => n.id === safeParams.source);
+            const sourceNodeType = sourceNode?.data?.type || 'method';
 
             const existingEdgeIndex = state.edges.findIndex(
                 e => e.source === safeParams.source && e.target === safeParams.target
@@ -56,7 +103,6 @@ const FlowContents = () => {
                 const newEdges = [...state.edges];
                 const existingEdge = newEdges[existingEdgeIndex];
                 const currentCount = existingEdge.data?.badgeCount || 1;
-
                 newEdges[existingEdgeIndex] = {
                     ...existingEdge,
                     sourceHandle: safeParams.sourceHandle,
@@ -69,7 +115,8 @@ const FlowContents = () => {
                     ...safeParams,
                     id: `edge_${Date.now()}`,
                     type: 'custom',
-                    data: { type: 'call', badgeCount: 1 }
+                    zIndex: 9999,
+                    data: { type: 'call', badgeCount: 1, sourceNodeType }
                 };
                 return { edges: state.edges.concat(newEdge) };
             }
@@ -80,17 +127,14 @@ const FlowContents = () => {
         connectingHandleRef.current = { nodeId, handleId };
     }, []);
 
-    // 🌟 화면 절대 좌표 기반 100% 정밀 스냅 로직
     const onConnectEnd = useCallback((event) => {
         if (!connectingHandleRef.current) return;
 
-        // 정확히 동그라미 위에 놨을 때는 가로채지 않음
         if (event.target.classList.contains('react-flow__handle')) {
             connectingHandleRef.current = null;
             return;
         }
 
-        // 블록 몸통에 대충 떨어뜨렸을 때 위치 계산
         const targetNodeElement = event.target.closest('.react-flow__node');
         if (targetNodeElement) {
             const targetNodeId = targetNodeElement.getAttribute('data-id');
@@ -98,25 +142,21 @@ const FlowContents = () => {
             const sourceHandleId = connectingHandleRef.current.handleId || 'bottom';
 
             if (targetNodeId && sourceNodeId !== targetNodeId) {
-                // 현재 마우스 좌표 (화면 기준)
                 const clientX = event.changedTouches ? event.changedTouches[0].clientX : event.clientX;
                 const clientY = event.changedTouches ? event.changedTouches[0].clientY : event.clientY;
 
-                // 타겟 블록의 화면상 절대 박스 영역
                 const rect = targetNodeElement.getBoundingClientRect();
 
-                // 4방향 포트의 절대 좌표
                 const portCoords = {
-                    top: { x: rect.left + rect.width / 2, y: rect.top },
+                    top:    { x: rect.left + rect.width / 2, y: rect.top },
                     bottom: { x: rect.left + rect.width / 2, y: rect.bottom },
-                    left: { x: rect.left, y: rect.top + rect.height / 2 },
-                    right: { x: rect.right, y: rect.top + rect.height / 2 }
+                    left:   { x: rect.left,  y: rect.top + rect.height / 2 },
+                    right:  { x: rect.right, y: rect.top + rect.height / 2 }
                 };
 
                 let closestPort = 'top';
                 let minDistance = Infinity;
 
-                // 마우스 커서와 가장 가까운 포트 탐색
                 for (const [side, pos] of Object.entries(portCoords)) {
                     const dist = Math.hypot(clientX - pos.x, clientY - pos.y);
                     if (dist < minDistance) {
@@ -204,7 +244,9 @@ const FlowContents = () => {
                 edges={edges}
                 nodeTypes={nodeTypes}
                 edgeTypes={edgeTypes}
-                connectionMode={ConnectionMode.Loose} /* 이 옵션이 1개의 포트로 양방향 연결을 가능하게 합니다 */
+                connectionLineComponent={CustomConnectionLine}
+                elevateEdgesOnSelect={true}
+                connectionMode={ConnectionMode.Loose}
                 nodesConnectable={true}
                 onNodesChange={handleNodesChange}
                 onEdgesChange={handleEdgesChange}

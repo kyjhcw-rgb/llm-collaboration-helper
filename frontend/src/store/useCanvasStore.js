@@ -117,6 +117,7 @@ export const useCanvasStore = create(
                             sourceHandle: edge.sourceHandle || null,
                             targetHandle: edge.targetHandle || null,
                             type: 'custom',
+                            zIndex: 9999,
                             data: {
                                 type: edge.type || 'call',
                                 badgeCount: edge.badgeCount || 1
