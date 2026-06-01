@@ -6,6 +6,7 @@ import SignupPage from "./pages/SignupPage";
 import ProjectListPage from "./pages/ProjectListPage";
 import ProjectCreatePage from "./pages/ProjectCreatePage";
 import CanvasPage from "./pages/CanvasPage";
+import Guideline from "./pages/Guideline";
 
 export default function App() {
     useEffect(() => {
@@ -37,6 +38,7 @@ export default function App() {
                 <Route path="/projects" element={<ProjectListPage />} />
                 <Route path="/projects/new" element={<ProjectCreatePage />} />
                 <Route path="/canvas" element={<CanvasPage />} />
+                <Route path="/guideline" element={<Guideline />} />
             </Routes>
         </BrowserRouter>
     );
