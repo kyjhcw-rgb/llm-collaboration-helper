@@ -1,0 +1,167 @@
+.sidebar-left {
+    width: 280px;
+    flex-shrink: 0;
+    background-color: #ffffff;
+    border-right: 2px solid #e0e0e0;
+    /* 왼쪽 여백을 대폭 줄여서 왼쪽으로 밀착시킴 */
+    padding: 10px 10px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    height: 100%;
+    box-sizing: border-box;
+}
+
+.directory-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    /* 내용물을 최상단 위쪽으로 강제 정렬함 */
+    justify-content: flex-start;
+    align-items: flex-start;
+    width: 100%;
+}
+.project-home-icon {
+    width: 20px;
+    height: 20px;
+    object-fit: contain;
+}
+.tree-item-project {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 18px;
+    font-weight: bold;
+}
+.sidebar-title {
+    padding: 10px;
+    font-size: 20px;
+    color: #4953BE;
+    font-weight: bold;
+    border-bottom: 2px solid #f0f0f0;
+    width: 100%;
+    text-align: center;
+}
+
+.directory-box {
+    width: 100%;
+    flex: 1;
+    /* 가로 드래그(스크롤)를 완전히 차단하고, 세로 스크롤은 길어질 때만 나타나게 함 */
+    overflow-x: hidden;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+}
+
+/* 스크롤바 디자인 */
+.directory-box::-webkit-scrollbar {
+    width: 4px;
+}
+.directory-box::-webkit-scrollbar-thumb {
+    background: #e0e0e0;
+    border-radius: 10px;
+}
+
+.tree-root {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    width: 100%;
+    /* 왼쪽 정렬 및 불필요한 기본 여백 제거 */
+    align-items: flex-start;
+    padding: 0;
+    margin: 0;
+}
+
+.tree-item {
+    font-size: 14px;
+    padding: 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    width: 100%;
+    box-sizing: border-box;
+    text-align: center;
+}
+
+.tree-item:hover {
+    background-color: #f0f2fb;
+    color: #4953BE;
+}
+
+/* 프로젝트 디렉토리명 왼쪽 밀착 */
+.tree-item.project {
+    font-weight: bold;
+    font-size: 15px;
+    color: #222;
+    padding-left: 5px;
+}
+
+/* 하위 파일들의 왼쪽 들여쓰기 간격 축소 */
+.tree-branch {
+    list-style: none;
+    padding-left: 0;
+    margin: 5px 0 0 5px;
+    border-left: 2px solid #e0e0e0;
+    padding-left: 10px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* --------------------------------------
+   하단: Blocks 영역
+--------------------------------------- */
+.block-palette {
+    /* Blocks 헤더와 블록 리스트가 무조건 상하 배치가 되도록 강제함 */
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    padding-top: 10px;
+    flex-shrink: 0;
+}
+
+.blocks-header {
+    padding: 10px;
+    font-size: 20px;
+    font-weight: bold;
+    color: #000;
+    text-align: center;
+    border-top: 1px solid #e0e0e0;
+    border-bottom: 1px solid #e0e0e0;
+    width: 100%;
+    box-sizing: border-box;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+}
+
+.block-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    padding: 0 5px; /* 블록이 너무 벽에 닿지 않도록 살짝 패딩 부여 */
+    box-sizing: border-box;
+}
+
+.drag-block {
+    padding: 14px;
+    border-radius: 8px;
+    text-align: center;
+    font-weight: bold;
+    font-size: 14px;
+    cursor: grab;
+    border: 1px solid rgba(0,0,0,0.05);
+    width: 100%;
+    box-sizing: border-box;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+}
+
+.drag-block.feature { background-color: #DAE8FC; color: #3b5b95; border: 1px solid #7ea6e0; }
+.drag-block.class { background-color: #D5E8D4; color: #4e614c; border: 1px solid #97d077; }
+.drag-block.method { background-color: #F8CECC; color: #b85450; border: 1px solid #b85450; }

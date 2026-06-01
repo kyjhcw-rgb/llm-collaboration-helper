@@ -1,0 +1,88 @@
+/* 캔버스 메인 영역 (절대 지우면 안 됨!) */
+.canvas-main {
+    flex: 1;
+    width: 100%;
+    /* 높이가 0이 되지 않도록 고정함 */
+    height: 100%;
+    background-color: #ffffff;
+    position: relative;
+    overflow: hidden;
+}
+
+/* 캔버스 노드 공통 레이아웃 */
+.canvas-node {
+    padding: 10px 15px;
+    border-radius: 8px !important;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px !important;
+    font-weight: bold;
+    cursor: pointer;
+    transition: box-shadow 0.2s, background-color 0.2s;
+    box-sizing: border-box;
+    word-break: break-all;
+    text-align: center;
+}
+
+/*  기능, 클래스는 다른 블록을 담아야 하므로 글자를 좌측 상단으로 보냄 */
+.feature-node, .class-node {
+    align-items: flex-start;
+    justify-content: flex-start;
+    padding: 15px 20px;
+}
+
+/* 기능 노드 (파란색) - 투명도를 줘서 뒤에 깔리게 */
+.feature-node {
+    background-color: rgba(218, 232, 252, 0.5) !important;
+    border: 2px solid #7ea6e0 !important;
+    color: #3b5b95;
+}
+
+/* 클래스 노드 (초록색) - 투명도를 줘서 뒤에 깔리게 */
+.class-node {
+    background-color: rgba(213, 232, 212, 0.7) !important;
+    border: 2px solid #97d077 !important;
+    color: #4e614c;
+}
+
+/* 메소드 노드 (핑크/빨간색) - 제일 위에 올라오므로 불투명하게 유지 */
+.method-node {
+    background-color: #F8CECC !important;
+    border: 2px solid #b85450 !important;
+    color: #b85450;
+}
+
+/* =========================================
+   연결점(Handle) 디자인 커스텀 및 숨기기 로직
+========================================= */
+
+/* 연결점(Handle) 기본 디자인 변경 */
+.react-flow__handle {
+    width: 14px;
+    height: 14px;
+    background-color: #4953BE;
+    border: 3px solid #ffffff;
+    box-shadow: 0 0 5px rgba(0,0,0,0.2);
+    opacity: 0;
+    /* 🔥 transform을 쓰면 선이 날아가는 버그가 생기므로 width/height로 애니메이션 처리 */
+    transition: opacity 0.2s ease, width 0.2s ease, height 0.2s ease, background-color 0.2s ease;
+}
+
+/* 1. 노드가 클릭(선택) 되었을 때 점을 보여줌 */
+.react-flow__node.selected .react-flow__handle {
+    opacity: 1;
+}
+
+/* 🔥 2. 핵심: 선을 긋고 있을 때(connecting) 도착할 블럭에 마우스를 올리면 점이 나타남! */
+.react-flow--connecting .react-flow__node:hover .react-flow__handle {
+    opacity: 1;
+}
+
+/* 마우스를 핸들에 직접 올렸을 때 살짝 커지면서 붉게 강조 */
+.react-flow__handle:hover {
+    width: 20px !important;
+    height: 20px !important;
+    background-color: #ff4d4f;
+}

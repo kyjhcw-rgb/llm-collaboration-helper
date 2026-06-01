@@ -2,6 +2,8 @@ server:
   port: ${BACKEND_PORT}
 
 spring:
+  config:
+    import: optional:classpath:application-secret.yml
   application:
     name: collaboration-helper
 
@@ -29,18 +31,18 @@ spring:
       max-file-size: 50MB
       max-request-size: 50MB
 
-# 4. Swagger (API 문서) 설정
-springdoc:
-  swagger-ui:
-    path: /swagger-ui/index.html
-    groups-order: DESC
-    operations-sorter: method
-    disable-swagger-default-url: true
-    display-request-duration: true
-  api-docs:
-    path: /api-docs
-  default-consumes-media-type: application/json
-  default-produces-media-type: application/json
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${MAIL_USERNAME} # 구글 이메일 주소
+    password: ${MAIL_PASSWORD} # 구글 계정 '앱 비밀번호'
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
 
 # 리액트 & 파이썬 서버 연동 설정
 app:
@@ -56,3 +58,12 @@ app:
 jwt:
   secret: ${JWT_SECRET}
   expiration: 86400000
+
+# Swagger 설정
+springdoc:
+  swagger-ui:
+    path: /swagger
+    operations-sorter: method
+    tags-sorter: alpha
+  api-docs:
+    path: /api-docs

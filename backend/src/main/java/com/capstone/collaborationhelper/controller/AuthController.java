@@ -1,36 +1,45 @@
 package com.capstone.collaborationhelper.controller;
 
-import com.capstone.collaborationhelper.dto.LoginRequest;
-import com.capstone.collaborationhelper.dto.LoginResponse;
-import com.capstone.collaborationhelper.dto.SignupRequest;
-import com.capstone.collaborationhelper.entity.User;
+import com.capstone.collaborationhelper.dto.AuthDtos.*;
 import com.capstone.collaborationhelper.service.AuthService;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.validation.Valid;
+import com.capstone.collaborationhelper.service.EmailService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import java.util.Map;
 
-@Tag(name = "Authentication", description = "로그인 및 회원가입 API")
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
 public class AuthController {
     private final AuthService authService;
+    private final EmailService emailService;
 
-    @Operation(summary = "회원가입", description = "이메일, 비밀번호, 이름을 받고 회원가입")
+    // 1. 인증 메일 발송
+    @PostMapping("/email/send")
+    public ResponseEntity<?> sendEmail(@RequestBody EmailSendReq req) {
+        emailService.sendVerificationEmail(req.getEmail());
+        return ResponseEntity.ok(Map.of("message", "인증 메일이 발송되었습니다."));
+    }
+
+    // 2. 인증 번호 확인
+    @PostMapping("/email/verify")
+    public ResponseEntity<?> verifyEmail(@RequestBody EmailVerifyReq req) {
+        emailService.verifyCode(req.getEmail(), req.getCode());
+        return ResponseEntity.ok(Map.of("message", "이메일 인증이 완료되었습니다."));
+    }
+
+    // 3. 회원가입 (모든 정보 입력 완료 후)
     @PostMapping("/signup")
-    public ResponseEntity<String> signup(@Valid @RequestBody SignupRequest request) {
-        authService.signup(request);
-        return ResponseEntity.ok("회원가입 성공");
+    public ResponseEntity<?> signup(@RequestBody SignupReq req) {
+        authService.signup(req);
+        return ResponseEntity.ok(Map.of("message", "회원가입 성공"));
     }
 
-    @Operation(summary = "로그인", description = "이메일, 비밀번호로 로그인 후 JWT토큰 발급")
+    // 4. 로그인
     @PostMapping("/login")
-    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
-        String token = authService.login(request);
-        User user = authService.getUserByEmail(request.getEmail());
-        return ResponseEntity.ok(new LoginResponse(token, user.getEmail(), user.getName()));
+    public ResponseEntity<?> login(@RequestBody LoginReq req) {
+        String token = authService.login(req);
+        return ResponseEntity.ok(Map.of("accessToken", token));
     }
-}   
+}
