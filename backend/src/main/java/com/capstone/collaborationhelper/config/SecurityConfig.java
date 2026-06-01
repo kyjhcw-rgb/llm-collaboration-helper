@@ -49,7 +49,8 @@ public class SecurityConfig {
                                 "/error",
                                 "/api-docs/**",
                                 "/swagger-ui/**",
-                                "/swagger"
+                                "/swagger",
+                                "/ws/crdt/**" //웹 소켓 연결 허용
                         ).permitAll()
                         // 그 외의 모든 요청은 로그인(토큰)이 필요함!
                         .anyRequest().authenticated()
