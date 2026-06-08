@@ -20,7 +20,5 @@ jobs:
             git reset --hard origin/main
 
             cd ..
-            docker compose up -d --build backend
-            docker compose up -d --build frontend
-            docker compose up -d --build python
+            docker compose up -d --build backend, python, frontend
             docker image prune -f
