@@ -1,5 +1,5 @@
 import React, { useCallback, useRef } from 'react';
-import ReactFlow, { Background, Controls, applyNodeChanges, applyEdgeChanges, useReactFlow, ReactFlowProvider, ConnectionMode, useStore, getSmoothStepPath, Position } from 'reactflow';
+import ReactFlow, { Background, Controls, applyNodeChanges, applyEdgeChanges, useReactFlow, ReactFlowProvider, ConnectionMode, useStore, getSmoothStepPath } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useCanvasStore } from '../../store/useCanvasStore';
 import './FlowArea.css';
@@ -14,34 +14,20 @@ const edgeTypes = { custom: CustomEdge };
 // =============================================
 const OFFSET_BY_TYPE = { feature: 176, class: 252, method: 301 };
 
-function inferPositions(sourceX, sourceY, targetX, targetY) {
-    const dx = targetX - sourceX;
-    const dy = targetY - sourceY;
-    if (Math.abs(dx) >= Math.abs(dy)) {
-        if (dx >= 0) return { sourcePos: Position.Right, targetPos: Position.Left };
-        else         return { sourcePos: Position.Left,  targetPos: Position.Right };
-    } else {
-        if (dy >= 0) return { sourcePos: Position.Bottom, targetPos: Position.Top };
-        else         return { sourcePos: Position.Top,    targetPos: Position.Bottom };
-    }
-}
-
-function CustomConnectionLine({ fromX, fromY, toX, toY }) {
+function CustomConnectionLine({ fromX, fromY, toX, toY, fromPosition, toPosition }) {
     const connectionNodeId = useStore((state) => state.connectionNodeId);
     const nodes = useCanvasStore((state) => state.nodes);
     const sourceNode = nodes.find((n) => n.id === connectionNodeId);
     const sourceType = sourceNode?.data?.type || 'method';
     const OFFSET = OFFSET_BY_TYPE[sourceType] ?? 0;
 
-    const { sourcePos, targetPos } = inferPositions(fromX, fromY + OFFSET, toX, toY + OFFSET);
-
     const [path] = getSmoothStepPath({
         sourceX: fromX,
         sourceY: fromY + OFFSET,
-        sourcePosition: sourcePos,
+        sourcePosition: fromPosition,
         targetX: toX,
         targetY: toY + OFFSET,
-        targetPosition: targetPos,
+        targetPosition: toPosition,
         borderRadius: 10,
     });
 
