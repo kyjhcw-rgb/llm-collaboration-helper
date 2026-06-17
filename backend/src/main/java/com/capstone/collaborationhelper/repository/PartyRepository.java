@@ -29,7 +29,10 @@ public interface PartyRepository extends JpaRepository<Party, Integer> {
     // 4. 프로젝트 ID와 유저 ID 숫자로 직접 조회
     Optional<Party> findByProjectIdAndUserId(Integer projectId, Integer userId);
 
-    // 5. 벌크 연산을 이용한 일괄 삭제 최적화 (쿼리 1번만 나감)
+    // 5. 웹소켓 JWT 토큰(email 기반) 인증 및 권한 확인용 메서드
+    Optional<Party> findByProject_IdAndUser_Email(Integer projectId, String email);
+
+    // 6. 벌크 연산을 이용한 일괄 삭제 최적화 (쿼리 1번만 나감)
     @Modifying
     @Query("delete from Party p where p.project = :project")
     void deleteByProject(@Param("project") Project project);

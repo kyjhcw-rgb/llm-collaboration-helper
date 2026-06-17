@@ -60,4 +60,24 @@ public class EmailService {
         verification.setVerified(true);
         emailVerificationRepository.save(verification);
     }
+
+    // 팀원 초대 알림 이메일 발송 메서드
+    public void sendProjectInvitationEmail(String targetEmail, String projectName, String inviterNickname, String role) {
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setTo(targetEmail);
+        message.setSubject("[Our Diagram] 프로젝트 초대 알림");
+
+        String roleName = role.equals("MEMBER") ? "멤버(편집 가능)" : "게스트(읽기 전용)";
+
+        String text = String.format(
+                "안녕하세요!\n\n" +
+                        "[%s]님이 회원님을 '%s' 프로젝트의 [%s] 권한으로 초대했습니다.\n\n" +
+                        "지금 바로 Our Diagram에 접속하여 팀원들과 다이어그램 협업을 시작해 보세요!\n" +
+                        "접속 링크: http://localhost:3000/projects",
+                inviterNickname, projectName, roleName
+        );
+
+        message.setText(text);
+        mailSender.send(message);
+    }
 }

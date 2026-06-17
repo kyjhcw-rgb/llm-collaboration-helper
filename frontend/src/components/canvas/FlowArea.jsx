@@ -1,10 +1,18 @@
 import React, { useCallback, useRef } from 'react';
-import ReactFlow, { Background, Controls, applyNodeChanges, applyEdgeChanges, useReactFlow, ReactFlowProvider, ConnectionMode, useStore, getSmoothStepPath } from 'reactflow';
+import ReactFlow, {
+    Background,
+    Controls,
+    ConnectionMode,
+    useStore,
+    getSmoothStepPath,
+    ReactFlowProvider,
+    useReactFlow
+} from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useCanvasStore } from '../../store/useCanvasStore';
-import './FlowArea.css';
 import CustomNode from './CustomNode';
 import CustomEdge from './CustomEdge';
+import './FlowArea.css';
 
 const nodeTypes = { custom: CustomNode };
 const edgeTypes = { custom: CustomEdge };
@@ -39,83 +47,38 @@ function CustomConnectionLine({ fromX, fromY, toX, toY, fromPosition, toPosition
 }
 
 // =============================================
-
+// 캔버스 핵심 컴포넌트
+// =============================================
 const FlowContents = () => {
-    const { setSelectedNodeId, setSelectedEdgeId } = useCanvasStore();
+    const {
+        setSelectedNodeId,
+        setSelectedEdgeId,
+        onNodesChange,
+        onEdgesChange,
+        onConnect,
+        addNode
+    } = useCanvasStore();
+
     const { screenToFlowPosition } = useReactFlow();
 
     const nodes = useCanvasStore((state) => state.nodes);
     const edges = useCanvasStore((state) => state.edges);
+    const userRole = useCanvasStore((state) => state.userRole);
+
+    // GUEST 권한인지 판별하여 편집 가능 여부를 결정
+    const isEditable = userRole !== 'GUEST';
 
     const connectingHandleRef = useRef(null);
-
-    const handleNodesChange = useCallback((changes) => {
-        useCanvasStore.setState((state) => {
-            let nextEdges = state.edges;
-            changes.forEach((change) => {
-                if (change.type === 'remove') {
-                    nextEdges = nextEdges.filter(
-                        (edge) => edge.source !== change.id && edge.target !== change.id
-                    );
-                }
-            });
-            return {
-                nodes: applyNodeChanges(changes, state.nodes),
-                edges: nextEdges
-            };
-        });
-    }, []);
-
-    const handleEdgesChange = useCallback((chs) => {
-        useCanvasStore.setState((state) => ({ edges: applyEdgeChanges(chs, state.edges) }));
-    }, []);
-
-    const handleConnect = useCallback((params) => {
-        useCanvasStore.setState((state) => {
-            const safeParams = {
-                ...params,
-                sourceHandle: params.sourceHandle || 'bottom',
-                targetHandle: params.targetHandle || 'top'
-            };
-
-            const sourceNode = state.nodes.find((n) => n.id === safeParams.source);
-            const sourceNodeType = sourceNode?.data?.type || 'method';
-
-            const existingEdgeIndex = state.edges.findIndex(
-                e => e.source === safeParams.source && e.target === safeParams.target
-            );
-
-            if (existingEdgeIndex !== -1) {
-                const newEdges = [...state.edges];
-                const existingEdge = newEdges[existingEdgeIndex];
-                const currentCount = existingEdge.data?.badgeCount || 1;
-                newEdges[existingEdgeIndex] = {
-                    ...existingEdge,
-                    sourceHandle: safeParams.sourceHandle,
-                    targetHandle: safeParams.targetHandle,
-                    data: { ...existingEdge.data, badgeCount: currentCount + 1 }
-                };
-                return { edges: newEdges };
-            } else {
-                const newEdge = {
-                    ...safeParams,
-                    id: `edge_${Date.now()}`,
-                    type: 'custom',
-                    zIndex: 9999,
-                    data: { type: 'call', badgeCount: 1, sourceNodeType }
-                };
-                return { edges: state.edges.concat(newEdge) };
-            }
-        });
-    }, []);
 
     const onConnectStart = useCallback((event, { nodeId, handleId }) => {
         connectingHandleRef.current = { nodeId, handleId };
     }, []);
 
     const onConnectEnd = useCallback((event) => {
-        if (!connectingHandleRef.current) return;
+        // 권한이 없거나 시작점이 없으면 무시
+        if (!connectingHandleRef.current || !isEditable) return;
 
+        // 핸들 위에서 드래그를 멈추면 React Flow가 자체 처리하므로 무시
         if (event.target.classList.contains('react-flow__handle')) {
             connectingHandleRef.current = null;
             return;
@@ -151,7 +114,8 @@ const FlowContents = () => {
                     }
                 }
 
-                handleConnect({
+                // 스토어의 onConnect 호출
+                onConnect({
                     source: sourceNodeId,
                     sourceHandle: sourceHandleId,
                     target: targetNodeId,
@@ -160,10 +124,15 @@ const FlowContents = () => {
             }
         }
         connectingHandleRef.current = null;
-    }, [handleConnect]);
+    }, [onConnect, isEditable]);
 
+    // 외부 사이드바에서 캔버스로 블록을 드롭할 때 실행됨
     const onDrop = useCallback((event) => {
         event.preventDefault();
+
+        // [보안] 권한이 없으면 드롭 이벤트를 무시
+        if (!isEditable) return;
+
         const type = event.dataTransfer.getData('application/reactflow');
         if (!type) return;
 
@@ -198,8 +167,9 @@ const FlowContents = () => {
             style: { width: initialWidth, height: initialHeight, zIndex: zIndex }
         };
 
-        useCanvasStore.setState((state) => ({ nodes: [...state.nodes, newNode] }));
-    }, [screenToFlowPosition]);
+        // 스토어의 addNode를 호출하여 동기화
+        addNode(newNode);
+    }, [screenToFlowPosition, isEditable, addNode]);
 
     return (
         <div
@@ -207,10 +177,12 @@ const FlowContents = () => {
             onDrop={onDrop}
             onDragOver={(e) => {
                 e.preventDefault();
-                e.dataTransfer.dropEffect = 'move';
+                // 권한에 따라 마우스 커서 표시 변경 (move / none)
+                e.dataTransfer.dropEffect = isEditable ? 'move' : 'none';
             }}
             style={{ flex: 1, width: '100%', height: '100%', position: 'relative' }}
         >
+            {/* SVG 마커 정의 (화살표 모양) */}
             <svg style={{ position: 'absolute', width: 0, height: 0 }}>
                 <defs>
                     <marker id="marker-call" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto">
@@ -225,6 +197,18 @@ const FlowContents = () => {
                 </defs>
             </svg>
 
+            {/* 게스트 유저를 위한 안내 UI */}
+            {!isEditable && (
+                <div style={{
+                    position: 'absolute', top: 15, left: '50%', transform: 'translateX(-50%)',
+                    backgroundColor: '#e74c3c', color: 'white', padding: '8px 18px',
+                    borderRadius: '20px', zIndex: 1000, fontWeight: 'bold', fontSize: '14px',
+                    boxShadow: '0 4px 10px rgba(0,0,0,0.15)'
+                }}>
+                    👀 읽기 전용 모드 (Guest 권한)
+                </div>
+            )}
+
             <ReactFlow
                 nodes={nodes}
                 edges={edges}
@@ -233,14 +217,19 @@ const FlowContents = () => {
                 connectionLineComponent={CustomConnectionLine}
                 elevateEdgesOnSelect={true}
                 connectionMode={ConnectionMode.Loose}
-                nodesConnectable={true}
-                onNodesChange={handleNodesChange}
-                onEdgesChange={handleEdgesChange}
-                onConnect={handleConnect}
+
+                // [핵심 보안] isEditable 변수로 ReactFlow 내부의 상호작용 속성 제어
+                nodesConnectable={isEditable}
+                nodesDraggable={isEditable}
+                elementsSelectable={isEditable}
+
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onConnect={onConnect}
                 onConnectStart={onConnectStart}
                 onConnectEnd={onConnectEnd}
-                onNodeClick={(_, node) => setSelectedNodeId(node.id)}
-                onEdgeClick={(_, edge) => setSelectedEdgeId(edge.id)}
+                onNodeClick={(_, node) => { if (isEditable) setSelectedNodeId(node.id); }}
+                onEdgeClick={(_, edge) => { if (isEditable) setSelectedEdgeId(edge.id); }}
                 onPaneClick={() => {
                     setSelectedNodeId(null);
                     setSelectedEdgeId(null);
@@ -250,12 +239,16 @@ const FlowContents = () => {
                 fitView
             >
                 <Background color="#aaa" gap={20} variant="dots" />
-                <Controls />
+                {/* 컨트롤(줌인/줌아웃) 패널. 게스트일 경우 노드 상호작용 관련 버튼 비활성화 */}
+                <Controls showInteractive={isEditable} />
             </ReactFlow>
         </div>
     );
 };
 
+// =============================================
+// FlowArea 래퍼 (ReactFlowProvider 필수)
+// =============================================
 const FlowArea = () => (
     <div style={{ flex: 1, width: '100%', height: '100%', display: 'flex' }}>
         <ReactFlowProvider>

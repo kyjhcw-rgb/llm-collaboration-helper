@@ -6,24 +6,26 @@ const SidebarRight = () => {
     const {
         nodes,
         edges,
-        setNodes,
-        setEdges,
         selectedNodeId,
         setSelectedNodeId,
         selectedEdgeId,
         setSelectedEdgeId,
         updateNodeData,
         updateEdgeData,
-        saveProjectToServer // 라이브 DB 즉각 반영을 위해 스토어에서 추가로 가져옴
+        deleteNode,  // 새롭게 만든 Yjs 기반 노드 삭제 함수
+        deleteEdge,  // 새롭게 만든 Yjs 기반 엣지 삭제 함수
+        saveProjectToServer,
+        userRole     // GUEST 여부를 판단하기 위해 스토어에서 가져옴
     } = useCanvasStore();
 
     const [activeTab, setActiveTab] = useState("info");
-
     const [info, setInfo] = useState({ label: "", description: "" });
     const [edgeInfo, setEdgeInfo] = useState({ type: "call" });
     const [chatInput, setChatInput] = useState("");
 
-    // 블록이 선택되었을 때 데이터 세팅
+    // GUEST 권한일 경우 편집을 막기 위한 플래그
+    const isEditable = userRole !== 'GUEST';
+
     useEffect(() => {
         if (selectedNodeId) {
             const node = nodes.find((n) => n.id === selectedNodeId);
@@ -36,7 +38,6 @@ const SidebarRight = () => {
         }
     }, [selectedNodeId, nodes]);
 
-    // 관계선(Edge)이 선택되었을 때 데이터 세팅
     useEffect(() => {
         if (selectedEdgeId) {
             const edge = edges.find((e) => e.id === selectedEdgeId);
@@ -56,51 +57,39 @@ const SidebarRight = () => {
         setEdgeInfo((prev) => ({ ...prev, [name]: value }));
     };
 
-    // 블록 속성 저장 시 로컬 스토어 갱신 후, 백엔드 라이브 테이블에도 동기화
     const handleSaveNode = async () => {
-        if (selectedNodeId) {
+        if (selectedNodeId && isEditable) {
             updateNodeData(selectedNodeId, info);
-            await saveProjectToServer(); // DB Block 테이블(UPSERT)에 즉시 반영
+            await saveProjectToServer();
             alert("블록 정보가 성공적으로 저장 및 동기화되었습니다.");
         }
     };
 
-    // 엣지 속성 저장 시 로컬 스토어 갱신 후, 백엔드 라이브 테이블에도 동기화
     const handleSaveEdge = async () => {
-        if (selectedEdgeId) {
+        if (selectedEdgeId && isEditable) {
             updateEdgeData(selectedEdgeId, edgeInfo);
-            await saveProjectToServer(); // DB Edge 테이블(UPSERT)에 즉시 반영
+            await saveProjectToServer();
             alert("선 타입이 성공적으로 변경 및 동기화되었습니다.");
         }
     };
 
-    // 블록 삭제 (논리적 삭제 흐름 지원)
+    // Yjs 트랜잭션 함수(deleteNode)를 사용하여 크래시 방지
     const handleDeleteBlock = async () => {
-        if (!selectedNodeId) return;
+        if (!selectedNodeId || !isEditable) return;
         const confirmDelete = window.confirm("블록과 연결된 선이 함께 삭제됩니다. 진행하시겠습니까?");
         if (!confirmDelete) return;
 
-        const updatedEdges = edges.filter(
-            (edge) => edge.source !== selectedNodeId && edge.target !== selectedNodeId
-        );
-
-        // 상태를 동기적으로 바로 업데이트
-        setEdges(updatedEdges);
-        setNodes(nodes.filter((node) => node.id !== selectedNodeId));
+        deleteNode(selectedNodeId);
         setSelectedNodeId(null);
-
-        // 업데이트된 최신 상태를 즉시 읽어서 백엔드로 동기화 전송
         saveProjectToServer();
     };
 
-    // 엣지 삭제 (논리적 삭제 흐름 지원)
+    // Yjs 트랜잭션 함수(deleteEdge)를 사용하여 크래시 방지
     const handleDeleteEdge = async () => {
-        if (!selectedEdgeId) return;
+        if (!selectedEdgeId || !isEditable) return;
 
-        setEdges(edges.filter(edge => edge.id !== selectedEdgeId));
+        deleteEdge(selectedEdgeId);
         setSelectedEdgeId(null);
-
-        // 삭제 처리 후 DB 즉시 동기화
         saveProjectToServer();
     };
 
@@ -122,10 +111,8 @@ const SidebarRight = () => {
             </div>
 
             <div className="tab-content">
-                {/* 객체 정보 탭 활성화 시 */}
                 {activeTab === "info" && (
                     <div className="info-panel">
-
                         {/* 1. 선(Edge)이 선택된 경우 */}
                         {selectedEdgeId && (
                             <div className="info-form">
@@ -135,19 +122,25 @@ const SidebarRight = () => {
                                         name="type"
                                         value={edgeInfo.type}
                                         onChange={handleEdgeChange}
-                                        style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+                                        disabled={!isEditable} // GUEST는 선택 박스 비활성화
+                                        style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc', backgroundColor: !isEditable ? '#f5f5f5' : 'white' }}
                                     >
                                         <option value="call">호출/데이터 (파란색 실선)</option>
                                         <option value="inheritance">상속 (보라색 실선)</option>
                                         <option value="implementation">구현 (초록색 점선)</option>
                                     </select>
                                 </div>
-                                <button className="save-btn" onClick={handleSaveEdge}>
-                                    관계선 저장하기
-                                </button>
-                                <button className="delete-block-btn" onClick={handleDeleteEdge} style={{ marginTop: '10px', backgroundColor: '#e74c3c', color: 'white' }}>
-                                    선 삭제하기
-                                </button>
+                                {/* GUEST에게는 저장/삭제 버튼 자체를 숨김 */}
+                                {isEditable && (
+                                    <>
+                                        <button className="save-btn" onClick={handleSaveEdge}>
+                                            관계선 저장하기
+                                        </button>
+                                        <button className="delete-block-btn" onClick={handleDeleteEdge} style={{ marginTop: '10px', backgroundColor: '#e74c3c', color: 'white' }}>
+                                            선 삭제하기
+                                        </button>
+                                    </>
+                                )}
                             </div>
                         )}
 
@@ -161,6 +154,8 @@ const SidebarRight = () => {
                                         value={info.label}
                                         onChange={handleNodeChange}
                                         placeholder="이름을 입력하세요"
+                                        disabled={!isEditable} // GUEST는 입력 비활성화
+                                        style={{ backgroundColor: !isEditable ? '#f5f5f5' : 'white' }}
                                     />
                                 </div>
                                 <div className="property-group">
@@ -170,14 +165,21 @@ const SidebarRight = () => {
                                         value={info.description}
                                         onChange={handleNodeChange}
                                         placeholder="내용을 입력하세요"
+                                        disabled={!isEditable} // GUEST는 입력 비활성화
+                                        style={{ backgroundColor: !isEditable ? '#f5f5f5' : 'white' }}
                                     />
                                 </div>
-                                <button className="save-btn" onClick={handleSaveNode}>
-                                    변경사항 저장하기
-                                </button>
-                                <button className="delete-block-btn" onClick={handleDeleteBlock} style={{ marginTop: '10px', backgroundColor: '#e74c3c', color: 'white' }}>
-                                    블록 삭제하기
-                                </button>
+                                {/* GUEST에게는 저장/삭제 버튼 자체를 숨김 */}
+                                {isEditable && (
+                                    <>
+                                        <button className="save-btn" onClick={handleSaveNode}>
+                                            변경사항 저장하기
+                                        </button>
+                                        <button className="delete-block-btn" onClick={handleDeleteBlock} style={{ marginTop: '10px', backgroundColor: '#e74c3c', color: 'white' }}>
+                                            블록 삭제하기
+                                        </button>
+                                    </>
+                                )}
                             </div>
                         )}
 
@@ -190,7 +192,6 @@ const SidebarRight = () => {
                     </div>
                 )}
 
-                {/* LLM 탭 활성화 시 */}
                 {activeTab === "llm" && (
                     <div className="llm-panel">
                         <h3 className="info-title">AI 어시스턴트</h3>

@@ -1,9 +1,9 @@
 package com.capstone.collaborationhelper.service;
 
 import com.capstone.collaborationhelper.client.LlmClient;
-import com.capstone.collaborationhelper.dto.CanvasDtos;    
+import com.capstone.collaborationhelper.dto.CanvasDtos;
 import com.capstone.collaborationhelper.dto.ProjectDtos.CreateReq;
-import com.capstone.collaborationhelper.dto.ProjectDtos.LlmDiagramRes; 
+import com.capstone.collaborationhelper.dto.ProjectDtos.LlmDiagramRes;
 import com.capstone.collaborationhelper.dto.ProjectDtos.Res;
 import com.capstone.collaborationhelper.dto.ProjectDtos.UpdateReq;
 import com.capstone.collaborationhelper.entity.Party;
@@ -13,7 +13,7 @@ import com.capstone.collaborationhelper.repository.PartyRepository;
 import com.capstone.collaborationhelper.repository.ProjectRepository;
 import com.capstone.collaborationhelper.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j; // 💡 디버깅 로그용 어노테이션 추가
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,7 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.stream.Collectors;
 
-@Slf4j // 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ProjectService {
@@ -33,9 +33,9 @@ public class ProjectService {
     private final ProjectRepository projectRepository;
     private final PartyRepository partyRepository;
     private final UserRepository userRepository;
-    
-    private final CanvasService canvasService; // 이미 구현된 대량 저장 로직 활용
-    private final LlmClient llmClient;         // FastAPI 통신 비서
+
+    private final CanvasService canvasService;
+    private final LlmClient llmClient;
 
     @Transactional(readOnly = true)
     public List<Res> getlist() {
@@ -64,52 +64,42 @@ public class ProjectService {
     @Transactional
     public Res create(CreateReq req) {
         log.info("▶ [ProjectService] 새 프로젝트 생성을 시작합니다. 제목: {}", req.getTitle());
-        
-        // 1. 기존의 프로젝트 소유자 및 기본 정보 빌드 (최초 버전은 임시로 1로 지정)
+
         User owner = currentUser();
         Project project = Project.builder()
-                .owner(owner)
+                .owner(owner) // (참고) DB 스키마 구조상 제약조건이 있다면 남겨두되, 비즈니스 로직에선 Party를 신뢰
                 .title(req.getTitle().trim())
                 .framework(req.getFramework())
                 .freedomLevel(req.getFreedomLevel())
                 .descriptionPrompt(req.getDescriptionPrompt())
                 .build();
-        
-        // 2. 프로젝트 기본 정보 DB 저장
+
         projectRepository.save(project);
-        
-        // 3. 기존의 프로젝트 멤버(소유자) 관계 저장
+
         partyRepository.save(Party.builder()
                 .project(project)
                 .user(owner)
-                .role(ROLE_OWNER)
+                .role(ROLE_OWNER) // 방장을 Party 테이블에 자동 등록
                 .build());
 
-        // 4. FastAPI AI 서버와 통신하여 초기 다이어그램 설계도 받아오기
-        try {
+        /*try {
             log.info("▶ [ProjectService] LlmClient를 통해 AI 다이어그램 생성을 요청합니다.");
             LlmDiagramRes llmDiagram = llmClient.requestInitialDiagram(req);
 
             if (llmDiagram != null) {
-                // 5. CanvasService가 데이터를 읽을 수 있도록 전용 데이터 구조(SyncReq)로 포장
                 CanvasDtos.SyncReq syncReq = new CanvasDtos.SyncReq();
                 syncReq.setBlocks(llmDiagram.getBlocks());
                 syncReq.setEdges(llmDiagram.getEdges());
 
-                // [기존 6 수정] 바뀐 DB 아키텍처에 맞게 저장 로직 2단계 분리
-                // 1단계: 받아온 다이어그램을 현재 라이브 상태로 동기화(UPSERT)
                 canvasService.syncLiveCanvas(project.getId(), syncReq);
-                // 2단계: 방금 저장한 라이브 상태를 '버전 1.0'으로 통일된 역사에 영구 박제(Commit)
                 canvasService.commitVersion(project.getId(), "초기 AI 다이어그램 생성");
-                // [기존 7 수정] project.setVersion() 및 projectRepository.save(project) 제거됨
 
-                log.info("✔ [ProjectService] AI 다이어그램이 포함된 프로젝트 생성이 최종 완료되었습니다. 프로젝트 ID: {}", project.getId());
+                log.info("[ProjectService] AI 다이어그램이 포함된 프로젝트 생성이 최종 완료되었습니다. 프로젝트 ID: {}", project.getId());
             }
         } catch (Exception e) {
-            log.error("❌ [ProjectService] AI 초기 다이어그램 생성 및 연동 실패: ", e);
-            // 💡 런타임 예외를 의도적으로 터트려 앞서 저장된 Project와 Party까지 안전하게 원상복구(Rollback) 시킵니다.
+            log.error("[ProjectService] AI 초기 다이어그램 생성 및 연동 실패: ", e);
             throw new RuntimeException("초기 아키텍처 다이어그램 생성에 실패하여 프로젝트 생성이 취소되었습니다.", e);
-        }
+        }*/
 
         return Res.from(project);
     }
@@ -118,7 +108,9 @@ public class ProjectService {
     public Res update(Integer id, UpdateReq req) {
         Project project = projectRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("프로젝트를 찾을 수 없습니다."));
-        assertOwner(project);
+
+        assertOwner(project); // Party 테이블 기반으로 검증됨
+
         if (req.getTitle() != null && !req.getTitle().isBlank()) {
             project.setTitle(req.getTitle().trim());
         }
@@ -135,8 +127,6 @@ public class ProjectService {
             project.setDiagramState(req.getDiagramState());
         }
 
-        // [수정] req.getVersion()을 통한 업데이트 로직 제거됨 (버전 관리는 Project_Version이 전담)
-
         return Res.from(project);
     }
 
@@ -144,7 +134,9 @@ public class ProjectService {
     public void delete(Integer id) {
         Project project = projectRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("프로젝트를 찾을 수 없습니다."));
-        assertOwner(project);
+
+        assertOwner(project); // Party 테이블 기반으로 검증됨
+
         partyRepository.deleteByProject(project);
         projectRepository.delete(project);
     }
@@ -156,10 +148,14 @@ public class ProjectService {
         }
     }
 
+    // Project 엔티티의 owner_id 대신 Party 테이블의 Role을 확인
     private void assertOwner(Project project) {
         User me = currentUser();
-        if (!project.getOwner().getId().equals(me.getId())) {
-            throw new RuntimeException("프로젝트 소유자만 이 작업을 할 수 있습니다.");
+        Party myParty = partyRepository.findByProjectAndUser(project, me)
+                .orElseThrow(() -> new RuntimeException("이 프로젝트에 접근할 권한이 없습니다."));
+
+        if (!ROLE_OWNER.equals(myParty.getRole())) {
+            throw new RuntimeException("프로젝트 소유자(OWNER)만 이 작업을 할 수 있습니다.");
         }
     }
 
