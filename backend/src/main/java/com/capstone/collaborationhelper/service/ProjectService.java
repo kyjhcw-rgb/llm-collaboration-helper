@@ -82,7 +82,7 @@ public class ProjectService {
                 .role(ROLE_OWNER) // 방장을 Party 테이블에 자동 등록
                 .build());
 
-        /*try {
+        try {
             log.info("▶ [ProjectService] LlmClient를 통해 AI 다이어그램 생성을 요청합니다.");
             LlmDiagramRes llmDiagram = llmClient.requestInitialDiagram(req);
 
@@ -99,7 +99,7 @@ public class ProjectService {
         } catch (Exception e) {
             log.error("[ProjectService] AI 초기 다이어그램 생성 및 연동 실패: ", e);
             throw new RuntimeException("초기 아키텍처 다이어그램 생성에 실패하여 프로젝트 생성이 취소되었습니다.", e);
-        }*/
+        }
 
         return Res.from(project);
     }
