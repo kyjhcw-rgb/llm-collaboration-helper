@@ -3,6 +3,151 @@ import { persist } from 'zustand/middleware';
 import { temporal } from 'zundo';
 import { request } from '../api/http';
 
+export const LAYOUT = { HEADER_HEIGHT: 36, PADDING: 16 };
+
+const DEFAULT_SIZES = {
+    feature: { w: 400, h: 300 },
+    class:   { w: 250, h: 150 },
+    method:  { w: 150, h: 50  },
+};
+
+// 자식 블록이 부모 경계를 넘을 때만 부모를 키우고,
+// 자식이 빠지면 type 기본 크기로 복귀 (강제 스택 없음 — 자유 배치 유지)
+export function recalculateContainerSizes(nodes) {
+    const nodeMap = new Map(nodes.map(n => [n.id, { ...n, style: { ...n.style } }]));
+
+    const childrenMap = new Map();
+    for (const node of nodes) {
+        if (node.parentNode) {
+            if (!childrenMap.has(node.parentNode)) childrenMap.set(node.parentNode, []);
+            childrenMap.get(node.parentNode).push(node.id);
+        }
+    }
+
+    const processed = new Set();
+    const { HEADER_HEIGHT, PADDING } = LAYOUT;
+
+    function processNode(nodeId) {
+        if (processed.has(nodeId)) return;
+        processed.add(nodeId);
+
+        const children = childrenMap.get(nodeId) || [];
+        for (const childId of children) processNode(childId);
+
+        const node = nodeMap.get(nodeId);
+        if (!node) return;
+
+        const def = DEFAULT_SIZES[node.data?.type] || { w: 400, h: 300 };
+
+        // 자식 없으면 기본 크기로 복귀, 있으면 자식 위치/크기 기준으로 최솟값 계산
+        let neededW = def.w;
+        let neededH = def.h;
+        for (const child of children.map(id => nodeMap.get(id)).filter(Boolean)) {
+            neededW = Math.max(neededW, child.position.x + (child.style?.width  || 150) + PADDING);
+            neededH = Math.max(neededH, child.position.y + (child.style?.height || 50)  + PADDING);
+        }
+
+        // width/height 최상위 프로퍼티도 함께 설정:
+        // ReactFlow는 DOM 측정(ResizeObserver) 대신 이 값을 즉시 내부 계산에 사용하므로
+        // style.height만 바꾸면 생기는 1프레임 지연으로 인한 자식 좌표 오류를 방지함
+        nodeMap.set(nodeId, {
+            ...node,
+            width: neededW,
+            height: neededH,
+            style: { ...node.style, width: neededW, height: neededH },
+        });
+    }
+
+    for (const node of nodes) processNode(node.id);
+    return [...nodeMap.values()];
+}
+
+// 서버 로드 전용: 겹치는 형제 노드를 수직 재배치 후 컨테이너 크기 계산
+// - 겹침 감지: LLM이 여러 블록을 같은 y에 생성한 경우 → 자동 재배치
+// - 겹침 없음: 유저가 직접 배치한 커스텀 위치 → 보존 (크기만 재계산)
+function fixOverlapsAndRecalculate(nodes) {
+    const nodeMap = new Map(nodes.map(n => [n.id, { ...n, style: { ...n.style } }]));
+    const childrenMap = new Map();
+
+    for (const node of nodes) {
+        if (node.parentNode) {
+            if (!childrenMap.has(node.parentNode)) childrenMap.set(node.parentNode, []);
+            childrenMap.get(node.parentNode).push(node.id);
+        }
+    }
+
+    const processed = new Set();
+    const { HEADER_HEIGHT, PADDING } = LAYOUT;
+
+    function processNode(nodeId) {
+        if (processed.has(nodeId)) return;
+        processed.add(nodeId);
+
+        const childIds = childrenMap.get(nodeId) || [];
+        for (const childId of childIds) processNode(childId);
+
+        const node = nodeMap.get(nodeId);
+        if (!node) return;
+
+        const def = DEFAULT_SIZES[node.data?.type] || { w: 400, h: 300 };
+
+        if (childIds.length === 0) {
+            nodeMap.set(nodeId, { ...node, width: def.w, height: def.h, style: { ...node.style, width: def.w, height: def.h } });
+            return;
+        }
+
+        // 자식들의 최신 상태 수집 (재귀 처리 후 갱신된 높이 포함)
+        const children = childIds.map(id => nodeMap.get(id)).filter(Boolean);
+
+        // 형제 노드 간 수직 겹침 감지 (LLM이 같은 y에 여러 블록을 놓은 경우)
+        let hasOverlap = false;
+        outer: for (let i = 0; i < children.length; i++) {
+            for (let j = i + 1; j < children.length; j++) {
+                const a = children[i], b = children[j];
+                const aH = a.style?.height || DEFAULT_SIZES[a.data?.type]?.h || 50;
+                const bH = b.style?.height || DEFAULT_SIZES[b.data?.type]?.h || 50;
+                if (a.position.y < b.position.y + bH && a.position.y + aH > b.position.y) {
+                    hasOverlap = true;
+                    break outer;
+                }
+            }
+        }
+
+        let neededW = def.w;
+        let neededH = def.h;
+
+        if (hasOverlap) {
+            // 원래 posY 기준으로 정렬 후 수직 재배치 (LLM 의도한 순서 최대한 보존)
+            const sorted = [...children].sort((a, b) => a.position.y - b.position.y);
+            let currentY = HEADER_HEIGHT + 8;
+
+            for (const child of sorted) {
+                const childNode = nodeMap.get(child.id);
+                const childDef = DEFAULT_SIZES[childNode.data?.type] || { w: 150, h: 50 };
+                const childH = childNode.style?.height || childDef.h;
+                const childW = childNode.style?.width || childDef.w;
+
+                nodeMap.set(child.id, { ...childNode, position: { x: PADDING, y: currentY } });
+                neededW = Math.max(neededW, PADDING + childW + PADDING);
+                currentY += childH + PADDING;
+            }
+            neededH = Math.max(def.h, currentY);
+        } else {
+            // 겹침 없음: 유저 배치 위치 유지, 크기만 계산
+            for (const child of children) {
+                const childDef = DEFAULT_SIZES[child.data?.type] || { w: 150, h: 50 };
+                neededW = Math.max(neededW, child.position.x + (child.style?.width || childDef.w) + PADDING);
+                neededH = Math.max(neededH, child.position.y + (child.style?.height || childDef.h) + PADDING);
+            }
+        }
+
+        nodeMap.set(nodeId, { ...node, width: neededW, height: neededH, style: { ...node.style, width: neededW, height: neededH } });
+    }
+
+    for (const node of nodes) processNode(node.id);
+    return [...nodeMap.values()];
+}
+
 export const useCanvasStore = create(
     persist(
         temporal(
@@ -96,6 +241,8 @@ export const useCanvasStore = create(
                                 parentNode: block.parentFrontendId || undefined,
                                 type: 'custom',
                                 position: { x: block.posX || 0, y: block.posY || 0 },
+                                width: initialWidth,
+                                height: initialHeight,
                                 className: nodeClass,
                                 style: { width: initialWidth, height: initialHeight, zIndex: zIndex },
                                 data: {
@@ -128,7 +275,7 @@ export const useCanvasStore = create(
                             currentProjectId: projectId,
                             // 백엔드 응답에서 버전 번호가 안 오므로, 넘겨받은 파라미터를 그대로 사용해 상태 유지
                             currentVersion: versionNumber || 'live',
-                            nodes: nodes,
+                            nodes: fixOverlapsAndRecalculate(nodes),
                             edges: edges,
                             selectedNodeId: null,
                             selectedEdgeId: null
