@@ -1,10 +1,9 @@
 package com.capstone.collaborationhelper.service;
 
 import com.capstone.collaborationhelper.client.LlmClient;
-import com.capstone.collaborationhelper.dto.CanvasDtos;    
 import com.capstone.collaborationhelper.dto.ProjectDtos.CreateReq;
-import com.capstone.collaborationhelper.dto.ProjectDtos.LlmDiagramRes; 
 import com.capstone.collaborationhelper.dto.ProjectDtos.Res;
+import com.capstone.collaborationhelper.dto.TranslationDtos.DiagramRes;
 import com.capstone.collaborationhelper.dto.ProjectDtos.UpdateReq;
 import com.capstone.collaborationhelper.entity.Party;
 import com.capstone.collaborationhelper.entity.Project;
@@ -34,8 +33,9 @@ public class ProjectService {
     private final PartyRepository partyRepository;
     private final UserRepository userRepository;
     
-    private final CanvasService canvasService; // 이미 구현된 대량 저장 로직 활용
-    private final LlmClient llmClient;         // FastAPI 통신 비서
+    private final CanvasService canvasService;
+    private final TranslationService translationService;
+    private final LlmClient llmClient;
 
     @Transactional(readOnly = true)
     public List<Res> getlist() {
@@ -88,20 +88,11 @@ public class ProjectService {
         // 4. FastAPI AI 서버와 통신하여 초기 다이어그램 설계도 받아오기
         try {
             log.info("▶ [ProjectService] LlmClient를 통해 AI 다이어그램 생성을 요청합니다.");
-            LlmDiagramRes llmDiagram = llmClient.requestInitialDiagram(req);
+            DiagramRes diagram = llmClient.requestInitialDiagram(req);
 
-            if (llmDiagram != null) {
-                // 5. CanvasService가 데이터를 읽을 수 있도록 전용 데이터 구조(SyncReq)로 포장
-                CanvasDtos.SyncReq syncReq = new CanvasDtos.SyncReq();
-                syncReq.setBlocks(llmDiagram.getBlocks());
-                syncReq.setEdges(llmDiagram.getEdges());
-
-                // [기존 6 수정] 바뀐 DB 아키텍처에 맞게 저장 로직 2단계 분리
-                // 1단계: 받아온 다이어그램을 현재 라이브 상태로 동기화(UPSERT)
-                canvasService.syncLiveCanvas(project.getId(), syncReq);
-                // 2단계: 방금 저장한 라이브 상태를 '버전 1.0'으로 통일된 역사에 영구 박제(Commit)
+            if (diagram != null) {
+                translationService.importToDb(project.getId(), diagram);
                 canvasService.commitVersion(project.getId(), "초기 AI 다이어그램 생성");
-                // [기존 7 수정] project.setVersion() 및 projectRepository.save(project) 제거됨
 
                 log.info("✔ [ProjectService] AI 다이어그램이 포함된 프로젝트 생성이 최종 완료되었습니다. 프로젝트 ID: {}", project.getId());
             }

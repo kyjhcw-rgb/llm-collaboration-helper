@@ -61,59 +61,82 @@ async def reset_chat(session_id: str):
 
 
 # =====================================================================
-# [기능 2] (신규) 다이어그램 초기 생성 기능 데이터 구조 및 API
+# [기능 2] 다이어그램 초기 생성 — Spring TranslationDtos.DiagramRes 계약
 # =====================================================================
 
-# Spring Boot의 CanvasDtos.BlockDto 에 정확히 대응하는 스키마
-class LlmBlockResponse(BaseModel):
-    frontendId: str = Field(description="블록의 고유 ID (예: blk_auth_controller, blk_user_service)")
-    parentFrontendId: Optional[str] = Field(default=None, description="계층 구조(Nesting)용 부모 블록의 frontendId. 최상위면 null")
-    type: str = Field(description="FUNCTION, CLASS, INTERFACE, METHOD 중 하나")
-    name: str = Field(description="블록에 표시될 이름 (예: AuthController, User, login)")
-    description: str = Field(description="이 블록의 역할과 책임에 대한 짧은 설명")
-    parameters: Optional[str] = Field(default=None, description="메서드인 경우 파라미터 정보 (예: String email, String pwd)")
-    returnType: Optional[str] = Field(default=None, description="메서드인 경우 리턴 타입 (예: ResponseEntity)")
-    annotations: Optional[str] = Field(default=None, description="스프링부트 어노테이션 등 (예: @RestController)")
-    # posX, posY는 프론트엔드 오토 레이아웃을 위해 LLM 단계에서는 제외하거나 null 처리 가능
+# Spring Boot TranslationDtos 와 1:1 대응 (좌표·핸들 등 UI 필드는 Spring TranslationMapper 가 처리)
+class MethodNode(BaseModel):
+    id: str = Field(description="고유 ID (예: method_login)")
+    name: str = Field(description="메서드 이름 (예: login)")
+    description: str = Field(default="", description="메서드 역할 설명")
+    parameters: Optional[str] = Field(default=None, description="파라미터 (예: String email, String pwd)")
+    returnType: Optional[str] = Field(default=None, description="리턴 타입 (예: ResponseEntity)")
 
-# Spring Boot의 CanvasDtos.EdgeDto 에 정확히 대응하는 스키마
-class LlmEdgeResponse(BaseModel):
-    frontendId: str = Field(description="엣지의 고유 ID (예: edge_1, edge_2)")
-    sourceFrontendId: str = Field(description="출발지 블록의 frontendId")
-    targetFrontendId: str = Field(description="목적지 블록의 frontendId")
-    sourceHandle: Optional[str] = Field(default="bottom", description="출발 지점 핸들 (top, bottom, left, right)")
-    targetHandle: Optional[str] = Field(default="top", description="도착 지점 핸들 (top, bottom, left, right)")
-    type: str = Field(description="CALL (의존성/호출) 또는 INHERIT (상속/구현)")
-    badgeCount: Optional[int] = Field(default=0, description="엣지에 표시할 뱃지 카운트")
 
-# LLM이 최종적으로 반환할 JSON 최상위 구조
-class InitialDiagramResponse(BaseModel):
-    blocks: List[LlmBlockResponse]
-    edges: List[LlmEdgeResponse]
+class ClassNode(BaseModel):
+    id: str = Field(description="고유 ID (예: cls_auth_controller)")
+    name: str = Field(description="클래스·인터페이스 이름")
+    description: str = Field(default="", description="클래스 역할 설명")
+    annotations: Optional[str] = Field(default=None, description="어노테이션 (예: @RestController)")
+    methods: List[MethodNode] = Field(default_factory=list)
 
-# Spring Boot에서 넘어올 요청 바디 구조
+
+class FeatureNode(BaseModel):
+    id: str = Field(description="고유 ID (예: feat_auth)")
+    name: str = Field(description="도메인·기능 단위 이름")
+    description: str = Field(default="", description="기능 설명")
+    classes: List[ClassNode] = Field(default_factory=list)
+
+
+class RelationEdge(BaseModel):
+    id: str = Field(description="엣지 고유 ID (예: edge_1)")
+    fromId: str = Field(description="출발 노드 id (class 또는 method)")
+    to: str = Field(description="도착 노드 id")
+    kind: str = Field(description="CALL, INHERIT, IMPLEMENT 중 하나")
+
+
+class DiagramRes(BaseModel):
+    features: List[FeatureNode]
+    edges: List[RelationEdge] = Field(default_factory=list)
+
+
+# Spring Boot CreateReq 와 동일한 요청 바디
 class DiagramGenerationRequest(BaseModel):
     title: str
     framework: str
     freedomLevel: int
     descriptionPrompt: str
 
-@app.post("/projects/initial-diagram", response_model=InitialDiagramResponse)
+
+def _freedom_level_hint(level: int) -> str:
+    if level <= 1:
+        return "feature와 class 위주로 설계하고, method는 핵심만 최소한으로 포함해."
+    if level == 2:
+        return "주요 class와 핵심 method를 포함하고, edges로 주요 의존 관계를 표현해."
+    return "class와 method를 세분화하고, edges도 풍부하게 포함해."
+
+
+@app.post("/projects/initial-diagram", response_model=DiagramRes)
 async def generate_initial_diagram(request: DiagramGenerationRequest):
-    # LLM 페르소나 및 정교한 JSON 출력 지침
     system_instruction = (
-        "너는 아키텍처 설계를 도와주는 시니어 개발자야.\n"
-        "사용자의 기획과 프레임워크에 맞춰 초기 다이어그램 구조(블록 및 엣지)를 JSON으로 설계해.\n"
-        "1. 각 블록은 반드시 고유하고 의미 있는 'frontendId'를 가져야 해.\n"
-        "2. 기능(FUNCTION) 블록 안에 클래스(CLASS)가 들어가고, 클래스 안에 메서드(METHOD)가 들어가도록 'parentFrontendId'를 통해 계층(Nesting)을 명확히 해.\n"
-        "3. 의존성 엣지(Edge)를 만들 때 'sourceFrontendId'와 'targetFrontendId'는 반드시 생성된 블록의 'frontendId'와 일치해야 해.\n"
+        "너는 소프트웨어 아키텍처를 설계하는 시니어 개발자야.\n"
+        "사용자 기획에 맞춰 초기 다이어그램을 JSON으로 설계해.\n"
+        "\n"
+        "구조 규칙:\n"
+        "1. features: 도메인·기능 단위 (id, name, description)\n"
+        "2. 각 feature 안에 classes 배열 (클래스·인터페이스)\n"
+        "3. 각 class 안에 methods 배열 (parameters, returnType 포함)\n"
+        "4. edges: 노드 간 관계. fromId, to는 반드시 위에서 만든 id와 일치해야 해\n"
+        "5. edges.kind: CALL(호출·의존), INHERIT(상속), IMPLEMENT(구현)\n"
+        "6. 좌표, parentId, handle, frontendId 등 UI·캔버스 필드는 출력하지 마\n"
+        "7. 모든 id는 고유하고 의미 있게 (예: feat_auth, cls_user_service, method_login)\n"
         "절대 부연 설명 없이 지정된 JSON 스키마로만 응답해."
     )
 
     user_message = (
         f"프로젝트 제목: {request.title}\n"
         f"사용 프레임워크: {request.framework}\n"
-        f"자유도 레벨: {request.freedomLevel} (높을수록 더 세분화된 디렉토리와 메서드까지 생성)\n"
+        f"자유도 레벨: {request.freedomLevel} — {_freedom_level_hint(request.freedomLevel)}\n"
         f"기획 내용: {request.descriptionPrompt}"
     )
 
@@ -124,12 +147,11 @@ async def generate_initial_diagram(request: DiagramGenerationRequest):
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 response_mime_type="application/json",
-                response_schema=InitialDiagramResponse, # 💡 Pydantic 스키마 강제!
-                temperature=0.2 # 창의성보다 일관된 아키텍처 규칙을 위해 낮게 설정
-            )
+                response_schema=DiagramRes,
+                temperature=0.2,
+            ),
         )
-        
-        # LLM이 반환한 텍스트는 완벽한 JSON 포맷이므로 파싱 후 리턴
+
         diagram_data = json.loads(response.text)
         return diagram_data
 
