@@ -71,4 +71,16 @@ public class AuthService {
             user.setPassword(passwordEncoder.encode(req.getNewPassword()));
         }
     }
+
+    // 아이디 사용 가능 여부 (true면 중복 아님, 가입 가능)
+    @Transactional(readOnly = true)
+    public boolean isUsernameAvailable(String username) {
+        return !userRepository.existsByUsername(username);
+    }
+
+    // 이메일 사용 가능 여부 (true면 중복 아님, 가입 가능)
+    @Transactional(readOnly = true)
+    public boolean isEmailAvailable(String email) {
+        return !userRepository.existsByEmail(email);
+    }
 }

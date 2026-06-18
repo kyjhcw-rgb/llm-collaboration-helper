@@ -12,7 +12,7 @@ import com.capstone.collaborationhelper.repository.PartyRepository;
 import com.capstone.collaborationhelper.repository.ProjectRepository;
 import com.capstone.collaborationhelper.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j; // 💡 디버깅 로그용 어노테이션 추가
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,7 +22,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.stream.Collectors;
 
-@Slf4j // 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ProjectService {
@@ -32,7 +32,7 @@ public class ProjectService {
     private final ProjectRepository projectRepository;
     private final PartyRepository partyRepository;
     private final UserRepository userRepository;
-    
+
     private final CanvasService canvasService;
     private final TranslationService translationService;
     private final LlmClient llmClient;
@@ -64,8 +64,7 @@ public class ProjectService {
     @Transactional
     public Res create(CreateReq req) {
         log.info("▶ [ProjectService] 새 프로젝트 생성을 시작합니다. 제목: {}", req.getTitle());
-        
-        // 1. 기존의 프로젝트 소유자 및 기본 정보 빌드 (최초 버전은 임시로 1로 지정)
+
         User owner = currentUser();
         Project project = Project.builder()
                 .owner(owner)
@@ -74,18 +73,15 @@ public class ProjectService {
                 .freedomLevel(req.getFreedomLevel())
                 .descriptionPrompt(req.getDescriptionPrompt())
                 .build();
-        
-        // 2. 프로젝트 기본 정보 DB 저장
+
         projectRepository.save(project);
-        
-        // 3. 기존의 프로젝트 멤버(소유자) 관계 저장
+
         partyRepository.save(Party.builder()
                 .project(project)
                 .user(owner)
                 .role(ROLE_OWNER)
                 .build());
 
-        // 4. FastAPI AI 서버와 통신하여 초기 다이어그램 설계도 받아오기
         try {
             log.info("▶ [ProjectService] LlmClient를 통해 AI 다이어그램 생성을 요청합니다.");
             DiagramRes diagram = llmClient.requestInitialDiagram(req);
@@ -98,7 +94,6 @@ public class ProjectService {
             }
         } catch (Exception e) {
             log.error("❌ [ProjectService] AI 초기 다이어그램 생성 및 연동 실패: ", e);
-            // 💡 런타임 예외를 의도적으로 터트려 앞서 저장된 Project와 Party까지 안전하게 원상복구(Rollback) 시킵니다.
             throw new RuntimeException("초기 아키텍처 다이어그램 생성에 실패하여 프로젝트 생성이 취소되었습니다.", e);
         }
 
@@ -109,7 +104,9 @@ public class ProjectService {
     public Res update(Integer id, UpdateReq req) {
         Project project = projectRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("프로젝트를 찾을 수 없습니다."));
+
         assertOwner(project);
+
         if (req.getTitle() != null && !req.getTitle().isBlank()) {
             project.setTitle(req.getTitle().trim());
         }
@@ -126,8 +123,6 @@ public class ProjectService {
             project.setDiagramState(req.getDiagramState());
         }
 
-        // [수정] req.getVersion()을 통한 업데이트 로직 제거됨 (버전 관리는 Project_Version이 전담)
-
         return Res.from(project);
     }
 
@@ -135,7 +130,9 @@ public class ProjectService {
     public void delete(Integer id) {
         Project project = projectRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("프로젝트를 찾을 수 없습니다."));
+
         assertOwner(project);
+
         partyRepository.deleteByProject(project);
         projectRepository.delete(project);
     }
@@ -149,8 +146,11 @@ public class ProjectService {
 
     private void assertOwner(Project project) {
         User me = currentUser();
-        if (!project.getOwner().getId().equals(me.getId())) {
-            throw new RuntimeException("프로젝트 소유자만 이 작업을 할 수 있습니다.");
+        Party myParty = partyRepository.findByProjectAndUser(project, me)
+                .orElseThrow(() -> new RuntimeException("이 프로젝트에 접근할 권한이 없습니다."));
+
+        if (!ROLE_OWNER.equals(myParty.getRole())) {
+            throw new RuntimeException("프로젝트 소유자(OWNER)만 이 작업을 할 수 있습니다.");
         }
     }
 

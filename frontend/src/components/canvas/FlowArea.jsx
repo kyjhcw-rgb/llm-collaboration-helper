@@ -9,9 +9,6 @@ import CustomEdge from './CustomEdge';
 const nodeTypes = { custom: CustomNode };
 const edgeTypes = { custom: CustomEdge };
 
-// =============================================
-// 연결 미리보기 선 커스텀 (OFFSET 동기화)
-// =============================================
 const OFFSET_BY_TYPE = { feature: 176, class: 252, method: 301 };
 
 const VALID_PARENT_TYPES = {
@@ -82,118 +79,99 @@ function CustomConnectionLine({ fromX, fromY, toX, toY, fromPosition, toPosition
     );
 }
 
-// =============================================
-
 const FlowContents = () => {
     const { setSelectedNodeId, setSelectedEdgeId } = useCanvasStore();
     const { screenToFlowPosition } = useReactFlow();
 
     const nodes = useCanvasStore((state) => state.nodes);
     const edges = useCanvasStore((state) => state.edges);
-
     const connectingHandleRef = useRef(null);
 
     const handleNodesChange = useCallback((changes) => {
-        useCanvasStore.setState((state) => {
-            let nextNodes = applyNodeChanges(changes, state.nodes);
+        const state = useCanvasStore.getState();
+        if (state.userRole === 'GUEST') return;
 
-            // 2단계 전파 후처리: method→class(expandParent)가 class 크기를 키운 후,
-            // class→feature 전파는 ReactFlow가 자동 처리 못할 수 있으므로 수동으로 보정
-            const nodesMapAfter = new Map(nextNodes.map(n => [n.id, n]));
-            let didGrow = false;
-            for (const node of nextNodes) {
-                if (!node.parentNode) continue;
-                const parent = nodesMapAfter.get(node.parentNode);
-                if (!parent) continue;
-                const nW = node.width || node.style?.width || 150;
-                const nH = node.height || node.style?.height || 50;
-                const childRight = node.position.x + nW + LAYOUT.PADDING;
-                const childBottom = node.position.y + nH + LAYOUT.PADDING;
-                const pW = parent.width || parent.style?.width || 400;
-                const pH = parent.height || parent.style?.height || 300;
-                if (childRight > pW || childBottom > pH) {
-                    const newW = Math.max(pW, childRight);
-                    const newH = Math.max(pH, childBottom);
-                    nodesMapAfter.set(parent.id, {
-                        ...parent,
-                        width: newW,
-                        height: newH,
-                        style: { ...parent.style, width: newW, height: newH },
-                    });
-                    didGrow = true;
-                }
+        let nextNodes = applyNodeChanges(changes, state.nodes);
+
+        // 2단계 전파 후처리: method→class(expandParent)가 class 크기를 키운 후,
+        // class→feature 전파는 ReactFlow가 자동 처리 못할 수 있으므로 수동으로 보정
+        const nodesMapAfter = new Map(nextNodes.map(n => [n.id, n]));
+        let didGrow = false;
+        for (const node of nextNodes) {
+            if (!node.parentNode) continue;
+            const parent = nodesMapAfter.get(node.parentNode);
+            if (!parent) continue;
+            const nW = node.width || node.style?.width || 150;
+            const nH = node.height || node.style?.height || 50;
+            const childRight = node.position.x + nW + LAYOUT.PADDING;
+            const childBottom = node.position.y + nH + LAYOUT.PADDING;
+            const pW = parent.width || parent.style?.width || 400;
+            const pH = parent.height || parent.style?.height || 300;
+            if (childRight > pW || childBottom > pH) {
+                const newW = Math.max(pW, childRight);
+                const newH = Math.max(pH, childBottom);
+                nodesMapAfter.set(parent.id, {
+                    ...parent,
+                    width: newW,
+                    height: newH,
+                    style: { ...parent.style, width: newW, height: newH },
+                });
+                didGrow = true;
             }
-            if (didGrow) nextNodes = [...nodesMapAfter.values()];
+        }
+        if (didGrow) nextNodes = [...nodesMapAfter.values()];
 
-            let nextEdges = state.edges;
-            let needsRecalc = false;
+        let nextEdges = state.edges;
+        let edgesChanged = false;
+        let needsRecalc = false;
 
-            changes.forEach((change) => {
-                if (change.type === 'remove') {
-                    nextEdges = nextEdges.filter(
-                        (edge) => edge.source !== change.id && edge.target !== change.id
-                    );
-                    needsRecalc = true;
-                }
-            });
+        changes.forEach((change) => {
+            if (change.type === 'remove') {
+                nextEdges = nextEdges.filter(
+                    (edge) => edge.source !== change.id && edge.target !== change.id
+                );
+                edgesChanged = true;
+                needsRecalc = true;
+            }
+        });
 
-            // 드래그 완료(dragging: false) 시점에 reparenting 처리
-            const dragEndChanges = changes.filter(c => c.type === 'position' && c.dragging === false);
+        // 드래그 완료(dragging: false) 시점에 reparenting 처리
+        const dragEndChanges = changes.filter(c => c.type === 'position' && c.dragging === false);
 
-            for (const change of dragEndChanges) {
-                const draggedNode = nextNodes.find(n => n.id === change.id);
-                if (!draggedNode) continue;
+        for (const change of dragEndChanges) {
+            const draggedNode = nextNodes.find(n => n.id === change.id);
+            if (!draggedNode) continue;
 
-                const validParentTypes = VALID_PARENT_TYPES[draggedNode.data?.type] || [];
-                if (validParentTypes.length === 0) continue;
+            const validParentTypes = VALID_PARENT_TYPES[draggedNode.data?.type] || [];
+            if (validParentTypes.length === 0) continue;
 
-                const nodesMap = new Map(nextNodes.map(n => [n.id, n]));
-                const absPos = getAbsolutePosition(draggedNode.id, nodesMap);
-                const dw = draggedNode.style?.width || 150;
-                const dh = draggedNode.style?.height || 50;
-                const currentParentId = draggedNode.parentNode;
+            const nodesMap = new Map(nextNodes.map(n => [n.id, n]));
+            const absPos = getAbsolutePosition(draggedNode.id, nodesMap);
+            const dw = draggedNode.style?.width || 150;
+            const dh = draggedNode.style?.height || 50;
+            const currentParentId = draggedNode.parentNode;
 
-                if (currentParentId) {
-                    const curParent = nodesMap.get(currentParentId);
-                    if (curParent) {
-                        const parentAbs = getAbsolutePosition(currentParentId, nodesMap);
-                        const pw = curParent.style?.width || 400;
-                        const cx = absPos.x + dw / 2;
-                        const cy = absPos.y + dh / 2;
+            if (currentParentId) {
+                const curParent = nodesMap.get(currentParentId);
+                if (curParent) {
+                    const parentAbs = getAbsolutePosition(currentParentId, nodesMap);
+                    const pw = curParent.style?.width || 400;
+                    const cx = absPos.x + dw / 2;
+                    const cy = absPos.y + dh / 2;
 
-                        const staysInParent =
-                            cx >= parentAbs.x && cx <= parentAbs.x + pw &&
-                            cy >= parentAbs.y + LAYOUT.HEADER_HEIGHT;
+                    const staysInParent =
+                        cx >= parentAbs.x && cx <= parentAbs.x + pw &&
+                        cy >= parentAbs.y + LAYOUT.HEADER_HEIGHT;
 
-                        if (staysInParent) {
-                            needsRecalc = true;
-                            continue;
-                        }
+                    if (staysInParent) {
+                        needsRecalc = true;
+                        continue;
                     }
-
-                    const otherNodes = nextNodes.filter(n => n.id !== currentParentId);
-                    const bestParent = findBestParent(draggedNode, otherNodes, validParentTypes, nodesMap);
-
-                    if (bestParent) {
-                        const siblings = nextNodes.filter(n => n.parentNode === bestParent.id && n.id !== draggedNode.id);
-                        const newY = siblings.length > 0
-                            ? Math.max(...siblings.map(s => s.position.y + (s.style?.height || 50))) + LAYOUT.PADDING
-                            : LAYOUT.HEADER_HEIGHT + 8;
-                        nextNodes = nextNodes.map(n => n.id !== draggedNode.id ? n : {
-                            ...n,
-                            parentNode: bestParent.id,
-                            position: { x: LAYOUT.PADDING, y: newY },
-                        });
-                    } else {
-                        nextNodes = nextNodes.map(n => n.id !== draggedNode.id ? n :
-                            { ...n, parentNode: undefined, position: absPos }
-                        );
-                    }
-                    needsRecalc = true;
-                    continue;
                 }
 
-                const bestParent = findBestParent(draggedNode, nextNodes, validParentTypes, nodesMap);
+                const otherNodes = nextNodes.filter(n => n.id !== currentParentId);
+                const bestParent = findBestParent(draggedNode, otherNodes, validParentTypes, nodesMap);
+
                 if (bestParent) {
                     const siblings = nextNodes.filter(n => n.parentNode === bestParent.id && n.id !== draggedNode.id);
                     const newY = siblings.length > 0
@@ -204,57 +182,83 @@ const FlowContents = () => {
                         parentNode: bestParent.id,
                         position: { x: LAYOUT.PADDING, y: newY },
                     });
+                } else {
+                    nextNodes = nextNodes.map(n => n.id !== draggedNode.id ? n :
+                        { ...n, parentNode: undefined, position: absPos }
+                    );
                     needsRecalc = true;
                 }
+                needsRecalc = true;
+                continue;
             }
 
-            if (needsRecalc) nextNodes = recalculateContainerSizes(nextNodes);
+            const bestParent = findBestParent(draggedNode, nextNodes, validParentTypes, nodesMap);
+            if (bestParent) {
+                const siblings = nextNodes.filter(n => n.parentNode === bestParent.id && n.id !== draggedNode.id);
+                const newY = siblings.length > 0
+                    ? Math.max(...siblings.map(s => s.position.y + (s.style?.height || 50))) + LAYOUT.PADDING
+                    : LAYOUT.HEADER_HEIGHT + 8;
+                nextNodes = nextNodes.map(n => n.id !== draggedNode.id ? n : {
+                    ...n,
+                    parentNode: bestParent.id,
+                    position: { x: LAYOUT.PADDING, y: newY },
+                });
+                needsRecalc = true;
+            }
+        }
 
-            return { nodes: nextNodes, edges: nextEdges };
-        });
+        if (needsRecalc) nextNodes = recalculateContainerSizes(nextNodes);
+
+        // 💡 핵심: 변경된 상태를 store에 세팅하여 Yjs 웹소켓으로 자동 동기화되게 함 (HEAD의 Yjs 동기화 보존)
+        state.setNodes(nextNodes);
+        if (edgesChanged) state.setEdges(nextEdges);
+
     }, []);
 
     const handleEdgesChange = useCallback((chs) => {
-        useCanvasStore.setState((state) => ({ edges: applyEdgeChanges(chs, state.edges) }));
+        const state = useCanvasStore.getState();
+        if (state.userRole === 'GUEST') return;
+        state.setEdges(applyEdgeChanges(chs, state.edges));
     }, []);
 
     const handleConnect = useCallback((params) => {
-        useCanvasStore.setState((state) => {
-            const safeParams = {
-                ...params,
-                sourceHandle: params.sourceHandle || 'bottom',
-                targetHandle: params.targetHandle || 'top'
+        const state = useCanvasStore.getState();
+        if (state.userRole === 'GUEST') return;
+
+        const safeParams = {
+            ...params,
+            sourceHandle: params.sourceHandle || 'bottom',
+            targetHandle: params.targetHandle || 'top'
+        };
+
+        const sourceNode = state.nodes.find((n) => n.id === safeParams.source);
+        const sourceNodeType = sourceNode?.data?.type || 'method';
+
+        const existingEdgeIndex = state.edges.findIndex(
+            e => e.source === safeParams.source && e.target === safeParams.target
+        );
+
+        if (existingEdgeIndex !== -1) {
+            const newEdges = [...state.edges];
+            const existingEdge = newEdges[existingEdgeIndex];
+            const currentCount = existingEdge.data?.badgeCount || 1;
+            newEdges[existingEdgeIndex] = {
+                ...existingEdge,
+                sourceHandle: safeParams.sourceHandle,
+                targetHandle: safeParams.targetHandle,
+                data: { ...existingEdge.data, badgeCount: currentCount + 1 }
             };
-
-            const sourceNode = state.nodes.find((n) => n.id === safeParams.source);
-            const sourceNodeType = sourceNode?.data?.type || 'method';
-
-            const existingEdgeIndex = state.edges.findIndex(
-                e => e.source === safeParams.source && e.target === safeParams.target
-            );
-
-            if (existingEdgeIndex !== -1) {
-                const newEdges = [...state.edges];
-                const existingEdge = newEdges[existingEdgeIndex];
-                const currentCount = existingEdge.data?.badgeCount || 1;
-                newEdges[existingEdgeIndex] = {
-                    ...existingEdge,
-                    sourceHandle: safeParams.sourceHandle,
-                    targetHandle: safeParams.targetHandle,
-                    data: { ...existingEdge.data, badgeCount: currentCount + 1 }
-                };
-                return { edges: newEdges };
-            } else {
-                const newEdge = {
-                    ...safeParams,
-                    id: `edge_${Date.now()}`,
-                    type: 'custom',
-                    zIndex: 9999,
-                    data: { type: 'call', badgeCount: 1, sourceNodeType }
-                };
-                return { edges: state.edges.concat(newEdge) };
-            }
-        });
+            state.setEdges(newEdges);
+        } else {
+            const newEdge = {
+                ...safeParams,
+                id: `edge_${Date.now()}`,
+                type: 'custom',
+                zIndex: 9999,
+                data: { type: 'call', badgeCount: 1, sourceNodeType }
+            };
+            state.setEdges(state.edges.concat(newEdge));
+        }
     }, []);
 
     const onConnectStart = useCallback((event, { nodeId, handleId }) => {
@@ -312,6 +316,13 @@ const FlowContents = () => {
 
     const onDrop = useCallback((event) => {
         event.preventDefault();
+        const state = useCanvasStore.getState();
+
+        if (state.userRole === 'GUEST') {
+            alert("게스트는 편집할 수 없습니다.");
+            return;
+        }
+
         const type = event.dataTransfer.getData('application/reactflow');
         if (!type) return;
 
@@ -348,31 +359,30 @@ const FlowContents = () => {
             style: { width: initialWidth, height: initialHeight, zIndex: zIndex },
         };
 
-        useCanvasStore.setState((state) => {
-            const allNodes = [...state.nodes, newNode];
-            const nodesMap = new Map(allNodes.map(n => [n.id, n]));
-            const validParentTypes = VALID_PARENT_TYPES[domainType] || [];
+        const allNodes = [...state.nodes, newNode];
+        const nodesMap = new Map(allNodes.map(n => [n.id, n]));
+        const validParentTypes = VALID_PARENT_TYPES[domainType] || [];
 
-            let finalNode = newNode;
-            if (validParentTypes.length > 0) {
-                const bestParent = findBestParent(newNode, state.nodes, validParentTypes, nodesMap);
-                if (bestParent) {
-                    // 사이드바에서 드롭 시: 기존 자식들 아래에 쌓아서 배치
-                    const siblings = state.nodes.filter(n => n.parentNode === bestParent.id);
-                    const newY = siblings.length > 0
-                        ? Math.max(...siblings.map(s => s.position.y + (s.style?.height || 50))) + LAYOUT.PADDING
-                        : LAYOUT.HEADER_HEIGHT + 8;
+        let finalNode = newNode;
+        if (validParentTypes.length > 0) {
+            const bestParent = findBestParent(newNode, state.nodes, validParentTypes, nodesMap);
+            if (bestParent) {
+                // 사이드바에서 드롭 시: 기존 자식들 아래에 쌓아서 배치
+                const siblings = state.nodes.filter(n => n.parentNode === bestParent.id);
+                const newY = siblings.length > 0
+                    ? Math.max(...siblings.map(s => s.position.y + (s.style?.height || 50))) + LAYOUT.PADDING
+                    : LAYOUT.HEADER_HEIGHT + 8;
 
-                    finalNode = {
-                        ...newNode,
-                        parentNode: bestParent.id,
-                        position: { x: LAYOUT.PADDING, y: newY },
-                    };
-                }
+                finalNode = {
+                    ...newNode,
+                    parentNode: bestParent.id,
+                    position: { x: LAYOUT.PADDING, y: newY },
+                };
             }
+        }
 
-            return { nodes: recalculateContainerSizes([...state.nodes, finalNode]) };
-        });
+        state.setNodes(recalculateContainerSizes([...state.nodes, finalNode]));
+
     }, [screenToFlowPosition]);
 
     return (

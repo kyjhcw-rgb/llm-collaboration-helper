@@ -5,6 +5,8 @@ import com.capstone.collaborationhelper.entity.*;
 import com.capstone.collaborationhelper.repository.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class CanvasService {
@@ -20,37 +23,44 @@ public class CanvasService {
     private final BlockRepository blockRepository;
     private final EdgeRepository edgeRepository;
     private final ProjectVersionRepository versionRepository;
-    private final ObjectMapper objectMapper; // JSON <-> Byte 변환용 (Yjs 도입 전 임시)
+    private final ObjectMapper objectMapper;
 
-    // [Read] 라이브(현재 작업 중인) 상태 불러오기 (isDeleted = false 인 것만)
+    // [보안을 위한 Repository 추가]
+    private final UserRepository userRepository;
+    private final PartyRepository partyRepository;
+
+    // [Read] 라이브(현재 작업 중인) 상태 불러오기
     @Transactional(readOnly = true)
     public CanvasDtos.SyncRes loadLiveCanvas(Integer projectId) {
+        assertPartyMember(projectId); // 멤버 여부만 확인 (GUEST도 읽기 가능)
         List<Block> blocks = blockRepository.findByProjectIdAndIsDeletedFalse(projectId);
         List<Edge> edges = edgeRepository.findByProjectIdAndIsDeletedFalse(projectId);
         return new CanvasDtos.SyncRes(mapBlocksToDto(blocks), mapEdgesToDto(edges));
     }
 
-    // [Read] 과거의 특정 박제 버전 불러오기 (Read-Only)
+    // [Read] 과거의 특정 박제 버전 불러오기
     @Transactional(readOnly = true)
     public CanvasDtos.SyncRes loadVersionCanvas(Integer projectId, Integer versionNumber) {
+        assertPartyMember(projectId); // GUEST도 읽기 가능
         ProjectVersion version = versionRepository.findByProjectIdAndVersionNumber(projectId, versionNumber)
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 버전입니다."));
 
         try {
-            // Yjs 도입 전이므로 저장해둔 JSON Byte 배열을 DTO로 변환하여 반환
             return objectMapper.readValue(version.getCrdtSnapshot(), CanvasDtos.SyncRes.class);
         } catch (Exception e) {
             throw new RuntimeException("버전 데이터를 읽는 중 오류가 발생했습니다.", e);
         }
     }
 
-    // [Update] 라이브 스냅샷 동기화 (UNIQUE 제약조건을 지키기 위한 UPSERT 및 논리적 삭제)
+    // [Update] 라이브 스냅샷 동기화
     @Transactional
     public void syncLiveCanvas(Integer projectId, CanvasDtos.SyncReq req) {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 프로젝트입니다."));
 
-        // 라이브 동기화 시, 메인 화면 정렬을 위해 프로젝트 업데이트 시간 갱신
+        // [보안 로직 추가] GUEST는 저장(동기화)할 수 없음
+        assertNotGuest(projectId);
+
         project.setUpdatedAt(ZonedDateTime.now());
         projectRepository.save(project);
 
@@ -63,10 +73,8 @@ public class CanvasService {
             for (CanvasDtos.BlockDto dto : req.getBlocks()) {
                 Block block = blockMap.get(dto.getFrontendId());
                 if (block == null) {
-                    // 신규 생성
                     block = Block.builder().project(project).frontendId(dto.getFrontendId()).build();
                 }
-                // 값 갱신 및 복구(삭제되었던 것이 다시 넘어올 경우 대비)
                 block.setDeleted(false);
                 block.setParentFrontendId(dto.getParentFrontendId());
                 block.setType(dto.getType());
@@ -79,16 +87,16 @@ public class CanvasService {
                 block.setPosY(dto.getPosY());
 
                 blockRepository.save(block);
-                blockMap.remove(dto.getFrontendId()); // 처리된 것은 맵에서 제거
+                blockMap.remove(dto.getFrontendId());
             }
         }
-        // Map에 남아있는 블록들은 프론트엔드에서 지워진 것 -> 논리적 삭제 처리
+
         blockMap.values().stream().filter(b -> !b.isDeleted()).forEach(b -> {
             b.setDeleted(true);
             blockRepository.save(b);
         });
 
-        // 2. Edge UPSERT 및 논리적 삭제 처리 (Block과 동일 로직)
+        // 2. Edge UPSERT 및 논리적 삭제 처리
         List<Edge> existingEdges = edgeRepository.findByProjectId(projectId);
         Map<String, Edge> edgeMap = existingEdges.stream()
                 .collect(Collectors.toMap(Edge::getFrontendId, e -> e));
@@ -123,7 +131,9 @@ public class CanvasService {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 프로젝트입니다."));
 
-        // 현재 활성 상태의 데이터를 읽어와서 스냅샷으로 만듦
+        // [보안 로직 추가] GUEST는 버전을 저장할 수 없음
+        assertNotGuest(projectId);
+
         CanvasDtos.SyncRes currentState = loadLiveCanvas(projectId);
         byte[] snapshotBytes;
         try {
@@ -143,12 +153,14 @@ public class CanvasService {
                 .build();
 
         versionRepository.save(newVersion);
+        log.info("▶ [CanvasService] 프로젝트(ID: {})의 새로운 버전(v{})이 저장되었습니다.", projectId, nextVersion);
         return nextVersion;
     }
 
     // 버전 히스토리 리스트 반환
     @Transactional(readOnly = true)
     public List<CanvasDtos.VersionDto> getVersionHistory(Integer projectId) {
+        assertPartyMember(projectId); // 조회는 프로젝트 멤버 누구나 가능
         return versionRepository.findByProjectIdOrderByVersionNumberDesc(projectId).stream()
                 .map(v -> new CanvasDtos.VersionDto(v.getVersionNumber(), v.getCommitMessage(), v.getCreatedAt().toString()))
                 .collect(Collectors.toList());
@@ -157,8 +169,46 @@ public class CanvasService {
     // 특정 과거 버전 삭제
     @Transactional
     public void deleteSpecificVersion(Integer projectId, Integer versionNumber) {
+        // [보안 로직 추가] 삭제 등 민감한 작업은 OWNER 권한만 허용
+        assertOwner(projectId);
+
         versionRepository.findByProjectIdAndVersionNumber(projectId, versionNumber)
                 .ifPresent(versionRepository::delete);
+        log.info("▶ [CanvasService] 프로젝트(ID: {})의 버전(v{})이 삭제되었습니다.", projectId, versionNumber);
+    }
+
+    // ===============================================
+    // 권한 체크 및 헬퍼 메서드 모음
+    // ===============================================
+
+    private User currentUser() {
+        String username = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        return userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("로그인 사용자를 찾을 수 없습니다."));
+    }
+
+    private Party getMyPartyInfo(Integer projectId) {
+        User me = currentUser();
+        return partyRepository.findByProjectIdAndUserId(projectId, me.getId())
+                .orElseThrow(() -> new RuntimeException("이 프로젝트에 접근할 권한이 없습니다."));
+    }
+
+    private void assertPartyMember(Integer projectId) {
+        getMyPartyInfo(projectId); // 예외가 안 터지면 멤버임
+    }
+
+    private void assertNotGuest(Integer projectId) {
+        Party myParty = getMyPartyInfo(projectId);
+        if ("GUEST".equals(myParty.getRole())) {
+            throw new RuntimeException("읽기 전용(GUEST) 권한은 다이어그램을 덮어쓰거나 버전을 저장할 수 없습니다.");
+        }
+    }
+
+    private void assertOwner(Integer projectId) {
+        Party myParty = getMyPartyInfo(projectId);
+        if (!"OWNER".equals(myParty.getRole())) {
+            throw new RuntimeException("프로젝트 소유자(OWNER)만 이 작업을 수행할 수 있습니다.");
+        }
     }
 
     // Entity -> DTO 매핑 헬퍼 메서드

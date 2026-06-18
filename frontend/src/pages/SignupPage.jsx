@@ -18,22 +18,29 @@ export default function SignupPage() {
         setFormData((prev) => ({ ...prev, [name]: value }));
     };
 
-    // 1. 인증 메일 발송 (/api/auth/email/send)
+    // 1. 인증 메일 발송 (발송 전 이메일 중복 체크 포함)
     const handleSendEmail = async () => {
         if (!email) return alert("이메일을 입력해주세요.");
+
         try {
+            // 메일 발송 전 이메일 가입 여부 확인
+            const checkRes = await request(`/auth/check-email?email=${email}`, { method: "GET" });
+            if (!checkRes.available) {
+                return alert("이미 가입된 이메일입니다. 다른 이메일을 사용해주세요.");
+            }
+
             await request("/auth/email/send", {
                 method: "POST",
                 body: JSON.stringify({ email })
             });
             setIsEmailSent(true);
-            alert("인증 메일이 발송되었습니다. 확인해주세요.");
+            alert("인증 메일이 발송되었습니다. 메일함을 확인해주세요.");
         } catch (error) {
             alert(error.message);
         }
     };
 
-    // 2. 인증 번호 확인 (/api/auth/email/verify)
+    // 2. 인증 번호 확인
     const handleVerifyCode = async () => {
         if (!verificationCode) return alert("인증번호를 입력해주세요.");
         try {
@@ -48,11 +55,21 @@ export default function SignupPage() {
         }
     };
 
-    // 3. 회원가입 완료 (/api/auth/signup)
+    // 3. 회원가입 완료 (가입 버튼 클릭 시 아이디 중복 확인 실행)
     const handleSignup = async (e) => {
         e.preventDefault();
+
         if (!isEmailVerified) return alert("이메일 인증을 완료해주세요.");
+
         try {
+            // 💡 [가입 직전 방어] 아이디 중복 확인을 여기서 몰래 실행합니다.
+            const checkRes = await request(`/auth/check-username?username=${formData.username}`, { method: "GET" });
+
+            if (!checkRes.available) {
+                return alert("이미 사용 중인 아이디입니다. 다른 아이디를 입력해주세요.");
+            }
+
+            // 중복이 아니면 최종 회원가입 진행
             await request("/auth/signup", {
                 method: "POST",
                 body: JSON.stringify({

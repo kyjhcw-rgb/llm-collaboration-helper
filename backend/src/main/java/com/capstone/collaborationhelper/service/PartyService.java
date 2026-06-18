@@ -25,6 +25,7 @@ public class PartyService {
     private final PartyRepository partyRepository;
     private final ProjectRepository projectRepository;
     private final UserRepository userRepository;
+    private final EmailService emailService;
 
     /**
      * 프로젝트 멤버 목록 조회
@@ -32,8 +33,6 @@ public class PartyService {
     @Transactional(readOnly = true)
     public List<Res> getMembersByProject(Integer projectId) {
         Project project = findProjectById(projectId);
-        
-        // 요청자가 해당 프로젝트의 멤버인지 확인 (보안)
         assertPartyMember(project);
 
         return partyRepository.findByProject(project).stream()
@@ -47,28 +46,41 @@ public class PartyService {
     @Transactional
     public Res inviteMember(Integer projectId, InviteReq req) {
         Project project = findProjectById(projectId);
-        
-        // 1. 소유자 권한 체크 (초대는 소유자만 가능하도록 설정)
-        assertOwner(project);
 
-        // 2. 초대할 대상 유저 존재 확인 (email 기반 조회 예시)
+        // Party 테이블을 기준으로 소유자(OWNER) 권한 체크
+        assertOwner(project);
+        User inviter = currentUser(); // 나(OWNER)의 정보 가져오기
+
         User targetUser = userRepository.findByEmail(req.getEmail())
                 .orElseThrow(() -> new RuntimeException("초대하려는 유저를 찾을 수 없습니다."));
 
-        // 3. 이미 참여 중인지 확인
         if (partyRepository.findByProjectAndUser(project, targetUser).isPresent()) {
             throw new RuntimeException("이미 프로젝트에 참여 중인 유저입니다.");
         }
 
-        // 4. Party 생성 및 저장
         Party newParty = Party.builder()
                 .project(project)
                 .user(targetUser)
                 .role(req.getRole()) // MEMBER, GUEST 등
                 .build();
 
+        Party savedParty = partyRepository.save(newParty);
         log.info("▶ [PartyService] 프로젝트(ID: {})에 유저({})를 {} 역할로 초대합니다.", projectId, targetUser.getEmail(), req.getRole());
-        return Res.from(partyRepository.save(newParty));
+
+        // DB 저장 완료 후 초대 메일 발송
+        try {
+            emailService.sendProjectInvitationEmail(
+                    targetUser.getEmail(),
+                    project.getTitle(),
+                    inviter.getNickname(),
+                    req.getRole()
+            );
+        } catch (Exception e) {
+            // 메일 전송에 실패하더라도 초대(DB 저장) 자체를 롤백시키지 않음
+            log.error("초대 메일 발송 실패 (초대는 정상 완료됨): {}", e.getMessage());
+        }
+
+        return Res.from(savedParty);
     }
 
     /**
@@ -77,12 +89,11 @@ public class PartyService {
     @Transactional
     public Res updateMemberRole(Integer projectId, Integer userId, UpdateRoleReq req) {
         Project project = findProjectById(projectId);
-        assertOwner(project);
+        assertOwner(project); // 방장(OWNER)만 변경 가능
 
         Party targetParty = partyRepository.findByProjectIdAndUserId(projectId, userId)
                 .orElseThrow(() -> new RuntimeException("해당 프로젝트의 멤버가 아닙니다."));
 
-        // OWNER의 역할은 함부로 바꿀 수 없도록 방어 로직 (필요시)
         if ("OWNER".equals(targetParty.getRole())) {
             throw new RuntimeException("소유자의 권한은 변경할 수 없습니다.");
         }
@@ -98,22 +109,23 @@ public class PartyService {
     public void removeMember(Integer projectId, Integer userId) {
         Project project = findProjectById(projectId);
         User me = currentUser();
-        
-        Party targetParty = partyRepository.findByProjectIdAndUserId(projectId, userId)
-                .orElseThrow(() -> new RuntimeException("멤버 정보를 찾을 수 없습니다."));
 
-        // 권한 체크: 
-        // 1. 본인이 본인을 삭제(탈퇴) 하거나
-        // 2. 프로젝트 소유자가 타인을 삭제(강퇴) 하거나
+        // 내 참여 정보와 대상의 참여 정보를 Party 테이블에서 조회
+        Party myParty = partyRepository.findByProjectAndUser(project, me)
+                .orElseThrow(() -> new RuntimeException("접근 권한이 없습니다."));
+
+        Party targetParty = partyRepository.findByProjectIdAndUserId(projectId, userId)
+                .orElseThrow(() -> new RuntimeException("삭제할 멤버 정보를 찾을 수 없습니다."));
+
+        // Party 테이블의 권한(Role)을 기준으로 로직 처리
         boolean isSelfExit = me.getId().equals(userId);
-        boolean isOwnerKicking = project.getOwner().getId().equals(me.getId());
+        boolean isOwnerKicking = "OWNER".equals(myParty.getRole());
 
         if (!isSelfExit && !isOwnerKicking) {
             throw new RuntimeException("멤버를 삭제할 권한이 없습니다.");
         }
 
-        // 소유자 본인은 탈퇴할 수 없음 (프로젝트 삭제를 이용해야 함)
-        if (isSelfExit && project.getOwner().getId().equals(me.getId())) {
+        if (isSelfExit && "OWNER".equals(myParty.getRole())) {
             throw new RuntimeException("소유자는 프로젝트를 탈퇴할 수 없습니다. 프로젝트를 삭제해주세요.");
         }
 
@@ -121,7 +133,7 @@ public class PartyService {
         log.info("▶ [PartyService] 프로젝트(ID: {})에서 유저(ID: {})가 제거되었습니다.", projectId, userId);
     }
 
-    // --- 공통 편의 메서드 (ProjectService의 것과 동일한 로직) ---
+    // --- 공통 편의 메서드 ---
 
     private Project findProjectById(Integer projectId) {
         return projectRepository.findById(projectId)
@@ -135,10 +147,14 @@ public class PartyService {
         }
     }
 
+    // Project 엔티티의 owner_id 대신 Party 테이블의 Role을 확인
     private void assertOwner(Project project) {
         User me = currentUser();
-        if (!project.getOwner().getId().equals(me.getId())) {
-            throw new RuntimeException("프로젝트 소유자만 이 작업을 할 수 있습니다.");
+        Party myParty = partyRepository.findByProjectAndUser(project, me)
+                .orElseThrow(() -> new RuntimeException("이 프로젝트에 접근할 권한이 없습니다."));
+
+        if (!"OWNER".equals(myParty.getRole())) {
+            throw new RuntimeException("프로젝트 소유자(OWNER)만 이 작업을 할 수 있습니다.");
         }
     }
 

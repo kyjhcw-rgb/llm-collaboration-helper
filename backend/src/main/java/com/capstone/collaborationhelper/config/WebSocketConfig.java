@@ -18,6 +18,6 @@ public class WebSocketConfig implements WebSocketConfigurer {
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         // 클라이언트에서 ws://[서버주소]/ws/crdt/{projectId} 형태로 접근하도록 허용
         registry.addHandler(crdtWebSocketHandler, "/ws/crdt/*")
-                .setAllowedOrigins("*");
+                .setAllowedOrigins("*");    // 모든 도메인 허용 (운영 환경에서는 실제 프론트 도메인으로 변경)
     }
 }

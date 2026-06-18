@@ -42,4 +42,18 @@ public class AuthController {
         String token = authService.login(req);
         return ResponseEntity.ok(Map.of("accessToken", token));
     }
+
+    // 아이디 중복 검사 API
+    @GetMapping("/check-username")
+    public ResponseEntity<?> checkUsername(@RequestParam String username) {
+        boolean isAvailable = authService.isUsernameAvailable(username);
+        return ResponseEntity.ok(Map.of("available", isAvailable));
+    }
+
+    // 이메일 중복 검사 API
+    @GetMapping("/check-email")
+    public ResponseEntity<?> checkEmail(@RequestParam String email) {
+        boolean isAvailable = authService.isEmailAvailable(email);
+        return ResponseEntity.ok(Map.of("available", isAvailable));
+    }
 }
