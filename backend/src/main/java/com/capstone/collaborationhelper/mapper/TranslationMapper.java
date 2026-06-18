@@ -41,7 +41,7 @@ public class TranslationMapper {
             ));
 
             List<ClassNode> classes = feature.getClasses() != null ? feature.getClasses() : List.of();
-            appendClasses(blocks, feature.getId(), featureX, featureY, classes);
+            appendClasses(blocks, feature.getId(), classes);
         }
 
         Set<String> blockIds = blocks.stream().map(BlockDto::getFrontendId).collect(Collectors.toSet());
@@ -80,8 +80,7 @@ public class TranslationMapper {
     }
 
     private void appendClasses(
-            List<BlockDto> blocks, String featureId,
-            double featureX, double featureY, List<ClassNode> classes
+            List<BlockDto> blocks, String featureId, List<ClassNode> classes
     ) {
         if (classes == null) return;
         int offset = 0;
@@ -95,17 +94,15 @@ public class TranslationMapper {
                     classNode.getId(), featureId, "class",
                     classNode.getName(), classNode.getDescription(),
                     null, null, classNode.getAnnotations(),
-                    featureX + classX, featureY + classY
+                    classX, classY
             ));
-            appendMethods(blocks, classNode.getId(), featureX + classX, featureY + classY, classNode.getMethods());
+            appendMethods(blocks, classNode.getId(), classNode.getMethods());
         }
     }
 
     private void appendMethods(
             List<BlockDto> blocks,
             String parentId,
-            double parentAbsX,
-            double parentAbsY,
             List<MethodNode> methods
     ) {
         if (methods == null) {
@@ -122,7 +119,7 @@ public class TranslationMapper {
                     method.getId(), parentId, "method",
                     method.getName(), method.getDescription(),
                     method.getParameters(), method.getReturnType(), null,
-                    parentAbsX + methodX, parentAbsY + methodY
+                    methodX, methodY
             ));
         }
     }

@@ -186,6 +186,7 @@ const FlowContents = () => {
                     nextNodes = nextNodes.map(n => n.id !== draggedNode.id ? n :
                         { ...n, parentNode: undefined, position: absPos }
                     );
+                    needsRecalc = true;
                 }
                 needsRecalc = true;
                 continue;
