@@ -25,6 +25,8 @@ function getAbsolutePosition(nodeId, nodesMap) {
     return { x: parentAbs.x + node.position.x, y: parentAbs.y + node.position.y };
 }
 
+// 드래그된 블록이 유효한 부모와 겹치는지 확인 (중심점이 아닌 면적 겹침 사용)
+// → 부모 경계 바깥에 살짝 걸쳐 놓아도 감지되어 부모가 자동으로 커짐
 function findBestParent(draggedNode, allNodes, validParentTypes, nodesMap) {
     const absPos = getAbsolutePosition(draggedNode.id, nodesMap);
     const dw = draggedNode.style?.width || 150;
@@ -41,6 +43,7 @@ function findBestParent(draggedNode, allNodes, validParentTypes, nodesMap) {
         const pw = node.style?.width || 400;
         const ph = node.style?.height || 300;
 
+        // 사각형 겹침 여부 (1px 이상 겹치면 부모로 인식)
         const overlapX = Math.min(absPos.x + dw, p.x + pw) - Math.max(absPos.x, p.x);
         const overlapY = Math.min(absPos.y + dh, p.y + ph) - Math.max(absPos.y, p.y);
 
@@ -90,6 +93,8 @@ const FlowContents = () => {
 
         let nextNodes = applyNodeChanges(changes, state.nodes);
 
+        // 2단계 전파 후처리: method→class(expandParent)가 class 크기를 키운 후,
+        // class→feature 전파는 ReactFlow가 자동 처리 못할 수 있으므로 수동으로 보정
         const nodesMapAfter = new Map(nextNodes.map(n => [n.id, n]));
         let didGrow = false;
         for (const node of nextNodes) {
@@ -130,6 +135,7 @@ const FlowContents = () => {
             }
         });
 
+        // 드래그 완료(dragging: false) 시점에 reparenting 처리
         const dragEndChanges = changes.filter(c => c.type === 'position' && c.dragging === false);
 
         for (const change of dragEndChanges) {
@@ -202,7 +208,7 @@ const FlowContents = () => {
 
         if (needsRecalc) nextNodes = recalculateContainerSizes(nextNodes);
 
-        // 💡 핵심: 변경된 상태를 store에 세팅하여 Yjs 웹소켓으로 자동 동기화되게 함
+        // 💡 핵심: 변경된 상태를 store에 세팅하여 Yjs 웹소켓으로 자동 동기화되게 함 (HEAD의 Yjs 동기화 보존)
         state.setNodes(nextNodes);
         if (edgesChanged) state.setEdges(nextEdges);
 
@@ -360,6 +366,7 @@ const FlowContents = () => {
         if (validParentTypes.length > 0) {
             const bestParent = findBestParent(newNode, state.nodes, validParentTypes, nodesMap);
             if (bestParent) {
+                // 사이드바에서 드롭 시: 기존 자식들 아래에 쌓아서 배치
                 const siblings = state.nodes.filter(n => n.parentNode === bestParent.id);
                 const newY = siblings.length > 0
                     ? Math.max(...siblings.map(s => s.position.y + (s.style?.height || 50))) + LAYOUT.PADDING
