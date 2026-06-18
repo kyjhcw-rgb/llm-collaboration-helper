@@ -1,10 +1,9 @@
 package com.capstone.collaborationhelper.service;
 
 import com.capstone.collaborationhelper.client.LlmClient;
-import com.capstone.collaborationhelper.dto.CanvasDtos;
 import com.capstone.collaborationhelper.dto.ProjectDtos.CreateReq;
-import com.capstone.collaborationhelper.dto.ProjectDtos.LlmDiagramRes;
 import com.capstone.collaborationhelper.dto.ProjectDtos.Res;
+import com.capstone.collaborationhelper.dto.TranslationDtos.DiagramRes;
 import com.capstone.collaborationhelper.dto.ProjectDtos.UpdateReq;
 import com.capstone.collaborationhelper.entity.Party;
 import com.capstone.collaborationhelper.entity.Project;
@@ -35,6 +34,7 @@ public class ProjectService {
     private final UserRepository userRepository;
 
     private final CanvasService canvasService;
+    private final TranslationService translationService;
     private final LlmClient llmClient;
 
     @Transactional(readOnly = true)
@@ -67,7 +67,7 @@ public class ProjectService {
 
         User owner = currentUser();
         Project project = Project.builder()
-                .owner(owner) // (참고) DB 스키마 구조상 제약조건이 있다면 남겨두되, 비즈니스 로직에선 Party를 신뢰
+                .owner(owner)
                 .title(req.getTitle().trim())
                 .framework(req.getFramework())
                 .freedomLevel(req.getFreedomLevel())
@@ -79,25 +79,21 @@ public class ProjectService {
         partyRepository.save(Party.builder()
                 .project(project)
                 .user(owner)
-                .role(ROLE_OWNER) // 방장을 Party 테이블에 자동 등록
+                .role(ROLE_OWNER)
                 .build());
 
         try {
             log.info("▶ [ProjectService] LlmClient를 통해 AI 다이어그램 생성을 요청합니다.");
-            LlmDiagramRes llmDiagram = llmClient.requestInitialDiagram(req);
+            DiagramRes diagram = llmClient.requestInitialDiagram(req);
 
-            if (llmDiagram != null) {
-                CanvasDtos.SyncReq syncReq = new CanvasDtos.SyncReq();
-                syncReq.setBlocks(llmDiagram.getBlocks());
-                syncReq.setEdges(llmDiagram.getEdges());
-
-                canvasService.syncLiveCanvas(project.getId(), syncReq);
+            if (diagram != null) {
+                translationService.importToDb(project.getId(), diagram);
                 canvasService.commitVersion(project.getId(), "초기 AI 다이어그램 생성");
 
-                log.info("[ProjectService] AI 다이어그램이 포함된 프로젝트 생성이 최종 완료되었습니다. 프로젝트 ID: {}", project.getId());
+                log.info("✔ [ProjectService] AI 다이어그램이 포함된 프로젝트 생성이 최종 완료되었습니다. 프로젝트 ID: {}", project.getId());
             }
         } catch (Exception e) {
-            log.error("[ProjectService] AI 초기 다이어그램 생성 및 연동 실패: ", e);
+            log.error("❌ [ProjectService] AI 초기 다이어그램 생성 및 연동 실패: ", e);
             throw new RuntimeException("초기 아키텍처 다이어그램 생성에 실패하여 프로젝트 생성이 취소되었습니다.", e);
         }
 
@@ -109,7 +105,7 @@ public class ProjectService {
         Project project = projectRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("프로젝트를 찾을 수 없습니다."));
 
-        assertOwner(project); // Party 테이블 기반으로 검증됨
+        assertOwner(project);
 
         if (req.getTitle() != null && !req.getTitle().isBlank()) {
             project.setTitle(req.getTitle().trim());
@@ -135,7 +131,7 @@ public class ProjectService {
         Project project = projectRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("프로젝트를 찾을 수 없습니다."));
 
-        assertOwner(project); // Party 테이블 기반으로 검증됨
+        assertOwner(project);
 
         partyRepository.deleteByProject(project);
         projectRepository.delete(project);
@@ -148,7 +144,6 @@ public class ProjectService {
         }
     }
 
-    // Project 엔티티의 owner_id 대신 Party 테이블의 Role을 확인
     private void assertOwner(Project project) {
         User me = currentUser();
         Party myParty = partyRepository.findByProjectAndUser(project, me)

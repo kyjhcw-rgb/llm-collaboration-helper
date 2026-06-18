@@ -1,26 +1,56 @@
 import React, { useCallback, useRef } from 'react';
-import ReactFlow, {
-    Background,
-    Controls,
-    ConnectionMode,
-    useStore,
-    getSmoothStepPath,
-    ReactFlowProvider,
-    useReactFlow
-} from 'reactflow';
+import ReactFlow, { Background, Controls, applyNodeChanges, applyEdgeChanges, useReactFlow, ReactFlowProvider, ConnectionMode, useStore, getSmoothStepPath } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { useCanvasStore } from '../../store/useCanvasStore';
+import { useCanvasStore, recalculateContainerSizes, LAYOUT } from '../../store/useCanvasStore';
+import './FlowArea.css';
 import CustomNode from './CustomNode';
 import CustomEdge from './CustomEdge';
-import './FlowArea.css';
 
 const nodeTypes = { custom: CustomNode };
 const edgeTypes = { custom: CustomEdge };
 
-// =============================================
-// 연결 미리보기 선 커스텀 (OFFSET 동기화)
-// =============================================
 const OFFSET_BY_TYPE = { feature: 176, class: 252, method: 301 };
+
+const VALID_PARENT_TYPES = {
+    method: ['class', 'feature'],
+    class:  ['feature'],
+    feature: [],
+};
+
+function getAbsolutePosition(nodeId, nodesMap) {
+    const node = nodesMap.get(nodeId);
+    if (!node) return { x: 0, y: 0 };
+    if (!node.parentNode) return { x: node.position.x, y: node.position.y };
+    const parentAbs = getAbsolutePosition(node.parentNode, nodesMap);
+    return { x: parentAbs.x + node.position.x, y: parentAbs.y + node.position.y };
+}
+
+function findBestParent(draggedNode, allNodes, validParentTypes, nodesMap) {
+    const absPos = getAbsolutePosition(draggedNode.id, nodesMap);
+    const dw = draggedNode.style?.width || 150;
+    const dh = draggedNode.style?.height || 50;
+
+    let best = null;
+    let bestZ = -1;
+
+    for (const node of allNodes) {
+        if (node.id === draggedNode.id) continue;
+        if (!validParentTypes.includes(node.data?.type)) continue;
+
+        const p = getAbsolutePosition(node.id, nodesMap);
+        const pw = node.style?.width || 400;
+        const ph = node.style?.height || 300;
+
+        const overlapX = Math.min(absPos.x + dw, p.x + pw) - Math.max(absPos.x, p.x);
+        const overlapY = Math.min(absPos.y + dh, p.y + ph) - Math.max(absPos.y, p.y);
+
+        if (overlapX > 0 && overlapY > 0) {
+            const z = node.style?.zIndex || 0;
+            if (z > bestZ) { bestZ = z; best = node; }
+        }
+    }
+    return best;
+}
 
 function CustomConnectionLine({ fromX, fromY, toX, toY, fromPosition, toPosition }) {
     const connectionNodeId = useStore((state) => state.connectionNodeId);
@@ -46,39 +76,191 @@ function CustomConnectionLine({ fromX, fromY, toX, toY, fromPosition, toPosition
     );
 }
 
-// =============================================
-// 캔버스 핵심 컴포넌트
-// =============================================
 const FlowContents = () => {
-    const {
-        setSelectedNodeId,
-        setSelectedEdgeId,
-        onNodesChange,
-        onEdgesChange,
-        onConnect,
-        addNode
-    } = useCanvasStore();
-
+    const { setSelectedNodeId, setSelectedEdgeId } = useCanvasStore();
     const { screenToFlowPosition } = useReactFlow();
 
     const nodes = useCanvasStore((state) => state.nodes);
     const edges = useCanvasStore((state) => state.edges);
-    const userRole = useCanvasStore((state) => state.userRole);
-
-    // GUEST 권한인지 판별하여 편집 가능 여부를 결정
-    const isEditable = userRole !== 'GUEST';
-
     const connectingHandleRef = useRef(null);
+
+    const handleNodesChange = useCallback((changes) => {
+        const state = useCanvasStore.getState();
+        if (state.userRole === 'GUEST') return;
+
+        let nextNodes = applyNodeChanges(changes, state.nodes);
+
+        const nodesMapAfter = new Map(nextNodes.map(n => [n.id, n]));
+        let didGrow = false;
+        for (const node of nextNodes) {
+            if (!node.parentNode) continue;
+            const parent = nodesMapAfter.get(node.parentNode);
+            if (!parent) continue;
+            const nW = node.width || node.style?.width || 150;
+            const nH = node.height || node.style?.height || 50;
+            const childRight = node.position.x + nW + LAYOUT.PADDING;
+            const childBottom = node.position.y + nH + LAYOUT.PADDING;
+            const pW = parent.width || parent.style?.width || 400;
+            const pH = parent.height || parent.style?.height || 300;
+            if (childRight > pW || childBottom > pH) {
+                const newW = Math.max(pW, childRight);
+                const newH = Math.max(pH, childBottom);
+                nodesMapAfter.set(parent.id, {
+                    ...parent,
+                    width: newW,
+                    height: newH,
+                    style: { ...parent.style, width: newW, height: newH },
+                });
+                didGrow = true;
+            }
+        }
+        if (didGrow) nextNodes = [...nodesMapAfter.values()];
+
+        let nextEdges = state.edges;
+        let edgesChanged = false;
+        let needsRecalc = false;
+
+        changes.forEach((change) => {
+            if (change.type === 'remove') {
+                nextEdges = nextEdges.filter(
+                    (edge) => edge.source !== change.id && edge.target !== change.id
+                );
+                edgesChanged = true;
+                needsRecalc = true;
+            }
+        });
+
+        const dragEndChanges = changes.filter(c => c.type === 'position' && c.dragging === false);
+
+        for (const change of dragEndChanges) {
+            const draggedNode = nextNodes.find(n => n.id === change.id);
+            if (!draggedNode) continue;
+
+            const validParentTypes = VALID_PARENT_TYPES[draggedNode.data?.type] || [];
+            if (validParentTypes.length === 0) continue;
+
+            const nodesMap = new Map(nextNodes.map(n => [n.id, n]));
+            const absPos = getAbsolutePosition(draggedNode.id, nodesMap);
+            const dw = draggedNode.style?.width || 150;
+            const dh = draggedNode.style?.height || 50;
+            const currentParentId = draggedNode.parentNode;
+
+            if (currentParentId) {
+                const curParent = nodesMap.get(currentParentId);
+                if (curParent) {
+                    const parentAbs = getAbsolutePosition(currentParentId, nodesMap);
+                    const pw = curParent.style?.width || 400;
+                    const cx = absPos.x + dw / 2;
+                    const cy = absPos.y + dh / 2;
+
+                    const staysInParent =
+                        cx >= parentAbs.x && cx <= parentAbs.x + pw &&
+                        cy >= parentAbs.y + LAYOUT.HEADER_HEIGHT;
+
+                    if (staysInParent) {
+                        needsRecalc = true;
+                        continue;
+                    }
+                }
+
+                const otherNodes = nextNodes.filter(n => n.id !== currentParentId);
+                const bestParent = findBestParent(draggedNode, otherNodes, validParentTypes, nodesMap);
+
+                if (bestParent) {
+                    const siblings = nextNodes.filter(n => n.parentNode === bestParent.id && n.id !== draggedNode.id);
+                    const newY = siblings.length > 0
+                        ? Math.max(...siblings.map(s => s.position.y + (s.style?.height || 50))) + LAYOUT.PADDING
+                        : LAYOUT.HEADER_HEIGHT + 8;
+                    nextNodes = nextNodes.map(n => n.id !== draggedNode.id ? n : {
+                        ...n,
+                        parentNode: bestParent.id,
+                        position: { x: LAYOUT.PADDING, y: newY },
+                    });
+                } else {
+                    nextNodes = nextNodes.map(n => n.id !== draggedNode.id ? n :
+                        { ...n, parentNode: undefined, position: absPos }
+                    );
+                }
+                needsRecalc = true;
+                continue;
+            }
+
+            const bestParent = findBestParent(draggedNode, nextNodes, validParentTypes, nodesMap);
+            if (bestParent) {
+                const siblings = nextNodes.filter(n => n.parentNode === bestParent.id && n.id !== draggedNode.id);
+                const newY = siblings.length > 0
+                    ? Math.max(...siblings.map(s => s.position.y + (s.style?.height || 50))) + LAYOUT.PADDING
+                    : LAYOUT.HEADER_HEIGHT + 8;
+                nextNodes = nextNodes.map(n => n.id !== draggedNode.id ? n : {
+                    ...n,
+                    parentNode: bestParent.id,
+                    position: { x: LAYOUT.PADDING, y: newY },
+                });
+                needsRecalc = true;
+            }
+        }
+
+        if (needsRecalc) nextNodes = recalculateContainerSizes(nextNodes);
+
+        // 💡 핵심: 변경된 상태를 store에 세팅하여 Yjs 웹소켓으로 자동 동기화되게 함
+        state.setNodes(nextNodes);
+        if (edgesChanged) state.setEdges(nextEdges);
+
+    }, []);
+
+    const handleEdgesChange = useCallback((chs) => {
+        const state = useCanvasStore.getState();
+        if (state.userRole === 'GUEST') return;
+        state.setEdges(applyEdgeChanges(chs, state.edges));
+    }, []);
+
+    const handleConnect = useCallback((params) => {
+        const state = useCanvasStore.getState();
+        if (state.userRole === 'GUEST') return;
+
+        const safeParams = {
+            ...params,
+            sourceHandle: params.sourceHandle || 'bottom',
+            targetHandle: params.targetHandle || 'top'
+        };
+
+        const sourceNode = state.nodes.find((n) => n.id === safeParams.source);
+        const sourceNodeType = sourceNode?.data?.type || 'method';
+
+        const existingEdgeIndex = state.edges.findIndex(
+            e => e.source === safeParams.source && e.target === safeParams.target
+        );
+
+        if (existingEdgeIndex !== -1) {
+            const newEdges = [...state.edges];
+            const existingEdge = newEdges[existingEdgeIndex];
+            const currentCount = existingEdge.data?.badgeCount || 1;
+            newEdges[existingEdgeIndex] = {
+                ...existingEdge,
+                sourceHandle: safeParams.sourceHandle,
+                targetHandle: safeParams.targetHandle,
+                data: { ...existingEdge.data, badgeCount: currentCount + 1 }
+            };
+            state.setEdges(newEdges);
+        } else {
+            const newEdge = {
+                ...safeParams,
+                id: `edge_${Date.now()}`,
+                type: 'custom',
+                zIndex: 9999,
+                data: { type: 'call', badgeCount: 1, sourceNodeType }
+            };
+            state.setEdges(state.edges.concat(newEdge));
+        }
+    }, []);
 
     const onConnectStart = useCallback((event, { nodeId, handleId }) => {
         connectingHandleRef.current = { nodeId, handleId };
     }, []);
 
     const onConnectEnd = useCallback((event) => {
-        // 권한이 없거나 시작점이 없으면 무시
-        if (!connectingHandleRef.current || !isEditable) return;
+        if (!connectingHandleRef.current) return;
 
-        // 핸들 위에서 드래그를 멈추면 React Flow가 자체 처리하므로 무시
         if (event.target.classList.contains('react-flow__handle')) {
             connectingHandleRef.current = null;
             return;
@@ -114,8 +296,7 @@ const FlowContents = () => {
                     }
                 }
 
-                // 스토어의 onConnect 호출
-                onConnect({
+                handleConnect({
                     source: sourceNodeId,
                     sourceHandle: sourceHandleId,
                     target: targetNodeId,
@@ -124,14 +305,16 @@ const FlowContents = () => {
             }
         }
         connectingHandleRef.current = null;
-    }, [onConnect, isEditable]);
+    }, [handleConnect]);
 
-    // 외부 사이드바에서 캔버스로 블록을 드롭할 때 실행됨
     const onDrop = useCallback((event) => {
         event.preventDefault();
+        const state = useCanvasStore.getState();
 
-        // [보안] 권한이 없으면 드롭 이벤트를 무시
-        if (!isEditable) return;
+        if (state.userRole === 'GUEST') {
+            alert("게스트는 편집할 수 없습니다.");
+            return;
+        }
 
         const type = event.dataTransfer.getData('application/reactflow');
         if (!type) return;
@@ -164,12 +347,35 @@ const FlowContents = () => {
             position: { x: projectedPosition.x - (initialWidth / 2), y: projectedPosition.y - 320 },
             data: { label: `${type} 블록`, description: '', type: domainType, name: `${type} 블록` },
             className: nodeClass,
-            style: { width: initialWidth, height: initialHeight, zIndex: zIndex }
+            width: initialWidth,
+            height: initialHeight,
+            style: { width: initialWidth, height: initialHeight, zIndex: zIndex },
         };
 
-        // 스토어의 addNode를 호출하여 동기화
-        addNode(newNode);
-    }, [screenToFlowPosition, isEditable, addNode]);
+        const allNodes = [...state.nodes, newNode];
+        const nodesMap = new Map(allNodes.map(n => [n.id, n]));
+        const validParentTypes = VALID_PARENT_TYPES[domainType] || [];
+
+        let finalNode = newNode;
+        if (validParentTypes.length > 0) {
+            const bestParent = findBestParent(newNode, state.nodes, validParentTypes, nodesMap);
+            if (bestParent) {
+                const siblings = state.nodes.filter(n => n.parentNode === bestParent.id);
+                const newY = siblings.length > 0
+                    ? Math.max(...siblings.map(s => s.position.y + (s.style?.height || 50))) + LAYOUT.PADDING
+                    : LAYOUT.HEADER_HEIGHT + 8;
+
+                finalNode = {
+                    ...newNode,
+                    parentNode: bestParent.id,
+                    position: { x: LAYOUT.PADDING, y: newY },
+                };
+            }
+        }
+
+        state.setNodes(recalculateContainerSizes([...state.nodes, finalNode]));
+
+    }, [screenToFlowPosition]);
 
     return (
         <div
@@ -177,12 +383,10 @@ const FlowContents = () => {
             onDrop={onDrop}
             onDragOver={(e) => {
                 e.preventDefault();
-                // 권한에 따라 마우스 커서 표시 변경 (move / none)
-                e.dataTransfer.dropEffect = isEditable ? 'move' : 'none';
+                e.dataTransfer.dropEffect = 'move';
             }}
             style={{ flex: 1, width: '100%', height: '100%', position: 'relative' }}
         >
-            {/* SVG 마커 정의 (화살표 모양) */}
             <svg style={{ position: 'absolute', width: 0, height: 0 }}>
                 <defs>
                     <marker id="marker-call" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto">
@@ -197,18 +401,6 @@ const FlowContents = () => {
                 </defs>
             </svg>
 
-            {/* 게스트 유저를 위한 안내 UI */}
-            {!isEditable && (
-                <div style={{
-                    position: 'absolute', top: 15, left: '50%', transform: 'translateX(-50%)',
-                    backgroundColor: '#e74c3c', color: 'white', padding: '8px 18px',
-                    borderRadius: '20px', zIndex: 1000, fontWeight: 'bold', fontSize: '14px',
-                    boxShadow: '0 4px 10px rgba(0,0,0,0.15)'
-                }}>
-                    👀 읽기 전용 모드 (Guest 권한)
-                </div>
-            )}
-
             <ReactFlow
                 nodes={nodes}
                 edges={edges}
@@ -217,19 +409,14 @@ const FlowContents = () => {
                 connectionLineComponent={CustomConnectionLine}
                 elevateEdgesOnSelect={true}
                 connectionMode={ConnectionMode.Loose}
-
-                // [핵심 보안] isEditable 변수로 ReactFlow 내부의 상호작용 속성 제어
-                nodesConnectable={isEditable}
-                nodesDraggable={isEditable}
-                elementsSelectable={isEditable}
-
-                onNodesChange={onNodesChange}
-                onEdgesChange={onEdgesChange}
-                onConnect={onConnect}
+                nodesConnectable={true}
+                onNodesChange={handleNodesChange}
+                onEdgesChange={handleEdgesChange}
+                onConnect={handleConnect}
                 onConnectStart={onConnectStart}
                 onConnectEnd={onConnectEnd}
-                onNodeClick={(_, node) => { if (isEditable) setSelectedNodeId(node.id); }}
-                onEdgeClick={(_, edge) => { if (isEditable) setSelectedEdgeId(edge.id); }}
+                onNodeClick={(_, node) => setSelectedNodeId(node.id)}
+                onEdgeClick={(_, edge) => setSelectedEdgeId(edge.id)}
                 onPaneClick={() => {
                     setSelectedNodeId(null);
                     setSelectedEdgeId(null);
@@ -239,16 +426,12 @@ const FlowContents = () => {
                 fitView
             >
                 <Background color="#aaa" gap={20} variant="dots" />
-                {/* 컨트롤(줌인/줌아웃) 패널. 게스트일 경우 노드 상호작용 관련 버튼 비활성화 */}
-                <Controls showInteractive={isEditable} />
+                <Controls />
             </ReactFlow>
         </div>
     );
 };
 
-// =============================================
-// FlowArea 래퍼 (ReactFlowProvider 필수)
-// =============================================
 const FlowArea = () => (
     <div style={{ flex: 1, width: '100%', height: '100%', display: 'flex' }}>
         <ReactFlowProvider>
