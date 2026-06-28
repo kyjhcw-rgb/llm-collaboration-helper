@@ -53,5 +53,9 @@ public class TranslationDtos {
         private String fromId;
         private String to;
         private String kind;
+
+        // React Flow의 CustomNode 핸들 ID와 매칭 (top, bottom, left, right)
+        private String sourceHandle;
+        private String targetHandle;
     }
 }

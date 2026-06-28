@@ -34,6 +34,12 @@ public class Block {
     @Column(name = "pos_y")
     private Double posY;
 
+    @Column(name = "width")
+    private Double width;
+
+    @Column(name = "height")
+    private Double height;
+
     @Builder.Default
     @Column(name = "is_deleted", nullable = false)
     private boolean isDeleted = false;
@@ -41,4 +47,6 @@ public class Block {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "last_updated_by")
     private User lastUpdatedBy;
+
+
 }

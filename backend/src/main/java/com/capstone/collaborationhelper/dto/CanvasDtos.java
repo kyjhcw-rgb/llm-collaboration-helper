@@ -43,6 +43,8 @@ public class CanvasDtos {
         private String annotations;
         private Double posX;
         private Double posY;
+        private Double width;
+        private Double height;
     }
 
     @Data
