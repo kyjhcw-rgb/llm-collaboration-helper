@@ -75,16 +75,7 @@ public class CanvasService {
                 if (block == null) {
                     block = Block.builder().project(project).frontendId(dto.getFrontendId()).build();
                 }
-                block.setDeleted(false);
-                block.setParentFrontendId(dto.getParentFrontendId());
-                block.setType(dto.getType());
-                block.setName(dto.getName());
-                block.setDescription(dto.getDescription());
-                block.setParameters(dto.getParameters());
-                block.setReturnType(dto.getReturnType());
-                block.setAnnotations(dto.getAnnotations());
-                block.setPosX(dto.getPosX());
-                block.setPosY(dto.getPosY());
+                applyBlockDto(block, dto);
 
                 blockRepository.save(block);
                 blockMap.remove(dto.getFrontendId());
@@ -107,13 +98,7 @@ public class CanvasService {
                 if (edge == null) {
                     edge = Edge.builder().project(project).frontendId(dto.getFrontendId()).build();
                 }
-                edge.setDeleted(false);
-                edge.setSourceFrontendId(dto.getSourceFrontendId());
-                edge.setTargetFrontendId(dto.getTargetFrontendId());
-                edge.setSourceHandle(dto.getSourceHandle());
-                edge.setTargetHandle(dto.getTargetHandle());
-                edge.setType(dto.getType());
-                edge.setBadgeCount(dto.getBadgeCount());
+                applyEdgeDto(edge, dto);
 
                 edgeRepository.save(edge);
                 edgeMap.remove(dto.getFrontendId());
@@ -211,35 +196,66 @@ public class CanvasService {
         }
     }
 
-    // Entity -> DTO 매핑 헬퍼 메서드
+    // Block / Edge DTO ↔ Entity 매핑
+    private CanvasDtos.BlockDto mapBlockToDto(Block block) {
+        CanvasDtos.BlockDto dto = new CanvasDtos.BlockDto();
+        dto.setFrontendId(block.getFrontendId());
+        dto.setParentFrontendId(block.getParentFrontendId());
+        dto.setType(block.getType());
+        dto.setName(block.getName());
+        dto.setDescription(block.getDescription());
+        dto.setParameters(block.getParameters());
+        dto.setReturnType(block.getReturnType());
+        dto.setAnnotations(block.getAnnotations());
+        dto.setPosX(block.getPosX());
+        dto.setPosY(block.getPosY());
+        dto.setWidth(block.getWidth());
+        dto.setHeight(block.getHeight());
+        return dto;
+    }
+
+    private CanvasDtos.EdgeDto mapEdgeToDto(Edge edge) {
+        CanvasDtos.EdgeDto dto = new CanvasDtos.EdgeDto();
+        dto.setFrontendId(edge.getFrontendId());
+        dto.setSourceFrontendId(edge.getSourceFrontendId());
+        dto.setTargetFrontendId(edge.getTargetFrontendId());
+        dto.setSourceHandle(edge.getSourceHandle());
+        dto.setTargetHandle(edge.getTargetHandle());
+        dto.setType(edge.getType());
+        dto.setBadgeCount(edge.getBadgeCount());
+        return dto;
+    }
+
+    private void applyBlockDto(Block block, CanvasDtos.BlockDto dto) {
+        block.setDeleted(false);
+        block.setParentFrontendId(dto.getParentFrontendId());
+        block.setType(dto.getType());
+        block.setName(dto.getName());
+        block.setDescription(dto.getDescription());
+        block.setParameters(dto.getParameters());
+        block.setReturnType(dto.getReturnType());
+        block.setAnnotations(dto.getAnnotations());
+        block.setPosX(dto.getPosX());
+        block.setPosY(dto.getPosY());
+        block.setWidth(dto.getWidth());
+        block.setHeight(dto.getHeight());
+    }
+
+    private void applyEdgeDto(Edge edge, CanvasDtos.EdgeDto dto) {
+        edge.setDeleted(false);
+        edge.setSourceFrontendId(dto.getSourceFrontendId());
+        edge.setTargetFrontendId(dto.getTargetFrontendId());
+        edge.setSourceHandle(dto.getSourceHandle());
+        edge.setTargetHandle(dto.getTargetHandle());
+        edge.setType(dto.getType());
+        edge.setBadgeCount(dto.getBadgeCount());
+    }
+
     private List<CanvasDtos.BlockDto> mapBlocksToDto(List<Block> blocks) {
-        return blocks.stream().map(b -> {
-            CanvasDtos.BlockDto dto = new CanvasDtos.BlockDto();
-            dto.setFrontendId(b.getFrontendId());
-            dto.setParentFrontendId(b.getParentFrontendId());
-            dto.setType(b.getType());
-            dto.setName(b.getName());
-            dto.setDescription(b.getDescription());
-            dto.setParameters(b.getParameters());
-            dto.setReturnType(b.getReturnType());
-            dto.setAnnotations(b.getAnnotations());
-            dto.setPosX(b.getPosX());
-            dto.setPosY(b.getPosY());
-            return dto;
-        }).collect(Collectors.toList());
+        return blocks.stream().map(this::mapBlockToDto).collect(Collectors.toList());
     }
 
     private List<CanvasDtos.EdgeDto> mapEdgesToDto(List<Edge> edges) {
-        return edges.stream().map(e -> {
-            CanvasDtos.EdgeDto dto = new CanvasDtos.EdgeDto();
-            dto.setFrontendId(e.getFrontendId());
-            dto.setSourceFrontendId(e.getSourceFrontendId());
-            dto.setTargetFrontendId(e.getTargetFrontendId());
-            dto.setSourceHandle(e.getSourceHandle());
-            dto.setTargetHandle(e.getTargetHandle());
-            dto.setType(e.getType());
-            dto.setBadgeCount(e.getBadgeCount());
-            return dto;
-        }).collect(Collectors.toList());
+        return edges.stream().map(this::mapEdgeToDto).collect(Collectors.toList());
     }
 }
