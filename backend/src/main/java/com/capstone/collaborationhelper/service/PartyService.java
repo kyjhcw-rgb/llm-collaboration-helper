@@ -49,7 +49,13 @@ public class PartyService {
 
         // Party 테이블을 기준으로 소유자(OWNER) 권한 체크
         assertOwner(project);
-        User inviter = currentUser(); // 나(OWNER)의 정보 가져오기
+
+        // 방어 코드 추가: 초대할 때는 최고 권한인 OWNER 역할을 타인에게 부여할 수 없도록 격리
+        if ("OWNER".equalsIgnoreCase(req.getRole())) {
+            throw new RuntimeException("초대 시 OWNER 권한을 새 멤버에게 직접 부여할 수 없습니다.");
+        }
+
+        User inviter = currentUser(); // 나(OWNER)의 정보 가져오기 가져오기
 
         User targetUser = userRepository.findByEmail(req.getEmail())
                 .orElseThrow(() -> new RuntimeException("초대하려는 유저를 찾을 수 없습니다."));
@@ -96,6 +102,11 @@ public class PartyService {
 
         if ("OWNER".equals(targetParty.getRole())) {
             throw new RuntimeException("소유자의 권한은 변경할 수 없습니다.");
+        }
+
+        // 방어 코드 추가: 역할 수정 단에서도 타 멤버를 OWNER 권한으로 임명하는 것을 원천 차단
+        if ("OWNER".equalsIgnoreCase(req.getRole())) {
+            throw new RuntimeException("다른 멤버를 다중 소유자(OWNER)로 격상시킬 수 없습니다.");
         }
 
         targetParty.setRole(req.getRole());

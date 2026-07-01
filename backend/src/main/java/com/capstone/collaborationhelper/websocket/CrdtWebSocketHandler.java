@@ -61,7 +61,6 @@ public class CrdtWebSocketHandler extends BinaryWebSocketHandler {
 
         String email = jwtTokenProvider.getEmail(token);
 
-        // Party 테이블이 권한의 유일한 기준
         Party party = partyRepository.findByProject_IdAndUser_Email(projectId, email).orElse(null);
 
         if (party == null) {
@@ -70,9 +69,11 @@ public class CrdtWebSocketHandler extends BinaryWebSocketHandler {
             return;
         }
 
-        String role = party.getRole(); // OWNER, MEMBER, GUEST
+        String role = party.getRole();
+        Integer userId = party.getUser().getId(); // 최적화: 매번 DB를 조회하지 않도록 userId 추출
 
         session.getAttributes().put("email", email);
+        session.getAttributes().put("userId", userId); // 세션에 캐싱
         session.getAttributes().put("role", role);
 
         projectSessions.computeIfAbsent(projectId, k -> new CopyOnWriteArrayList<>()).add(session);
@@ -83,10 +84,9 @@ public class CrdtWebSocketHandler extends BinaryWebSocketHandler {
     @Override
     protected void handleBinaryMessage(WebSocketSession session, BinaryMessage message) throws Exception {
         String role = (String) session.getAttributes().get("role");
-        String email = (String) session.getAttributes().get("email"); // 추가: 세션에서 이메일 꺼내기
+        Integer userId = (Integer) session.getAttributes().get("userId"); // 캐싱된 ID 가져오기
 
         if ("GUEST".equalsIgnoreCase(role)) {
-            log.warn("Guest 유저({})의 다이어그램 수정 시도가 차단되었습니다.", email);
             return;
         }
 
@@ -97,8 +97,8 @@ public class CrdtWebSocketHandler extends BinaryWebSocketHandler {
 
         broadcastUpdate(projectId, session, updateData);
 
-        // 누가 편집했는지 DB에 남기기 위해 email도 함께 넘김
-        crdtService.saveCrdtLog(projectId, email, updateData);
+        // 🚀 성능 저하를 막기 위해 email 대신 DB 쿼리를 생략할 수 있는 userId를 넘깁니다.
+        crdtService.saveCrdtLog(projectId, userId, updateData);
     }
 
     @Override

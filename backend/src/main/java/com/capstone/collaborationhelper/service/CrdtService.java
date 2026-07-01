@@ -21,19 +21,16 @@ public class CrdtService {
     private final UserRepository userRepository;
 
     @Transactional
-    public void saveCrdtLog(Integer projectId, String email, byte[] updateData) {
-        // 1. 프로젝트 확인
-        Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new RuntimeException("프로젝트를 찾을 수 없습니다."));
+    public void saveCrdtLog(Integer projectId, Integer userId, byte[] updateData) {
 
-        // 2. 유저(수정자) 확인
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("유저를 찾을 수 없습니다."));
+        // N+1 해결: findById가 아니라 getReferenceById(프록시)를 사용
+        // 이렇게 하면 SELECT 쿼리를 날리지 않고 INSERT문에 외래키(FK) 숫자만 바로 집어넣어 압도적으로 빠름
+        Project projectProxy = projectRepository.getReferenceById(projectId);
+        User userProxy = userRepository.getReferenceById(userId);
 
-        // 3. 로그 테이블에 저장 (user_id 포함)
         ProjectCrdtLog logEntry = ProjectCrdtLog.builder()
-                .project(project)
-                .user(user)               // DB의 user_id FK 매핑
+                .project(projectProxy)
+                .user(userProxy)
                 .updateData(updateData)
                 .build();
 

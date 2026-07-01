@@ -25,14 +25,15 @@ public class CanvasService {
     private final ProjectVersionRepository versionRepository;
     private final ObjectMapper objectMapper;
 
-    // [보안을 위한 Repository 추가]
+    // [보안 및 정리를 위한 Repository 추가]
     private final UserRepository userRepository;
     private final PartyRepository partyRepository;
+    private final ProjectCrdtLogRepository crdtLogRepository;
 
     // [Read] 라이브(현재 작업 중인) 상태 불러오기
     @Transactional(readOnly = true)
     public CanvasDtos.SyncRes loadLiveCanvas(Integer projectId) {
-        assertPartyMember(projectId); // 멤버 여부만 확인 (GUEST도 읽기 가능)
+        assertPartyMember(projectId);
         List<Block> blocks = blockRepository.findByProjectIdAndIsDeletedFalse(projectId);
         List<Edge> edges = edgeRepository.findByProjectIdAndIsDeletedFalse(projectId);
         return new CanvasDtos.SyncRes(mapBlocksToDto(blocks), mapEdgesToDto(edges));
@@ -41,7 +42,7 @@ public class CanvasService {
     // [Read] 과거의 특정 박제 버전 불러오기
     @Transactional(readOnly = true)
     public CanvasDtos.SyncRes loadVersionCanvas(Integer projectId, Integer versionNumber) {
-        assertPartyMember(projectId); // GUEST도 읽기 가능
+        assertPartyMember(projectId);
         ProjectVersion version = versionRepository.findByProjectIdAndVersionNumber(projectId, versionNumber)
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 버전입니다."));
 
@@ -55,10 +56,12 @@ public class CanvasService {
     // [Update] 라이브 스냅샷 동기화
     @Transactional
     public void syncLiveCanvas(Integer projectId, CanvasDtos.SyncReq req) {
+        // 1. 동기화를 시작하는 현재 시간을 기록합니다. (데이터 증발 방지용)
+        ZonedDateTime syncStartTime = ZonedDateTime.now();
+
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 프로젝트입니다."));
 
-        // [보안 로직 추가] GUEST는 저장(동기화)할 수 없음
         assertNotGuest(projectId);
 
         project.setUpdatedAt(ZonedDateTime.now());
@@ -91,10 +94,12 @@ public class CanvasService {
             }
         }
 
-        blockMap.values().stream().filter(b -> !b.isDeleted()).forEach(b -> {
-            b.setDeleted(true);
-            blockRepository.save(b);
-        });
+        // 최적화: N+1 삭제 쿼리 방지를 위해 saveAll() 벌크 처리
+        List<Block> blocksToDelete = blockMap.values().stream()
+                .filter(b -> !b.isDeleted())
+                .peek(b -> b.setDeleted(true))
+                .collect(Collectors.toList());
+        blockRepository.saveAll(blocksToDelete);
 
         // 2. Edge UPSERT 및 논리적 삭제 처리
         List<Edge> existingEdges = edgeRepository.findByProjectId(projectId);
@@ -119,10 +124,16 @@ public class CanvasService {
                 edgeMap.remove(dto.getFrontendId());
             }
         }
-        edgeMap.values().stream().filter(e -> !e.isDeleted()).forEach(e -> {
-            e.setDeleted(true);
-            edgeRepository.save(e);
-        });
+
+        // 최적화: Edge 역시 saveAll() 벌크 처리로 수정
+        List<Edge> edgesToDelete = edgeMap.values().stream()
+                .filter(e -> !e.isDeleted())
+                .peek(e -> e.setDeleted(true))
+                .collect(Collectors.toList());
+        edgeRepository.saveAll(edgesToDelete);
+
+        // 2. 최종 정리: 무조건 다 지우지 말고, 아까 기록해둔 시간 '이전'의 로그만 지워서 찰나의 유실을 막습니다.
+        crdtLogRepository.deleteByProjectIdAndCreatedAtBefore(projectId, syncStartTime);
     }
 
     // [Create] 통일된 버전 박제 (Commit)
@@ -131,7 +142,6 @@ public class CanvasService {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 프로젝트입니다."));
 
-        // [보안 로직 추가] GUEST는 버전을 저장할 수 없음
         assertNotGuest(projectId);
 
         CanvasDtos.SyncRes currentState = loadLiveCanvas(projectId);
@@ -160,7 +170,7 @@ public class CanvasService {
     // 버전 히스토리 리스트 반환
     @Transactional(readOnly = true)
     public List<CanvasDtos.VersionDto> getVersionHistory(Integer projectId) {
-        assertPartyMember(projectId); // 조회는 프로젝트 멤버 누구나 가능
+        assertPartyMember(projectId);
         return versionRepository.findByProjectIdOrderByVersionNumberDesc(projectId).stream()
                 .map(v -> new CanvasDtos.VersionDto(v.getVersionNumber(), v.getCommitMessage(), v.getCreatedAt().toString()))
                 .collect(Collectors.toList());
@@ -169,7 +179,6 @@ public class CanvasService {
     // 특정 과거 버전 삭제
     @Transactional
     public void deleteSpecificVersion(Integer projectId, Integer versionNumber) {
-        // [보안 로직 추가] 삭제 등 민감한 작업은 OWNER 권한만 허용
         assertOwner(projectId);
 
         versionRepository.findByProjectIdAndVersionNumber(projectId, versionNumber)
@@ -194,7 +203,7 @@ public class CanvasService {
     }
 
     private void assertPartyMember(Integer projectId) {
-        getMyPartyInfo(projectId); // 예외가 안 터지면 멤버임
+        getMyPartyInfo(projectId);
     }
 
     private void assertNotGuest(Integer projectId) {
@@ -211,7 +220,6 @@ public class CanvasService {
         }
     }
 
-    // Entity -> DTO 매핑 헬퍼 메서드
     private List<CanvasDtos.BlockDto> mapBlocksToDto(List<Block> blocks) {
         return blocks.stream().map(b -> {
             CanvasDtos.BlockDto dto = new CanvasDtos.BlockDto();

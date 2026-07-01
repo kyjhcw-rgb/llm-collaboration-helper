@@ -16,11 +16,12 @@ import java.util.Optional;
 @Repository
 public interface PartyRepository extends JpaRepository<Party, Integer> {
 
-    // 1. 유저 기준 참여 목록 조회
+    // 1. 유저 기준 참여 목록 조회 (N+1 문제 해결을 위해 project를 EntityGraph로 함께 묶어 페치 조인 처리)
+    @EntityGraph(attributePaths = {"project"})
     List<Party> findByUser(User user);
 
     // 2. 프로젝트 기준 참여 멤버 조회 (N+1 방지를 위해 user를 EntityGraph로 묶음)
-    @EntityGraph(attributePaths = {"user"}) // 👈 1번에서 2번으로 이동
+    @EntityGraph(attributePaths = {"user"})
     List<Party> findByProject(Project project);
 
     // 3. 프로젝트 엔티티와 유저 엔티티로 관계 조회 (권한 체크용)
@@ -32,7 +33,7 @@ public interface PartyRepository extends JpaRepository<Party, Integer> {
     // 5. 웹소켓 JWT 토큰(email 기반) 인증 및 권한 확인용 메서드
     Optional<Party> findByProject_IdAndUser_Email(Integer projectId, String email);
 
-    // 6. 벌크 연산을 이용한 일괄 삭제 최적화 (쿼리 1번만 나감)
+    // 6. 벌크 연산을 이용한 일괄 삭제 최적화 (ProjectService에서 삭제되어 이제 실질적으로 미사용)
     @Modifying
     @Query("delete from Party p where p.project = :project")
     void deleteByProject(@Param("project") Project project);
