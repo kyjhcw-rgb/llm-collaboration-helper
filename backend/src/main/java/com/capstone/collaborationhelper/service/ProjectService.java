@@ -11,6 +11,7 @@ import com.capstone.collaborationhelper.entity.User;
 import com.capstone.collaborationhelper.repository.PartyRepository;
 import com.capstone.collaborationhelper.repository.ProjectRepository;
 import com.capstone.collaborationhelper.repository.UserRepository;
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -36,6 +37,9 @@ public class ProjectService {
     private final CanvasService canvasService;
     private final TranslationService translationService;
     private final LlmClient llmClient;
+
+    // 추가: DB 제약조건 오류를 우회하여 초고속 벌크 삭제를 수행하기 위한 의존성 주입
+    private final EntityManager entityManager;
 
     @Transactional(readOnly = true)
     public List<Res> getlist() {
@@ -86,7 +90,7 @@ public class ProjectService {
                 .role(ROLE_OWNER)
                 .build());
 
-        /*try {
+        try {
             log.info("▶ [ProjectService] LlmClient를 통해 AI 다이어그램 생성을 요청합니다.");
             DiagramRes diagram = llmClient.requestInitialDiagram(req);
 
@@ -99,7 +103,7 @@ public class ProjectService {
         } catch (Exception e) {
             log.error("❌ [ProjectService] AI 초기 다이어그램 생성 및 연동 실패: ", e);
             throw new RuntimeException("초기 아키텍처 다이어그램 생성에 실패하여 프로젝트 생성이 취소되었습니다.", e);
-        }*/
+        }
 
         return Res.from(project, ROLE_OWNER);
     }
@@ -142,8 +146,17 @@ public class ProjectService {
 
         assertOwner(project);
 
-        // [해결] DB 스키마에 ON DELETE CASCADE 제약 조건이 걸려 있으므로 부모만 삭제하면 됨
-        // 영속성 컨텍스트 쓰기 지연과 벌크 연산 간의 타이밍 꼬임 현상을 막기 위해 기존의 partyRepository.deleteByProject 코드를 완전히 삭제
+        // 핵심 해결: 실제 DB에 ON DELETE CASCADE가 반영되지 않은 상태를 방어하기 위한 'JPQL 벌크 삭제'
+        // JPA 캐시를 거치지 않고 DB에 직접 DELETE 쿼리를 날리므로 N+1 문제 없이 빛의 속도로 지워집니다.
+        entityManager.createQuery("DELETE FROM Party p WHERE p.project.id = :id").setParameter("id", id).executeUpdate();
+        entityManager.createQuery("DELETE FROM Block b WHERE b.project.id = :id").setParameter("id", id).executeUpdate();
+        entityManager.createQuery("DELETE FROM Edge e WHERE e.project.id = :id").setParameter("id", id).executeUpdate();
+        entityManager.createQuery("DELETE FROM ProjectCrdtLog c WHERE c.project.id = :id").setParameter("id", id).executeUpdate();
+        entityManager.createQuery("DELETE FROM ProjectVersion v WHERE v.project.id = :id").setParameter("id", id).executeUpdate();
+
+        // (※ 만약 다른 자식 테이블을 추가로 생성하면 똑같이 한 줄 추가하면됨)
+
+        // 자식 데이터가 모두 깔끔하게 지워졌으므로 이제 안전하게 부모(Project)를 삭제
         projectRepository.delete(project);
     }
 

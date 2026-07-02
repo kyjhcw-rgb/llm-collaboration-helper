@@ -2,6 +2,8 @@ package com.capstone.collaborationhelper.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
 
 @Entity
 @Getter @Setter @Builder @NoArgsConstructor @AllArgsConstructor
@@ -11,6 +13,7 @@ public class Block {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "project_id")
+    @OnDelete(action = OnDeleteAction.CASCADE) // DB 스키마 꼬임 방지
     private Project project;
 
     @Column(name = "frontend_id", nullable = false)
