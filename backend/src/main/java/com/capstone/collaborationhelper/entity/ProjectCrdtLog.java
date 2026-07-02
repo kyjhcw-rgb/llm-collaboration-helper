@@ -2,7 +2,8 @@ package com.capstone.collaborationhelper.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
-
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
 import java.time.LocalDateTime;
 
 @Entity
@@ -20,6 +21,7 @@ public class ProjectCrdtLog {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "project_id", nullable = false)
+    @OnDelete(action = OnDeleteAction.CASCADE) // DB 스키마 꼬임 방지
     private Project project;
 
     @ManyToOne(fetch = FetchType.LAZY)

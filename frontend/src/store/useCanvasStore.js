@@ -156,6 +156,7 @@ const ynodesMap = ydoc.getMap('nodes');
 const yedgesMap = ydoc.getMap('edges');
 let ws = null;
 let syncDebounceTimer = null;
+let ydocUpdateHandler = null; // 추가: 이벤트 리스너 해제를 위한 참조 변수
 
 export const useCanvasStore = create((set, get) => ({
     projectName: '',
@@ -202,6 +203,11 @@ export const useCanvasStore = create((set, get) => ({
 
         if (ws) ws.close();
 
+        // 수정: 기존에 등록된 update 이벤트 리스너가 있다면 제거하여 중복 증식을 막음
+        if (ydocUpdateHandler) {
+            ydoc.off('update', ydocUpdateHandler);
+        }
+
         const targetUrl = `ws://localhost:8080/ws/crdt/${projectId}?token=${token}`;
         ws = new WebSocket(targetUrl);
         ws.binaryType = 'arraybuffer';
@@ -213,9 +219,21 @@ export const useCanvasStore = create((set, get) => ({
             Y.applyUpdate(ydoc, update, 'remote');
         };
 
-        ws.onclose = () => console.log('웹소켓 연결이 종료되었습니다.');
+        // 추가: 비정상 종료 시 자동 재연결 방어 로직
+        ws.onclose = () => {
+            console.log('웹소켓 연결이 종료되었습니다.');
+            if (get().currentProjectId !== null) {
+                console.warn('비정상적으로 연결이 끊어졌습니다. 3초 뒤 재연결을 시도합니다...');
+                setTimeout(() => {
+                    if (get().currentProjectId !== null) {
+                        get().initWebSocket(projectId, token, role);
+                    }
+                }, 3000);
+            }
+        };
 
-        ydoc.on('update', (update, origin) => {
+        // 수정: 익명 함수 대신 기명 함수(핸들러)로 정의하여 등록
+        ydocUpdateHandler = (update, origin) => {
             if (origin !== 'remote' && ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(update);
             }
@@ -231,7 +249,9 @@ export const useCanvasStore = create((set, get) => ({
                     get().saveProjectToServer();
                 }, 3000);
             }
-        });
+        };
+
+        ydoc.on('update', ydocUpdateHandler);
     },
 
     disconnectWebSocket: () => {
@@ -239,14 +259,18 @@ export const useCanvasStore = create((set, get) => ({
             ws.close();
             ws = null;
         }
+        // 소켓을 끊을 때 이벤트 리스너와 타이머도 확실히 정리
+        if (ydocUpdateHandler) {
+            ydoc.off('update', ydocUpdateHandler);
+            ydocUpdateHandler = null;
+        }
+        clearTimeout(syncDebounceTimer);
     },
 
     resetProject: () => {
         localStorage.removeItem('canvas-storage');
-        if (ws) {
-            ws.close();
-            ws = null;
-        }
+        get().disconnectWebSocket(); // 통합 호출
+
         ydoc.transact(() => {
             ynodesMap.clear();
             yedgesMap.clear();

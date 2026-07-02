@@ -2,9 +2,15 @@ package com.capstone.collaborationhelper.repository;
 
 import com.capstone.collaborationhelper.entity.ProjectCrdtLog;
 import org.springframework.data.jpa.repository.JpaRepository;
-import java.util.List;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import java.time.ZonedDateTime;
 
-public interface ProjectCrdtLogRepository extends JpaRepository<ProjectCrdtLog, Long> {
-    // 프로젝트 입장 시 기존에 쌓인 로그를 불러오기 위한 쿼리
-    List<ProjectCrdtLog> findAllByProjectIdOrderByCreatedAtAsc(Integer projectId); // 여기도 Integer
+public interface ProjectCrdtLogRepository extends JpaRepository<ProjectCrdtLog, Integer> {
+
+    // Race Condition 방지: 특정 시간(syncTime) 이전에 생성된 로그만 안전하게 벌크 삭제
+    @Modifying
+    @Query("delete from ProjectCrdtLog p where p.project.id = :projectId and p.createdAt <= :syncTime")
+    void deleteByProjectIdAndCreatedAtBefore(@Param("projectId") Integer projectId, @Param("syncTime") ZonedDateTime syncTime);
 }

@@ -36,7 +36,8 @@ export default function ProjectListPage() {
         // 1. 스토어에 현재 선택된 프로젝트 ID 셋팅
         useCanvasStore.setState({
             currentProjectId: project.id,
-            projectName: project.title
+            projectName: project.title,
+            userRole: project.myRole
         });
 
         // 2. 백엔드에서 해당 프로젝트의 캔버스(다이어그램) 데이터 로드 (단절 구간 해결)

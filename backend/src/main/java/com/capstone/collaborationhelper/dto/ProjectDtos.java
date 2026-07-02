@@ -38,6 +38,7 @@ public class ProjectDtos {
         private String diagramState;
         private ZonedDateTime createdAt;
         private ZonedDateTime updatedAt;
+        private String myRole;
 
         public static Res from(Project p) {
             return Res.builder()
@@ -50,6 +51,19 @@ public class ProjectDtos {
                     .diagramState(p.getDiagramState())
                     .createdAt(p.getCreatedAt())
                     .updatedAt(p.getUpdatedAt())
+                    .build();
+        }
+
+        // 권한(Role) 정보까지 한 번에 담아서 생성하는 오버로딩 메서드 추가
+        public static Res from(Project project, String myRole) {
+            return Res.builder()
+                    .id(project.getId())
+                    .title(project.getTitle())
+                    .framework(project.getFramework())
+                    .freedomLevel(project.getFreedomLevel())
+                    .descriptionPrompt(project.getDescriptionPrompt())
+                    .diagramState(project.getDiagramState())
+                    .myRole(myRole)
                     .build();
         }
     }

@@ -11,6 +11,7 @@ import com.capstone.collaborationhelper.entity.User;
 import com.capstone.collaborationhelper.repository.PartyRepository;
 import com.capstone.collaborationhelper.repository.ProjectRepository;
 import com.capstone.collaborationhelper.repository.UserRepository;
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -37,28 +38,35 @@ public class ProjectService {
     private final TranslationService translationService;
     private final LlmClient llmClient;
 
+    // 추가: DB 제약조건 오류를 우회하여 초고속 벌크 삭제를 수행하기 위한 의존성 주입
+    private final EntityManager entityManager;
+
     @Transactional(readOnly = true)
     public List<Res> getlist() {
         User me = currentUser();
+
         return partyRepository.findByUser(me).stream()
-                .map(Party::getProject)
-                .collect(Collectors.toMap(
-                        Project::getId,
-                        p -> p,
-                        (a, b) -> a,
-                        LinkedHashMap::new))
-                .values().stream()
-                .sorted(Comparator.comparing(Project::getUpdatedAt, Comparator.nullsLast(Comparator.naturalOrder())).reversed())
-                .map(Res::from)
+                // 1. 프로젝트 최신 수정일 기준 정렬
+                .sorted(Comparator.comparing(
+                        (Party party) -> party.getProject().getUpdatedAt(),
+                        Comparator.nullsLast(Comparator.naturalOrder())
+                ).reversed())
+                // 2. 새로 만든 팩토리 메서드를 사용하여 Project와 Role을 한 번에 결합
+                .map(party -> Res.from(party.getProject(), party.getRole()))
                 .toList();
     }
-
+    
     @Transactional(readOnly = true)
     public Res getById(Integer id) {
         Project project = projectRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("프로젝트를 찾을 수 없습니다."));
-        assertPartyMember(project);
-        return Res.from(project);
+
+        // 권한 충돌 방지: 단건 조회 시에도 조회하려는 유저의 정확한 Role 정보를 함께 실어 보냄
+        User me = currentUser();
+        Party myParty = partyRepository.findByProjectAndUser(project, me)
+                .orElseThrow(() -> new RuntimeException("이 프로젝트에 접근할 권한이 없습니다."));
+
+        return Res.from(project, myParty.getRole());
     }
 
     @Transactional
@@ -97,7 +105,7 @@ public class ProjectService {
             throw new RuntimeException("초기 아키텍처 다이어그램 생성에 실패하여 프로젝트 생성이 취소되었습니다.", e);
         }
 
-        return Res.from(project);
+        return Res.from(project, ROLE_OWNER);
     }
 
     @Transactional
@@ -123,7 +131,12 @@ public class ProjectService {
             project.setDiagramState(req.getDiagramState());
         }
 
-        return Res.from(project);
+        // 업데이트 이후 프론트엔드 갱신 데이터에서 권한이 날아가지 않도록 기존 Role을 재조회하여 함께 응답
+        User me = currentUser();
+        Party myParty = partyRepository.findByProjectAndUser(project, me)
+                .orElseThrow(() -> new RuntimeException("이 프로젝트에 접근할 권한이 없습니다."));
+
+        return Res.from(project, myParty.getRole());
     }
 
     @Transactional
@@ -133,7 +146,17 @@ public class ProjectService {
 
         assertOwner(project);
 
-        partyRepository.deleteByProject(project);
+        // 핵심 해결: 실제 DB에 ON DELETE CASCADE가 반영되지 않은 상태를 방어하기 위한 'JPQL 벌크 삭제'
+        // JPA 캐시를 거치지 않고 DB에 직접 DELETE 쿼리를 날리므로 N+1 문제 없이 빛의 속도로 지워집니다.
+        entityManager.createQuery("DELETE FROM Party p WHERE p.project.id = :id").setParameter("id", id).executeUpdate();
+        entityManager.createQuery("DELETE FROM Block b WHERE b.project.id = :id").setParameter("id", id).executeUpdate();
+        entityManager.createQuery("DELETE FROM Edge e WHERE e.project.id = :id").setParameter("id", id).executeUpdate();
+        entityManager.createQuery("DELETE FROM ProjectCrdtLog c WHERE c.project.id = :id").setParameter("id", id).executeUpdate();
+        entityManager.createQuery("DELETE FROM ProjectVersion v WHERE v.project.id = :id").setParameter("id", id).executeUpdate();
+
+        // (※ 만약 다른 자식 테이블을 추가로 생성하면 똑같이 한 줄 추가하면됨)
+
+        // 자식 데이터가 모두 깔끔하게 지워졌으므로 이제 안전하게 부모(Project)를 삭제
         projectRepository.delete(project);
     }
 
