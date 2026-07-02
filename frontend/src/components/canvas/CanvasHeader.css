@@ -39,7 +39,24 @@
     transition: transform 0.2s;
     cursor: pointer;
 }
+.sync-btn, .commit-btn, .delete-version-btn {
+    padding: 5px 10px;
+    color: #fff;
+    border:  none;
+    border-radius: 5px;
+    cursor: 'pointer';
+    font-size: 13px;
+}
+.sync-btn {
+    background-color: #8ab1ff;}
 
+.delete-version-btn {
+    background-color: #e74c3c;
+}
+
+.commit-btn {
+    background-color: #018303;
+}
 .member-avatar:hover {
     transform: translateY(-3px);
     z-index: 10;

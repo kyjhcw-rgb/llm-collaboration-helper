@@ -153,7 +153,7 @@ const CanvasHeader = () => {
                         <button className="delete-version-btn" onClick={() => {
                             if (window.confirm(`정말 버전 ${currentVersion}을 삭제하시겠습니까?`)) deleteVersionFromServer(currentVersion);
                         }}
-                                style={{ marginLeft: '10px', backgroundColor: '#ff4d4f', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '14px' }}>
+                                >
                             버전 삭제
                         </button>
                     )}
@@ -162,8 +162,8 @@ const CanvasHeader = () => {
                 <div className="action-buttons" style={{ display: 'flex', gap: '8px', marginLeft: '15px' }}>
                     {userRole !== 'GUEST' && (
                         <>
-                            <button className="sync-btn" onClick={handleLiveSync} style={{ padding: '6px 12px', cursor: 'pointer' }}>라이브 동기화</button>
-                            <button className="commit-btn" onClick={handleCommit} style={{ padding: '6px 12px', backgroundColor: '#4CAF50', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>버전 박제 (Commit)</button>
+                            <button className="sync-btn" onClick={handleLiveSync}>라이브 동기화</button>
+                            <button className="commit-btn" onClick={handleCommit}>버전 박제 (Commit)</button>
                         </>
                     )}
                 </div>
