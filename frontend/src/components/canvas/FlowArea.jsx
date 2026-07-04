@@ -1,5 +1,5 @@
 import React, { useCallback, useRef } from 'react';
-import ReactFlow, { Background, Controls, applyNodeChanges, applyEdgeChanges, useReactFlow, ReactFlowProvider, ConnectionMode, useStore, getSmoothStepPath } from 'reactflow';
+import ReactFlow, { Background, Controls, applyNodeChanges, applyEdgeChanges, useReactFlow, ReactFlowProvider, ConnectionMode, getSmoothStepPath } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useCanvasStore, recalculateContainerSizes, LAYOUT } from '../../store/useCanvasStore';
 import './FlowArea.css';
@@ -8,8 +8,6 @@ import CustomEdge from './CustomEdge';
 
 const nodeTypes = { custom: CustomNode };
 const edgeTypes = { custom: CustomEdge };
-
-const OFFSET_BY_TYPE = { feature: 176, class: 252, method: 301 };
 
 const VALID_PARENT_TYPES = {
     method: ['class', 'feature'],
@@ -25,12 +23,10 @@ function getAbsolutePosition(nodeId, nodesMap) {
     return { x: parentAbs.x + node.position.x, y: parentAbs.y + node.position.y };
 }
 
-// 드래그된 블록이 유효한 부모와 겹치는지 확인 (중심점이 아닌 면적 겹침 사용)
-// → 부모 경계 바깥에 살짝 걸쳐 놓아도 감지되어 부모가 자동으로 커짐
 function findBestParent(draggedNode, allNodes, validParentTypes, nodesMap) {
     const absPos = getAbsolutePosition(draggedNode.id, nodesMap);
-    const dw = draggedNode.style?.width || 150;
-    const dh = draggedNode.style?.height || 50;
+    const dw = draggedNode.width || draggedNode.style?.width || 150;
+    const dh = draggedNode.height || draggedNode.style?.height || 50;
 
     let best = null;
     let bestZ = -1;
@@ -40,10 +36,9 @@ function findBestParent(draggedNode, allNodes, validParentTypes, nodesMap) {
         if (!validParentTypes.includes(node.data?.type)) continue;
 
         const p = getAbsolutePosition(node.id, nodesMap);
-        const pw = node.style?.width || 400;
-        const ph = node.style?.height || 300;
+        const pw = node.width || node.style?.width || 400;
+        const ph = node.height || node.style?.height || 300;
 
-        // 사각형 겹침 여부 (1px 이상 겹치면 부모로 인식)
         const overlapX = Math.min(absPos.x + dw, p.x + pw) - Math.max(absPos.x, p.x);
         const overlapY = Math.min(absPos.y + dh, p.y + ph) - Math.max(absPos.y, p.y);
 
@@ -55,19 +50,56 @@ function findBestParent(draggedNode, allNodes, validParentTypes, nodesMap) {
     return best;
 }
 
-function CustomConnectionLine({ fromX, fromY, toX, toY, fromPosition, toPosition }) {
-    const connectionNodeId = useStore((state) => state.connectionNodeId);
-    const nodes = useCanvasStore((state) => state.nodes);
-    const sourceNode = nodes.find((n) => n.id === connectionNodeId);
-    const sourceType = sourceNode?.data?.type || 'method';
-    const OFFSET = OFFSET_BY_TYPE[sourceType] ?? 0;
+// C: 이동된 노드와 겹치는 형제를 DOWN/RIGHT로만 밀어냄 (clamp 재충돌 없음, idempotent).
+// 반환: { nodes: 수정된 배열, affectedIds: 실제로 밀린 형제 ID 집합 }
+function resolveOverlaps(nodes, movedNodeId) {
+    const movedNode = nodes.find(n => n.id === movedNodeId);
+    if (!movedNode || !movedNode.parentNode) return { nodes, affectedIds: new Set() };
 
+    const mW = movedNode.width || movedNode.style?.width || 150;
+    const mH = movedNode.height || movedNode.style?.height || 50;
+    const siblings = nodes.filter(n => n.parentNode === movedNode.parentNode && n.id !== movedNodeId);
+
+    let result = [...nodes];
+    const affectedIds = new Set();
+
+    for (const sib of siblings) {
+        const cm = result.find(n => n.id === movedNodeId);
+        const cs = result.find(n => n.id === sib.id);
+        if (!cm || !cs) continue;
+
+        const sW = cs.width || cs.style?.width || 150;
+        const sH = cs.height || cs.style?.height || 50;
+
+        const overlapX = Math.min(cm.position.x + mW, cs.position.x + sW) - Math.max(cm.position.x, cs.position.x);
+        const overlapY = Math.min(cm.position.y + mH, cs.position.y + sH) - Math.max(cm.position.y, cs.position.y);
+
+        if (overlapX <= 0 || overlapY <= 0) continue;
+
+        if (overlapX < overlapY) {
+            const newX = cs.position.x <= cm.position.x
+                ? cm.position.x + mW + LAYOUT.PADDING
+                : cs.position.x + overlapX;
+            result = result.map(n => n.id !== sib.id ? n : { ...n, position: { x: newX, y: n.position.y } });
+        } else {
+            const newY = cs.position.y <= cm.position.y
+                ? cm.position.y + mH + LAYOUT.PADDING
+                : cs.position.y + overlapY;
+            result = result.map(n => n.id !== sib.id ? n : { ...n, position: { x: n.position.x, y: newY } });
+        }
+        affectedIds.add(sib.id);
+    }
+
+    return { nodes: result, affectedIds };
+}
+
+function CustomConnectionLine({ fromX, fromY, toX, toY, fromPosition, toPosition }) {
     const [path] = getSmoothStepPath({
         sourceX: fromX,
-        sourceY: fromY + OFFSET,
+        sourceY: fromY,
         sourcePosition: fromPosition,
         targetX: toX,
-        targetY: toY + OFFSET,
+        targetY: toY,
         targetPosition: toPosition,
         borderRadius: 10,
     });
@@ -87,132 +119,174 @@ const FlowContents = () => {
     const edges = useCanvasStore((state) => state.edges);
     const connectingHandleRef = useRef(null);
 
+    // ─── handleNodesChange ───────────────────────────────────────────────────
+    // drag 중 position 반영 + select/dimensions 배치 layout 보존 + 삭제 처리만 담당.
+    // drag end 후처리(reparenting/clamp/overlap/recalc)는 onNodeDragStop으로 이전.
     const handleNodesChange = useCallback((changes) => {
         const state = useCanvasStore.getState();
         if (state.userRole === 'GUEST') return;
 
         let nextNodes = applyNodeChanges(changes, state.nodes);
-
-        // 2단계 전파 후처리: method→class(expandParent)가 class 크기를 키운 후,
-        // class→feature 전파는 ReactFlow가 자동 처리 못할 수 있으므로 수동으로 보정
-        const nodesMapAfter = new Map(nextNodes.map(n => [n.id, n]));
-        let didGrow = false;
-        for (const node of nextNodes) {
-            if (!node.parentNode) continue;
-            const parent = nodesMapAfter.get(node.parentNode);
-            if (!parent) continue;
-            const nW = node.width || node.style?.width || 150;
-            const nH = node.height || node.style?.height || 50;
-            const childRight = node.position.x + nW + LAYOUT.PADDING;
-            const childBottom = node.position.y + nH + LAYOUT.PADDING;
-            const pW = parent.width || parent.style?.width || 400;
-            const pH = parent.height || parent.style?.height || 300;
-            if (childRight > pW || childBottom > pH) {
-                const newW = Math.max(pW, childRight);
-                const newH = Math.max(pH, childBottom);
-                nodesMapAfter.set(parent.id, {
-                    ...parent,
-                    width: newW,
-                    height: newH,
-                    style: { ...parent.style, width: newW, height: newH },
-                });
-                didGrow = true;
-            }
-        }
-        if (didGrow) nextNodes = [...nodesMapAfter.values()];
-
         let nextEdges = state.edges;
         let edgesChanged = false;
-        let needsRecalc = false;
 
-        changes.forEach((change) => {
+        for (const change of changes) {
             if (change.type === 'remove') {
                 nextEdges = nextEdges.filter(
-                    (edge) => edge.source !== change.id && edge.target !== change.id
+                    edge => edge.source !== change.id && edge.target !== change.id
                 );
                 edgesChanged = true;
-                needsRecalc = true;
             }
-        });
+        }
 
-        // 드래그 완료(dragging: false) 시점에 reparenting 처리
-        const dragEndChanges = changes.filter(c => c.type === 'position' && c.dragging === false);
+        // Method 1: select·dimensions 배치는 layout 속성(position·size·parentNode)을
+        // store 현재값으로 보존 → select 배치가 recalc 결과를 덮어쓰지 않음.
+        const hasPositionOrRemove = changes.some(c => c.type === 'position' || c.type === 'remove');
+        if (!hasPositionOrRemove) {
+            const prevMap = new Map(state.nodes.map(n => [n.id, n]));
+            nextNodes = nextNodes.map(n => {
+                const prev = prevMap.get(n.id);
+                if (!prev) return n;
+                return { ...prev, selected: n.selected, dragging: n.dragging };
+            });
+            state.setNodes(nextNodes);
+            return;
+        }
 
-        for (const change of dragEndChanges) {
-            const draggedNode = nextNodes.find(n => n.id === change.id);
-            if (!draggedNode) continue;
+        // 노드 삭제 시 컨테이너 크기 재계산
+        if (changes.some(c => c.type === 'remove')) {
+            nextNodes = recalculateContainerSizes(nextNodes);
+        }
 
-            const validParentTypes = VALID_PARENT_TYPES[draggedNode.data?.type] || [];
-            if (validParentTypes.length === 0) continue;
+        state.setNodes(nextNodes);
+        if (edgesChanged) state.setEdges(nextEdges);
+    }, []);
+
+    // ─── handleNodeDragStop ──────────────────────────────────────────────────
+    // React Flow v11의 신뢰할 수 있는 drag end 신호.
+    // 이 시점에 store.nodes에는 드래그 중 position 변화가 이미 반영돼 있음.
+    // 후처리: D(면적겹침) → B(clamp) → reparenting → C(resolveOverlaps) → A(recalc)
+    const handleNodeDragStop = useCallback((event, draggedNode) => {
+        const state = useCanvasStore.getState();
+        if (state.userRole === 'GUEST') return;
+
+        // 멀티셀렉트: selected인 노드 전체를 드래그 대상으로 포함
+        const draggedIds = new Set(
+            state.nodes
+                .filter(n => n.selected || n.id === draggedNode.id)
+                .map(n => n.id)
+        );
+
+        let nextNodes = [...state.nodes];
+
+        for (const nodeId of draggedIds) {
+            const node = nextNodes.find(n => n.id === nodeId);
+            if (!node) continue;
+
+            const validParentTypes = VALID_PARENT_TYPES[node.data?.type] || [];
+            if (validParentTypes.length === 0) continue; // feature는 reparenting 없음
 
             const nodesMap = new Map(nextNodes.map(n => [n.id, n]));
-            const absPos = getAbsolutePosition(draggedNode.id, nodesMap);
-            const dw = draggedNode.style?.width || 150;
-            const dh = draggedNode.style?.height || 50;
-            const currentParentId = draggedNode.parentNode;
+            const absPos = getAbsolutePosition(node.id, nodesMap);
+            const dw = node.width || node.style?.width || 150;
+            const dh = node.height || node.style?.height || 50;
+            const currentParentId = node.parentNode;
 
             if (currentParentId) {
                 const curParent = nodesMap.get(currentParentId);
                 if (curParent) {
                     const parentAbs = getAbsolutePosition(currentParentId, nodesMap);
-                    const pw = curParent.style?.width || 400;
-                    const cx = absPos.x + dw / 2;
-                    const cy = absPos.y + dh / 2;
+                    const pw = curParent.width || curParent.style?.width || 400;
+                    const ph = curParent.height || curParent.style?.height || 300;
 
-                    const staysInParent =
-                        cx >= parentAbs.x && cx <= parentAbs.x + pw &&
-                        cy >= parentAbs.y + LAYOUT.HEADER_HEIGHT;
+                    // D: 면적 겹침이 조금이라도 있으면 부모 안에 유지
+                    const overlapX = Math.min(absPos.x + dw, parentAbs.x + pw) - Math.max(absPos.x, parentAbs.x);
+                    const overlapY = Math.min(absPos.y + dh, parentAbs.y + ph) - Math.max(absPos.y, parentAbs.y);
 
-                    if (staysInParent) {
-                        needsRecalc = true;
+                    if (overlapX > 0 && overlapY > 0) {
+                        // B: 위/왼쪽 경계 초과 시에만 clamp (아래/오른쪽은 A가 부모를 확장)
+                        const clampedX = Math.max(LAYOUT.PADDING, node.position.x);
+                        const clampedY = Math.max(LAYOUT.HEADER_HEIGHT, node.position.y);
+                        if (clampedX !== node.position.x || clampedY !== node.position.y) {
+                            nextNodes = nextNodes.map(n => n.id !== nodeId ? n : {
+                                ...n,
+                                position: { x: clampedX, y: clampedY }
+                            });
+                        }
                         continue;
                     }
                 }
 
+                // 현재 부모와 면적 겹침 없음 → 새 부모 탐색 또는 완전 분리
+                const nodesMapCurrent = new Map(nextNodes.map(n => [n.id, n]));
                 const otherNodes = nextNodes.filter(n => n.id !== currentParentId);
-                const bestParent = findBestParent(draggedNode, otherNodes, validParentTypes, nodesMap);
+                const bestParent = findBestParent(node, otherNodes, validParentTypes, nodesMapCurrent);
 
                 if (bestParent) {
-                    const siblings = nextNodes.filter(n => n.parentNode === bestParent.id && n.id !== draggedNode.id);
-                    const newY = siblings.length > 0
-                        ? Math.max(...siblings.map(s => s.position.y + (s.style?.height || 50))) + LAYOUT.PADDING
-                        : LAYOUT.HEADER_HEIGHT + 8;
-                    nextNodes = nextNodes.map(n => n.id !== draggedNode.id ? n : {
+                    const newParentAbs = getAbsolutePosition(bestParent.id, nodesMapCurrent);
+                    const relX = Math.max(LAYOUT.PADDING, absPos.x - newParentAbs.x);
+                    let relY = Math.max(LAYOUT.HEADER_HEIGHT, absPos.y - newParentAbs.y);
+                    for (const sib of nextNodes.filter(n => n.parentNode === bestParent.id && n.id !== nodeId && draggedIds.has(n.id))) {
+                        const sH = sib.height || sib.style?.height || 50;
+                        if (Math.min(relY + dh, sib.position.y + sH) - Math.max(relY, sib.position.y) > 0) {
+                            relY = sib.position.y + sH + LAYOUT.PADDING;
+                        }
+                    }
+                    nextNodes = nextNodes.map(n => n.id !== nodeId ? n : {
                         ...n,
                         parentNode: bestParent.id,
-                        position: { x: LAYOUT.PADDING, y: newY },
+                        position: { x: relX, y: relY },
                     });
                 } else {
-                    nextNodes = nextNodes.map(n => n.id !== draggedNode.id ? n :
+                    // 완전 탈출 → 자유 노드 (절대좌표로 전환, parentNode 제거)
+                    nextNodes = nextNodes.map(n => n.id !== nodeId ? n :
                         { ...n, parentNode: undefined, position: absPos }
                     );
-                    needsRecalc = true;
                 }
-                needsRecalc = true;
                 continue;
             }
 
-            const bestParent = findBestParent(draggedNode, nextNodes, validParentTypes, nodesMap);
+            // 부모 없는 노드가 drag 후 부모 위에 드롭된 경우
+            const nodesMapFresh = new Map(nextNodes.map(n => [n.id, n]));
+            const bestParent = findBestParent(node, nextNodes, validParentTypes, nodesMapFresh);
             if (bestParent) {
-                const siblings = nextNodes.filter(n => n.parentNode === bestParent.id && n.id !== draggedNode.id);
-                const newY = siblings.length > 0
-                    ? Math.max(...siblings.map(s => s.position.y + (s.style?.height || 50))) + LAYOUT.PADDING
-                    : LAYOUT.HEADER_HEIGHT + 8;
-                nextNodes = nextNodes.map(n => n.id !== draggedNode.id ? n : {
+                const newParentAbs = getAbsolutePosition(bestParent.id, nodesMapFresh);
+                const relX = Math.max(LAYOUT.PADDING, absPos.x - newParentAbs.x);
+                let relY = Math.max(LAYOUT.HEADER_HEIGHT, absPos.y - newParentAbs.y);
+                for (const sib of nextNodes.filter(n => n.parentNode === bestParent.id && n.id !== nodeId && draggedIds.has(n.id))) {
+                    const sH = sib.height || sib.style?.height || 50;
+                    if (Math.min(relY + dh, sib.position.y + sH) - Math.max(relY, sib.position.y) > 0) {
+                        relY = sib.position.y + sH + LAYOUT.PADDING;
+                    }
+                }
+                nextNodes = nextNodes.map(n => n.id !== nodeId ? n : {
                     ...n,
                     parentNode: bestParent.id,
-                    position: { x: LAYOUT.PADDING, y: newY },
+                    position: { x: relX, y: relY },
                 });
-                needsRecalc = true;
             }
         }
 
-        if (needsRecalc) nextNodes = recalculateContainerSizes(nextNodes);
-
-        // 💡 핵심: 변경된 상태를 store에 세팅하여 Yjs 웹소켓으로 자동 동기화되게 함 (HEAD의 Yjs 동기화 보존)
+        // C: 이동 노드 기준 형제 겹침 해소 (DOWN/RIGHT only → idempotent)
+        const siblingAffectedIds = new Set();
+        for (const movedId of draggedIds) {
+            const { nodes: newNodes, affectedIds } = resolveOverlaps(nextNodes, movedId);
+            nextNodes = newNodes;
+            for (const id of affectedIds) siblingAffectedIds.add(id);
+        }
+        // 밀린 형제만 선택적 clamp — 가만히 있는 자식은 절대 건드리지 않음
+        if (siblingAffectedIds.size > 0) {
+            nextNodes = nextNodes.map(n => {
+                if (!siblingAffectedIds.has(n.id)) return n;
+                const cx = Math.max(LAYOUT.PADDING, n.position.x);
+                const cy = Math.max(LAYOUT.HEADER_HEIGHT, n.position.y);
+                return (cx === n.position.x && cy === n.position.y) ? n
+                    : { ...n, position: { x: cx, y: cy } };
+            });
+        }
+        // A: 컨테이너 크기 재계산 (bottom-up, position 불변, idempotent)
+        nextNodes = recalculateContainerSizes(nextNodes);
         state.setNodes(nextNodes);
-        if (edgesChanged) state.setEdges(nextEdges);
-
     }, []);
 
     const handleEdgesChange = useCallback((chs) => {
@@ -367,7 +441,6 @@ const FlowContents = () => {
         if (validParentTypes.length > 0) {
             const bestParent = findBestParent(newNode, state.nodes, validParentTypes, nodesMap);
             if (bestParent) {
-                // 사이드바에서 드롭 시: 기존 자식들 아래에 쌓아서 배치
                 const siblings = state.nodes.filter(n => n.parentNode === bestParent.id);
                 const newY = siblings.length > 0
                     ? Math.max(...siblings.map(s => s.position.y + (s.style?.height || 50))) + LAYOUT.PADDING
@@ -382,7 +455,6 @@ const FlowContents = () => {
         }
 
         state.setNodes(recalculateContainerSizes([...state.nodes, finalNode]));
-
     }, [screenToFlowPosition]);
 
     return (
@@ -423,6 +495,7 @@ const FlowContents = () => {
                 onConnect={handleConnect}
                 onConnectStart={onConnectStart}
                 onConnectEnd={onConnectEnd}
+                onNodeDragStop={handleNodeDragStop}
                 onNodeClick={(_, node) => setSelectedNodeId(node.id)}
                 onEdgeClick={(_, edge) => setSelectedEdgeId(edge.id)}
                 onPaneClick={() => {

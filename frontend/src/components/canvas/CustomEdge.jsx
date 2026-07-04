@@ -1,12 +1,6 @@
 import React from 'react';
 import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath } from 'reactflow';
 
-const OFFSET_BY_TYPE = {
-    feature: 176,
-    class:   252,
-    method:  301,
-};
-
 export default function CustomEdge({
     id,
     sourceX, sourceY,
@@ -16,15 +10,12 @@ export default function CustomEdge({
     data,
     selected
 }) {
-    const sourceNodeType = data?.sourceNodeType || 'method';
-    const OFFSET = OFFSET_BY_TYPE[sourceNodeType] ?? 0;
-
     const [edgePath, labelX, labelY] = getSmoothStepPath({
         sourceX,
-        sourceY: sourceY + OFFSET,
+        sourceY,
         sourcePosition,
         targetX,
-        targetY: targetY + OFFSET,
+        targetY,
         targetPosition,
         borderRadius: 10
     });

@@ -1,10 +1,12 @@
+import { mockCanvasResponse } from '../mock/mockCanvasData';
+
 import { create } from 'zustand';
 import * as Y from 'yjs';
 import { request } from '../api/http'
 // import { persist } from 'zustand/middleware';
 // import { temporal } from 'zundo';
 
-export const LAYOUT = { HEADER_HEIGHT: 36, PADDING: 16 };
+export const LAYOUT = { HEADER_HEIGHT: 36, PADDING: 16, FEATURE_GAP: 150 };
 
 const DEFAULT_SIZES = {
     feature: { w: 400, h: 300 },
@@ -12,8 +14,9 @@ const DEFAULT_SIZES = {
     method:  { w: 150, h: 50  },
 };
 
-// 자식 블록이 부모 경계를 넘을 때만 부모를 키우고,
-// 자식이 빠지면 type 기본 크기로 복귀 (강제 스택 없음 — 자유 배치 유지)
+// feature/class 컨테이너 크기를 자식 bounding box에 맞게 조정.
+// 규칙: 아래/오른쪽으로만 확장, position은 절대 수정하지 않음(idempotent).
+// method 등 리프 노드는 건드리지 않음(NodeResizer 결과 보존).
 export function recalculateContainerSizes(nodes) {
     const nodeMap = new Map(nodes.map(n => [n.id, { ...n, style: { ...n.style } }]));
     const childrenMap = new Map();
@@ -31,25 +34,44 @@ export function recalculateContainerSizes(nodes) {
         if (processed.has(nodeId)) return;
         processed.add(nodeId);
 
-        const children = childrenMap.get(nodeId) || [];
-        for (const childId of children) processNode(childId);
+        const childIds = childrenMap.get(nodeId) || [];
+        for (const childId of childIds) processNode(childId);
 
         const node = nodeMap.get(nodeId);
         if (!node) return;
 
-        const def = DEFAULT_SIZES[node.data?.type] || { w: 400, h: 300 };
+        // 리프 노드(method 등)는 건드리지 않음 — 사용자 resize 보존
+        const nodeType = node.data?.type;
+        if (nodeType !== 'feature' && nodeType !== 'class') return;
 
-        // 자식 없으면 기본 크기로 복귀, 있으면 자식 위치/크기 기준으로 최솟값 계산
-        let neededW = def.w;
-        let neededH = def.h;
-        for (const child of children.map(id => nodeMap.get(id)).filter(Boolean)) {
-            neededW = Math.max(neededW, child.position.x + (child.style?.width  || 150) + PADDING);
-            neededH = Math.max(neededH, child.position.y + (child.style?.height || 50)  + PADDING);
+        const def = DEFAULT_SIZES[nodeType] || { w: 400, h: 300 };
+
+        // 자식 없는 컨테이너는 기본 크기로 복귀
+        if (childIds.length === 0) {
+            nodeMap.set(nodeId, {
+                ...node,
+                width: def.w,
+                height: def.h,
+                style: { ...node.style, width: def.w, height: def.h },
+            });
+            return;
         }
 
-        // width/height 최상위 프로퍼티도 함께 설정:
-        // ReactFlow는 DOM 측정(ResizeObserver) 대신 이 값을 즉시 내부 계산에 사용하므로
-        // style.height만 바꾸면 생기는 1프레임 지연으로 인한 자식 좌표 오류를 방지함
+        // 자식들의 오른쪽/아래쪽 끝을 기준으로 최솟값 계산 (position 불변)
+        // width/height를 .width → .style.width → DEFAULT 순으로 참조해 일관성 보장
+        let neededW = def.w;
+        let neededH = def.h;
+        for (const childId of childIds) {
+            const child = nodeMap.get(childId);
+            if (!child) continue;
+            const cw = child.width || child.style?.width || DEFAULT_SIZES[child.data?.type]?.w || 150;
+            const ch = child.height || child.style?.height || DEFAULT_SIZES[child.data?.type]?.h || 50;
+            neededW = Math.max(neededW, child.position.x + cw + PADDING);
+            neededH = Math.max(neededH, child.position.y + ch + PADDING);
+        }
+
+        // .width/.height 와 style.width/height 를 항상 동기화:
+        // ReactFlow는 ResizeObserver 대신 이 값을 즉시 내부 계산에 사용함
         nodeMap.set(nodeId, {
             ...node,
             width: neededW,
@@ -127,8 +149,10 @@ function fixOverlapsAndRecalculate(nodes) {
                 const childH = childNode.style?.height || childDef.h;
                 const childW = childNode.style?.width || childDef.w;
 
-                nodeMap.set(child.id, { ...childNode, position: { x: PADDING, y: currentY } });
-                neededW = Math.max(neededW, PADDING + childW + PADDING);
+                const childType = childNode.data?.type;
+                const childX = childType === 'class' ? PADDING + 56 : childType === 'method' ? PADDING + 32 : PADDING + 8;
+                nodeMap.set(child.id, { ...childNode, position: { x: childX, y: currentY } });
+                neededW = Math.max(neededW, childX + childW + PADDING);
                 currentY += childH + PADDING;
             }
             neededH = Math.max(def.h, currentY);
@@ -145,7 +169,125 @@ function fixOverlapsAndRecalculate(nodes) {
     }
 
     for (const node of nodes) processNode(node.id);
+
+    // 최상위 노드(feature 등) 수평 겹침 감지 → FEATURE_GAP으로 자동 배치
+    // 겹침 없으면 유저가 직접 배치한 위치 보존
+    const { FEATURE_GAP } = LAYOUT;
+    const roots = [...nodeMap.values()].filter(n => !n.parentNode);
+    let hasHorizOverlap = false;
+    outerLoop: for (let i = 0; i < roots.length; i++) {
+        for (let j = i + 1; j < roots.length; j++) {
+            const a = nodeMap.get(roots[i].id), b = nodeMap.get(roots[j].id);
+            const aW = a.width || a.style?.width || DEFAULT_SIZES.feature.w;
+            const bW = b.width || b.style?.width || DEFAULT_SIZES.feature.w;
+            if (Math.min(a.position.x + aW, b.position.x + bW) - Math.max(a.position.x, b.position.x) > 0) {
+                hasHorizOverlap = true;
+                break outerLoop;
+            }
+        }
+    }
+    if (hasHorizOverlap) {
+        const sorted = [...roots].sort((a, b) => a.position.x - b.position.x);
+        let curX = 0;
+        for (const node of sorted) {
+            const n = nodeMap.get(node.id);
+            const nW = n.width || n.style?.width || DEFAULT_SIZES.feature.w;
+            nodeMap.set(node.id, { ...n, position: { x: curX, y: n.position.y } });
+            curX += nW + FEATURE_GAP;
+        }
+    }
+
     return [...nodeMap.values()];
+}
+
+// RF v11은 nodes 배열 순서대로 positionAbsolute를 누적 계산하므로
+// 부모가 자식보다 반드시 앞에 와야 한다. 위상 정렬(DFS).
+function sortNodesParentFirst(nodes) {
+    const nodeMap = new Map(nodes.map(n => [n.id, n]));
+    const sorted = [];
+    const visited = new Set();
+    function visit(id) {
+        if (visited.has(id)) return;
+        visited.add(id);
+        const node = nodeMap.get(id);
+        if (!node) return;
+        if (node.parentNode) visit(node.parentNode);
+        sorted.push(node);
+    }
+    for (const node of nodes) visit(node.id);
+    return sorted;
+}
+
+// Yjs Y.Map은 삽입 순서를 보장하지 않고 positionAbsolute도 없으므로
+// RF에 넘기기 전에 반드시 직접 계산해서 주입해야 한다.
+// RF가 positionAbsolute를 받으면 내부 재계산 없이 그대로 사용한다.
+function computePositionAbsolute(nodes) {
+    const nodeMap = new Map(nodes.map(n => [n.id, n]));
+    const cache = new Map();
+    function getAbs(id) {
+        if (cache.has(id)) return cache.get(id);
+        const node = nodeMap.get(id);
+        if (!node) { cache.set(id, { x: 0, y: 0 }); return { x: 0, y: 0 }; }
+        const abs = node.parentNode
+            ? { x: getAbs(node.parentNode).x + node.position.x, y: getAbs(node.parentNode).y + node.position.y }
+            : { x: node.position.x, y: node.position.y };
+        cache.set(id, abs);
+        return abs;
+    }
+    return nodes.map(n => ({ ...n, positionAbsolute: getAbs(n.id) }));
+}
+
+// 서버 응답 형식({ blocks, edges }) → React Flow 노드/엣지 변환
+// loadProjectFromServer 와 loadMockData 양쪽에서 재사용
+function parseCanvasData(data) {
+    const nodes = (data.blocks || []).map(block => {
+        let nodeClass = 'canvas-node method-node';
+        let initialWidth = 150, initialHeight = 50, zIndex = 30;
+
+        if (block.type === 'feature') {
+            nodeClass = 'canvas-node feature-node';
+            initialWidth = 400; initialHeight = 300; zIndex = 10;
+        } else if (block.type === 'class') {
+            nodeClass = 'canvas-node class-node';
+            initialWidth = 250; initialHeight = 150; zIndex = 20;
+        }
+
+        return {
+            id: block.frontendId,
+            parentNode: block.parentFrontendId || undefined,
+            type: 'custom',
+            position: { x: block.posX || 0, y: block.posY || 0 },
+            width: initialWidth,
+            height: initialHeight,
+            className: nodeClass,
+            style: { width: initialWidth, height: initialHeight, zIndex },
+            data: {
+                label: block.name,
+                type: block.type,
+                name: block.name,
+                description: block.description || '',
+                parameters: block.parameters || '',
+                returnType: block.returnType || '',
+                annotations: block.annotations || ''
+            }
+        };
+    });
+
+    const edges = (data.edges || []).map(edge => ({
+        id: edge.frontendId,
+        source: edge.sourceFrontendId,
+        target: edge.targetFrontendId,
+        sourceHandle: edge.sourceHandle || null,
+        targetHandle: edge.targetHandle || null,
+        type: 'custom',
+        zIndex: 9999,
+        data: {
+            type: edge.type || 'call',
+            badgeCount: edge.badgeCount || 1
+        }
+    }));
+
+    return { nodes, edges };
 }
 
 // ==========================================
@@ -212,7 +354,7 @@ export const useCanvasStore = create((set, get) => ({
         ws = new WebSocket(targetUrl);
         ws.binaryType = 'arraybuffer';
 
-        ws.onopen = () => console.log(`📡 웹소켓 연결 완료: 프로젝트 ID = ${projectId}, 내 권한 = ${role}`);
+        ws.onopen = () => {};
 
         ws.onmessage = (event) => {
             const update = new Uint8Array(event.data);
@@ -221,9 +363,7 @@ export const useCanvasStore = create((set, get) => ({
 
         // 추가: 비정상 종료 시 자동 재연결 방어 로직
         ws.onclose = () => {
-            console.log('웹소켓 연결이 종료되었습니다.');
             if (get().currentProjectId !== null) {
-                console.warn('비정상적으로 연결이 끊어졌습니다. 3초 뒤 재연결을 시도합니다...');
                 setTimeout(() => {
                     if (get().currentProjectId !== null) {
                         get().initWebSocket(projectId, token, role);
@@ -239,7 +379,7 @@ export const useCanvasStore = create((set, get) => ({
             }
 
             set({
-                nodes: Array.from(ynodesMap.values()),
+                nodes: computePositionAbsolute(sortNodesParentFirst(Array.from(ynodesMap.values()))),
                 edges: Array.from(yedgesMap.values())
             });
 
@@ -345,55 +485,8 @@ export const useCanvasStore = create((set, get) => ({
                 : `/projects/${projectId}/canvas`;
 
             const data = await request(url, { method: "GET" });
-
-            const nodes = (data.blocks || []).map(block => {
-                let nodeClass = 'canvas-node method-node';
-                let initialWidth = 150, initialHeight = 50, zIndex = 30;
-
-                if (block.type === 'feature') {
-                    nodeClass = 'canvas-node feature-node';
-                    initialWidth = 400; initialHeight = 300; zIndex = 10;
-                } else if (block.type === 'class') {
-                    nodeClass = 'canvas-node class-node';
-                    initialWidth = 250; initialHeight = 150; zIndex = 20;
-                }
-
-                return {
-                    id: block.frontendId,
-                    parentNode: block.parentFrontendId || undefined,
-                    type: 'custom',
-                    position: { x: block.posX || 0, y: block.posY || 0 },
-                    width: initialWidth,
-                    height: initialHeight,
-                    className: nodeClass,
-                    style: { width: initialWidth, height: initialHeight, zIndex: zIndex },
-                    data: {
-                        label: block.name,
-                        type: block.type,
-                        name: block.name,
-                        description: block.description || '',
-                        parameters: block.parameters || '',
-                        returnType: block.returnType || '',
-                        annotations: block.annotations || ''
-                    }
-                };
-            });
-
-            const edges = (data.edges || []).map(edge => ({
-                id: edge.frontendId,
-                source: edge.sourceFrontendId,
-                target: edge.targetFrontendId,
-                sourceHandle: edge.sourceHandle || null,
-                targetHandle: edge.targetHandle || null,
-                type: 'custom',
-                zIndex: 9999,
-                data: {
-                    type: edge.type || 'call',
-                    badgeCount: edge.badgeCount || 1
-                }
-            }));
-
-            const finalNodes = fixOverlapsAndRecalculate(nodes);
+            const { nodes, edges } = parseCanvasData(data);
+            const finalNodes = sortNodesParentFirst(fixOverlapsAndRecalculate(nodes));
 
             // 초기 로드는 다른 사람에게 뿌리지 않도록 remote 트랜잭션 사용
             ydoc.transact(() => {
@@ -416,6 +509,39 @@ export const useCanvasStore = create((set, get) => ({
             console.error("데이터 로드 실패:", error);
             alert("다이어그램 데이터를 불러오지 못했습니다.");
         }
+    },
+
+    loadMockData: () => {
+        // initWebSocket을 거치지 않으므로 ydocUpdateHandler가 없음.
+        // WebSocket 없이 Yjs → React 상태만 동기화하는 최소 핸들러를 직접 등록.
+        if (ydocUpdateHandler) ydoc.off('update', ydocUpdateHandler);
+        ydocUpdateHandler = () => {
+            set({
+                nodes: computePositionAbsolute(sortNodesParentFirst(Array.from(ynodesMap.values()))),
+                edges: Array.from(yedgesMap.values())
+            });
+        };
+        ydoc.on('update', ydocUpdateHandler);
+
+        const { nodes, edges } = parseCanvasData(mockCanvasResponse);
+        const finalNodes = sortNodesParentFirst(fixOverlapsAndRecalculate(nodes));
+
+        ydoc.transact(() => {
+            ynodesMap.clear();
+            yedgesMap.clear();
+            finalNodes.forEach(node => ynodesMap.set(node.id, node));
+            edges.forEach(edge => yedgesMap.set(edge.id, edge));
+        }, 'remote');
+
+        set({
+            currentProjectId: 'mock-project',
+            currentVersion: 'live',
+            userRole: 'OWNER',
+            availableVersions: [],
+            selectedNodeId: null,
+            selectedEdgeId: null
+        });
+
     },
 
     saveProjectToServer: async () => {
@@ -451,7 +577,6 @@ export const useCanvasStore = create((set, get) => ({
                 method: "POST",
                 body: JSON.stringify({ blocks, edges })
             });
-            console.log("라이브 데이터 스냅샷 동기화 완료");
         } catch (error) {
             console.error("동기화 오류:", error);
         }

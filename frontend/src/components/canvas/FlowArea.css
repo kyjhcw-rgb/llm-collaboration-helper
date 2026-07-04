@@ -9,28 +9,24 @@
     overflow: hidden;
 }
 
+/* ★ 핵심 버그 수정: .react-flow__nodes 컨테이너가 display:flex + align-items:center이어서
+   position:absolute 자식의 top:auto가 (container_h - node_h)/2 (centering 값)으로 계산됨.
+   top:0 left:0 강제로 flex static position centering을 완전히 차단한다.
+   노드 위치는 오직 RF가 inline style로 설정하는 transform:translate(x,y)로만 결정된다. */
+.react-flow__node {
+    top: 0 !important;
+    left: 0 !important;
+}
+
 /* 캔버스 노드 공통 레이아웃 */
 .canvas-node {
-    padding: 10px 15px;
+    display: block !important;
     border-radius: 8px !important;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
     font-size: 16px !important;
     font-weight: bold;
     cursor: pointer;
     transition: box-shadow 0.2s, background-color 0.2s;
     box-sizing: border-box;
-    word-break: break-all;
-    text-align: center;
-}
-
-/*  기능, 클래스는 다른 블록을 담아야 하므로 글자를 좌측 상단으로 보냄 */
-.feature-node, .class-node {
-    align-items: flex-start;
-    justify-content: flex-start;
-    padding: 15px 20px;
 }
 
 /* 기능 노드 (파란색) - 투명도를 줘서 뒤에 깔리게 */
@@ -48,10 +44,17 @@
 }
 
 /* 메소드 노드 (핑크/빨간색) - 제일 위에 올라오므로 불투명하게 유지 */
+/* height는 useCanvasStore.js DEFAULT_SIZES.method.h와 반드시 일치해야 함 (현재 48px) */
 .method-node {
     background-color: #F8CECC !important;
     border: 2px solid #b85450 !important;
     color: #b85450;
+    height: 48px !important;
+    min-height: 48px;
+    max-height: 48px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 
 /* =========================================

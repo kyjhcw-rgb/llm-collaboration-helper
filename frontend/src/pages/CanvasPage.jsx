@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom'; // 💡 useParams 제거
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useCanvasStore } from '../store/useCanvasStore';
 import { request } from '../api/http';
 import FlowArea from '../components/canvas/FlowArea';
@@ -22,13 +22,21 @@ const parseJwt = (token) => {
 };
 
 export default function CanvasPage() {
-    // URL 파라미터 대신 Zustand 스토어에서 직접 프로젝트 ID를 가져옴
     const currentProjectId = useCanvasStore((state) => state.currentProjectId);
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const isMockMode = searchParams.get('mock') === 'true';
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
         const setupProjectWorkspace = async () => {
+            // ?mock=true 일 때는 백엔드 없이 더미 데이터로 바로 진입
+            if (isMockMode) {
+                useCanvasStore.getState().loadMockData();
+                setIsLoading(false);
+                return;
+            }
+
             // 새로고침 등으로 스토어에 ID가 날아갔을 경우 방어 로직
             if (!currentProjectId) {
                 alert("프로젝트 정보가 없습니다. 목록에서 다시 접속해주세요.");
@@ -74,9 +82,9 @@ export default function CanvasPage() {
         setupProjectWorkspace();
 
         return () => {
-            useCanvasStore.getState().disconnectWebSocket();
+            if (!isMockMode) useCanvasStore.getState().disconnectWebSocket();
         };
-    }, [currentProjectId, navigate]);
+    }, [currentProjectId, navigate, isMockMode]);
 
     if (isLoading) {
         return (

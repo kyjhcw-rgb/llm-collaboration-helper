@@ -46,8 +46,11 @@ const CustomNode = ({ id, data, selected }) => {
             <Handle type="source" position={Position.Right}  id="right"  style={handleStyle(showHandles)} />
 
             <div style={{
-                width: '100%',
-                height: '100%',
+                position: 'absolute',
+                top: isMethod ? 0 : 8,
+                left: isMethod ? 0 : 12,
+                right: 0,
+                bottom: 0,
                 display: 'flex',
                 alignItems: isMethod ? 'center' : 'flex-start',
                 justifyContent: isMethod ? 'center' : 'flex-start',
