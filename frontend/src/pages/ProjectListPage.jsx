@@ -136,14 +136,6 @@ export default function ProjectListPage() {
                                         type="button"
                                         className="edit-btn"
                                         onClick={(e) => handleUpdateProject(e, project)}
-                                        style={{
-                                            padding: '4px 8px',
-                                            backgroundColor: '#4caf50',
-                                            color: 'white',
-                                            border: 'none',
-                                            borderRadius: '4px',
-                                            cursor: 'pointer'
-                                        }}
                                     >
                                         수정
                                     </button>

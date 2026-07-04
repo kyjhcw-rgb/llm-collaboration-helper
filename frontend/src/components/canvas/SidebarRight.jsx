@@ -136,7 +136,7 @@ const SidebarRight = () => {
                                         <button className="save-btn" onClick={handleSaveEdge}>
                                             관계선 저장하기
                                         </button>
-                                        <button className="delete-block-btn" onClick={handleDeleteEdge} style={{ marginTop: '10px', backgroundColor: '#e74c3c', color: 'white' }}>
+                                        <button className="delete-block-btn" onClick={handleDeleteEdge}>
                                             선 삭제하기
                                         </button>
                                     </>
@@ -175,7 +175,7 @@ const SidebarRight = () => {
                                         <button className="save-btn" onClick={handleSaveNode}>
                                             변경사항 저장하기
                                         </button>
-                                        <button className="delete-block-btn" onClick={handleDeleteBlock} style={{ marginTop: '10px', backgroundColor: '#e74c3c', color: 'white' }}>
+                                        <button className="delete-block-btn" onClick={handleDeleteBlock}>
                                             블록 삭제하기
                                         </button>
                                     </>
