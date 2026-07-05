@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.BinaryMessage;
 import org.springframework.web.socket.CloseStatus;
+import org.springframework.web.socket.TextMessage; // 🚀 추가됨
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.BinaryWebSocketHandler;
 
@@ -29,6 +30,25 @@ public class CrdtWebSocketHandler extends BinaryWebSocketHandler {
     private final PartyRepository partyRepository;
 
     private final Map<Integer, CopyOnWriteArrayList<WebSocketSession>> projectSessions = new ConcurrentHashMap<>();
+
+    // 특정 프로젝트 방에 텍스트 명령어 브로드캐스트 (팀원들 화면 강제 새로고침 용도)
+    public void broadcastTextMessage(Integer projectId, String message) {
+        CopyOnWriteArrayList<WebSocketSession> sessions = projectSessions.get(projectId);
+        if (sessions != null) {
+            TextMessage msgToSend = new TextMessage(message);
+            for (WebSocketSession s : sessions) {
+                if (s.isOpen()) {
+                    try {
+                        synchronized (s) {
+                            s.sendMessage(msgToSend);
+                        }
+                    } catch (IOException e) {
+                        log.error("텍스트 메시지 브로드캐스트 실패: {}", e.getMessage());
+                    }
+                }
+            }
+        }
+    }
 
     private Integer extractProjectId(WebSocketSession session) {
         String path = session.getUri().getPath();
@@ -70,10 +90,10 @@ public class CrdtWebSocketHandler extends BinaryWebSocketHandler {
         }
 
         String role = party.getRole();
-        Integer userId = party.getUser().getId(); // 최적화: 매번 DB를 조회하지 않도록 userId 추출
+        Integer userId = party.getUser().getId();
 
         session.getAttributes().put("email", email);
-        session.getAttributes().put("userId", userId); // 세션에 캐싱
+        session.getAttributes().put("userId", userId);
         session.getAttributes().put("role", role);
 
         projectSessions.computeIfAbsent(projectId, k -> new CopyOnWriteArrayList<>()).add(session);
@@ -84,7 +104,7 @@ public class CrdtWebSocketHandler extends BinaryWebSocketHandler {
     @Override
     protected void handleBinaryMessage(WebSocketSession session, BinaryMessage message) throws Exception {
         String role = (String) session.getAttributes().get("role");
-        Integer userId = (Integer) session.getAttributes().get("userId"); // 캐싱된 ID 가져오기
+        Integer userId = (Integer) session.getAttributes().get("userId");
 
         if ("GUEST".equalsIgnoreCase(role)) {
             return;
@@ -97,7 +117,6 @@ public class CrdtWebSocketHandler extends BinaryWebSocketHandler {
 
         broadcastUpdate(projectId, session, updateData);
 
-        // 🚀 성능 저하를 막기 위해 email 대신 DB 쿼리를 생략할 수 있는 userId를 넘깁니다.
         crdtService.saveCrdtLog(projectId, userId, updateData);
     }
 

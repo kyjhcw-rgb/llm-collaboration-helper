@@ -44,7 +44,7 @@ public class CanvasDtos {
         private Double posX;
         private Double posY;
         private Double width;
-        private Double height;
+        private Double height; 
     }
 
     @Data

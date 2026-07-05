@@ -10,6 +10,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Map;
@@ -57,7 +58,7 @@ public class CanvasService {
     @Transactional
     public void syncLiveCanvas(Integer projectId, CanvasDtos.SyncReq req) {
         // 1. 동기화를 시작하는 현재 시간을 기록합니다. (데이터 증발 방지용)
-        ZonedDateTime syncStartTime = ZonedDateTime.now();
+        LocalDateTime syncStartTime = LocalDateTime.now();
 
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 프로젝트입니다."));
@@ -78,7 +79,20 @@ public class CanvasService {
                 if (block == null) {
                     block = Block.builder().project(project).frontendId(dto.getFrontendId()).build();
                 }
-                applyBlockDto(block, dto);
+                block.setDeleted(false);
+                block.setParentFrontendId(dto.getParentFrontendId());
+                block.setType(dto.getType());
+                block.setName(dto.getName());
+                block.setDescription(dto.getDescription());
+                block.setParameters(dto.getParameters());
+                block.setReturnType(dto.getReturnType());
+                block.setAnnotations(dto.getAnnotations());
+                block.setPosX(dto.getPosX());
+                block.setPosY(dto.getPosY());
+
+                // 추가: DTO의 width, height 값을 엔티티에 맵핑하여 DB에 저장
+                block.setWidth(dto.getWidth());
+                block.setHeight(dto.getHeight());
 
                 blockRepository.save(block);
                 blockMap.remove(dto.getFrontendId());
@@ -103,7 +117,13 @@ public class CanvasService {
                 if (edge == null) {
                     edge = Edge.builder().project(project).frontendId(dto.getFrontendId()).build();
                 }
-                applyEdgeDto(edge, dto);
+                edge.setDeleted(false);
+                edge.setSourceFrontendId(dto.getSourceFrontendId());
+                edge.setTargetFrontendId(dto.getTargetFrontendId());
+                edge.setSourceHandle(dto.getSourceHandle());
+                edge.setTargetHandle(dto.getTargetHandle());
+                edge.setType(dto.getType());
+                edge.setBadgeCount(dto.getBadgeCount());
 
                 edgeRepository.save(edge);
                 edgeMap.remove(dto.getFrontendId());
@@ -171,6 +191,30 @@ public class CanvasService {
         log.info("▶ [CanvasService] 프로젝트(ID: {})의 버전(v{})이 삭제되었습니다.", projectId, versionNumber);
     }
 
+    // 과거 버전을 라이브 캔버스로 덮어씌우는 복원 로직
+    @Transactional
+    public void restoreVersion(Integer projectId, Integer versionNumber) {
+        assertOwner(projectId); // 복원은 방장(OWNER)만 가능
+
+        ProjectVersion version = versionRepository.findByProjectIdAndVersionNumber(projectId, versionNumber)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 버전입니다."));
+
+        CanvasDtos.SyncRes snapshot;
+        try {
+            snapshot = objectMapper.readValue(version.getCrdtSnapshot(), CanvasDtos.SyncRes.class);
+        } catch (Exception e) {
+            throw new RuntimeException("과거 스냅샷 데이터를 파싱할 수 없습니다.", e);
+        }
+
+        // 과거 스냅샷 데이터를 현재 Live 상태로 강제 덮어쓰기 (기존 syncLiveCanvas 로직 재활용)
+        CanvasDtos.SyncReq req = new CanvasDtos.SyncReq();
+        req.setBlocks(snapshot.getBlocks());
+        req.setEdges(snapshot.getEdges());
+
+        syncLiveCanvas(projectId, req);
+        log.info("▶ [CanvasService] 프로젝트(ID: {})가 과거 버전(v{})으로 완벽 복원되었습니다.", projectId, versionNumber);
+    }
+
     // ===============================================
     // 권한 체크 및 헬퍼 메서드 모음
     // ===============================================
@@ -205,66 +249,38 @@ public class CanvasService {
         }
     }
 
-    // Block / Edge DTO ↔ Entity 매핑
-    private CanvasDtos.BlockDto mapBlockToDto(Block block) {
-        CanvasDtos.BlockDto dto = new CanvasDtos.BlockDto();
-        dto.setFrontendId(block.getFrontendId());
-        dto.setParentFrontendId(block.getParentFrontendId());
-        dto.setType(block.getType());
-        dto.setName(block.getName());
-        dto.setDescription(block.getDescription());
-        dto.setParameters(block.getParameters());
-        dto.setReturnType(block.getReturnType());
-        dto.setAnnotations(block.getAnnotations());
-        dto.setPosX(block.getPosX());
-        dto.setPosY(block.getPosY());
-        dto.setWidth(block.getWidth());
-        dto.setHeight(block.getHeight());
-        return dto;
-    }
-
-    private CanvasDtos.EdgeDto mapEdgeToDto(Edge edge) {
-        CanvasDtos.EdgeDto dto = new CanvasDtos.EdgeDto();
-        dto.setFrontendId(edge.getFrontendId());
-        dto.setSourceFrontendId(edge.getSourceFrontendId());
-        dto.setTargetFrontendId(edge.getTargetFrontendId());
-        dto.setSourceHandle(edge.getSourceHandle());
-        dto.setTargetHandle(edge.getTargetHandle());
-        dto.setType(edge.getType());
-        dto.setBadgeCount(edge.getBadgeCount());
-        return dto;
-    }
-
-    private void applyBlockDto(Block block, CanvasDtos.BlockDto dto) {
-        block.setDeleted(false);
-        block.setParentFrontendId(dto.getParentFrontendId());
-        block.setType(dto.getType());
-        block.setName(dto.getName());
-        block.setDescription(dto.getDescription());
-        block.setParameters(dto.getParameters());
-        block.setReturnType(dto.getReturnType());
-        block.setAnnotations(dto.getAnnotations());
-        block.setPosX(dto.getPosX());
-        block.setPosY(dto.getPosY());
-        block.setWidth(dto.getWidth());
-        block.setHeight(dto.getHeight());
-    }
-
-    private void applyEdgeDto(Edge edge, CanvasDtos.EdgeDto dto) {
-        edge.setDeleted(false);
-        edge.setSourceFrontendId(dto.getSourceFrontendId());
-        edge.setTargetFrontendId(dto.getTargetFrontendId());
-        edge.setSourceHandle(dto.getSourceHandle());
-        edge.setTargetHandle(dto.getTargetHandle());
-        edge.setType(dto.getType());
-        edge.setBadgeCount(dto.getBadgeCount());
-    }
-
     private List<CanvasDtos.BlockDto> mapBlocksToDto(List<Block> blocks) {
-        return blocks.stream().map(this::mapBlockToDto).collect(Collectors.toList());
+        return blocks.stream().map(b -> {
+            CanvasDtos.BlockDto dto = new CanvasDtos.BlockDto();
+            dto.setFrontendId(b.getFrontendId());
+            dto.setParentFrontendId(b.getParentFrontendId());
+            dto.setType(b.getType());
+            dto.setName(b.getName());
+            dto.setDescription(b.getDescription());
+            dto.setParameters(b.getParameters());
+            dto.setReturnType(b.getReturnType());
+            dto.setAnnotations(b.getAnnotations());
+            dto.setPosX(b.getPosX());
+            dto.setPosY(b.getPosY());
+
+            // 추가: 프론트엔드로 width, height 값도 전달
+            dto.setWidth(b.getWidth());
+            dto.setHeight(b.getHeight());
+            return dto;
+        }).collect(Collectors.toList());
     }
 
     private List<CanvasDtos.EdgeDto> mapEdgesToDto(List<Edge> edges) {
-        return edges.stream().map(this::mapEdgeToDto).collect(Collectors.toList());
+        return edges.stream().map(e -> {
+            CanvasDtos.EdgeDto dto = new CanvasDtos.EdgeDto();
+            dto.setFrontendId(e.getFrontendId());
+            dto.setSourceFrontendId(e.getSourceFrontendId());
+            dto.setTargetFrontendId(e.getTargetFrontendId());
+            dto.setSourceHandle(e.getSourceHandle());
+            dto.setTargetHandle(e.getTargetHandle());
+            dto.setType(e.getType());
+            dto.setBadgeCount(e.getBadgeCount());
+            return dto;
+        }).collect(Collectors.toList());
     }
 }

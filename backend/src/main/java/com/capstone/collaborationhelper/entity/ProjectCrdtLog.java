@@ -31,6 +31,7 @@ public class ProjectCrdtLog {
     @Column(name = "update_data", nullable = false, columnDefinition = "BYTEA")
     private byte[] updateData;
 
-    @Column(name = "created_at", insertable = false, updatable = false)
+    // 수정: insertable = false 를 삭제하여 메모리에서 캡처한 정확한 시간을 넣을 수 있게 함(JPA가 null로 덮어쓰는 것 방지)
+    @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 }

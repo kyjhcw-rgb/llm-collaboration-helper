@@ -2,6 +2,7 @@ package com.capstone.collaborationhelper.controller;
 
 import com.capstone.collaborationhelper.dto.CanvasDtos;
 import com.capstone.collaborationhelper.service.CanvasService;
+import com.capstone.collaborationhelper.websocket.CrdtWebSocketHandler;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -14,6 +15,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class CanvasController {
     private final CanvasService canvasService;
+    private final CrdtWebSocketHandler crdtWebSocketHandler; // 웹소켓 통신을 위한 의존성 주입
 
     // 1. 다이어그램 불러오기 (라이브 최신 상태 or 특정 박제 버전)
     @GetMapping
@@ -53,11 +55,26 @@ public class CanvasController {
     // 5. 특정 버전 삭제
     @DeleteMapping
     public ResponseEntity<?> deleteVersion(
-            @PathVariable Integer projectId,
-            @RequestParam Integer version) {
+            @PathVariable("projectId") Integer projectId,
+            @RequestParam("version") Integer version) {
 
         canvasService.deleteSpecificVersion(projectId, version);
 
         return ResponseEntity.ok(Map.of("message", version + " 버전이 성공적으로 삭제되었습니다."));
+    }
+
+    // 복원 API 추가
+    @PostMapping("/versions/{versionNumber}/restore")
+    public ResponseEntity<?> restoreVersion(
+            @PathVariable("projectId") Integer projectId,
+            @PathVariable("versionNumber") Integer versionNumber) {
+
+        // 1. DB에 과거 데이터를 덮어쓰기 (복원 완료)
+        canvasService.restoreVersion(projectId, versionNumber);
+
+        // 2. 같은 방에 있는 팀원들 화면 강제 새로고침(동기화) 신호 발송
+        crdtWebSocketHandler.broadcastTextMessage(projectId, "FORCE_RELOAD");
+
+        return ResponseEntity.ok(Map.of("message", "해당 버전으로 복원이 완료되었습니다."));
     }
 }

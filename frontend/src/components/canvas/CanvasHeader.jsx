@@ -7,17 +7,18 @@ import { request } from '../../api/http';
 const CanvasHeader = () => {
     const navigate = useNavigate();
 
-    const {
-        currentProjectId,
-        currentVersion,
-        availableVersions,
-        userRole, // 내 권한 (OWNER, MEMBER, GUEST)
-        saveProjectToServer,
-        commitVersionToServer,
-        loadProjectFromServer,
-        loadVersionsFromServer,
-        deleteVersionFromServer
-    } = useCanvasStore();
+    // 수정: 스토어 전체를 가져오지 않고 개별 Selector를 사용하여 헤더 깜빡임 원천 차단
+    const currentProjectId = useCanvasStore((state) => state.currentProjectId);
+    const currentVersion = useCanvasStore((state) => state.currentVersion);
+    const availableVersions = useCanvasStore((state) => state.availableVersions);
+    const userRole = useCanvasStore((state) => state.userRole);
+
+    const saveProjectToServer = useCanvasStore((state) => state.saveProjectToServer);
+    const commitVersionToServer = useCanvasStore((state) => state.commitVersionToServer);
+    const loadProjectFromServer = useCanvasStore((state) => state.loadProjectFromServer);
+    const loadVersionsFromServer = useCanvasStore((state) => state.loadVersionsFromServer);
+    const deleteVersionFromServer = useCanvasStore((state) => state.deleteVersionFromServer);
+    const restoreVersionFromServer = useCanvasStore((state) => state.restoreVersionFromServer);
 
     // 모달 및 멤버 관리 상태
     const [isMemberModalOpen, setIsMemberModalOpen] = useState(false);
@@ -149,13 +150,18 @@ const CanvasHeader = () => {
                             </option>
                         ))}
                     </select>
-                    {availableVersions.length > 0 && userRole === 'OWNER' && (
-                        <button className="delete-version-btn" onClick={() => {
-                            if (window.confirm(`정말 버전 ${currentVersion}을 삭제하시겠습니까?`)) deleteVersionFromServer(currentVersion);
-                        }}
-                                >
-                            버전 삭제
-                        </button>
+                    {/* 과거 버전을 보고 있는 방장에게만 복원/삭제 버튼 표시 */}
+                    {currentVersion !== 'live' && userRole === 'OWNER' && (
+                        <>
+                            <button className="restore-version-btn" onClick={() => restoreVersionFromServer(currentVersion)} style={{ marginLeft: '10px', backgroundColor: '#eab308', color: 'white', border: 'none', borderRadius: '6px', padding: '6px 12px', cursor: 'pointer', fontWeight: 'bold' }}>
+                                이 버전으로 복원
+                            </button>
+                            <button className="delete-version-btn" onClick={() => {
+                                if (window.confirm(`정말 버전 ${currentVersion}을 삭제하시겠습니까?`)) deleteVersionFromServer(currentVersion);
+                            }} style={{ marginLeft: '10px' }}>
+                                버전 삭제
+                            </button>
+                        </>
                     )}
                 </div>
 
