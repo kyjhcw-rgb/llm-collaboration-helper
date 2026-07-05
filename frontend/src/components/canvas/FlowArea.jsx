@@ -1,4 +1,4 @@
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useRef, useState, useMemo } from 'react';
 import ReactFlow, { Background, Controls, applyNodeChanges, applyEdgeChanges, useReactFlow, ReactFlowProvider, ConnectionMode, getSmoothStepPath } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useCanvasStore, recalculateContainerSizes, LAYOUT } from '../../store/useCanvasStore';
@@ -118,6 +118,14 @@ const FlowContents = () => {
     const nodes = useCanvasStore((state) => state.nodes);
     const edges = useCanvasStore((state) => state.edges);
     const connectingHandleRef = useRef(null);
+    const [hoveredEdgeId, setHoveredEdgeId] = useState(null);
+
+    // 표시 전용: Yjs edge 데이터를 건드리지 않고 zIndex만 주입.
+    // 기본 0 → 노드(1~3) 뒤, hover 시 10 → 노드 앞
+    const displayEdges = useMemo(
+        () => edges.map(e => ({ ...e, zIndex: e.id === hoveredEdgeId ? 10 : 0 })),
+        [edges, hoveredEdgeId]
+    );
 
     // ─── handleNodesChange ───────────────────────────────────────────────────
     // drag 중 position 반영 + select/dimensions 배치 layout 보존 + 삭제 처리만 담당.
@@ -483,7 +491,7 @@ const FlowContents = () => {
 
             <ReactFlow
                 nodes={nodes}
-                edges={edges}
+                edges={displayEdges}
                 nodeTypes={nodeTypes}
                 edgeTypes={edgeTypes}
                 connectionLineComponent={CustomConnectionLine}
@@ -498,6 +506,8 @@ const FlowContents = () => {
                 onNodeDragStop={handleNodeDragStop}
                 onNodeClick={(_, node) => setSelectedNodeId(node.id)}
                 onEdgeClick={(_, edge) => setSelectedEdgeId(edge.id)}
+                onEdgeMouseEnter={(_, edge) => setHoveredEdgeId(edge.id)}
+                onEdgeMouseLeave={() => setHoveredEdgeId(null)}
                 onPaneClick={() => {
                     setSelectedNodeId(null);
                     setSelectedEdgeId(null);

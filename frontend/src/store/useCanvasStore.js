@@ -14,6 +14,17 @@ const DEFAULT_SIZES = {
     method:  { w: 150, h: 50  },
 };
 
+// 표시 전용: Yjs 데이터를 건드리지 않고 set() 직전에 주입.
+// feature < class < method 순으로 자식이 부모 위에 렌더링됨.
+// 엣지 기본 zIndex(0)보다 높아 블럭이 엣지 앞에 오며, hover 시 엣지(10)가 블럭 위로 올라옴.
+const TYPE_ZINDEX = { feature: 1, class: 2, method: 3 };
+function injectZIndex(nodes) {
+    return nodes.map(n => ({
+        ...n,
+        style: { ...n.style, zIndex: TYPE_ZINDEX[n.data?.type] ?? 1 }
+    }));
+}
+
 // feature/class 컨테이너 크기를 자식 bounding box에 맞게 조정.
 // 규칙: 아래/오른쪽으로만 확장, position은 절대 수정하지 않음(idempotent).
 // method 등 리프 노드는 건드리지 않음(NodeResizer 결과 보존).
@@ -379,7 +390,7 @@ export const useCanvasStore = create((set, get) => ({
             }
 
             set({
-                nodes: computePositionAbsolute(sortNodesParentFirst(Array.from(ynodesMap.values()))),
+                nodes: injectZIndex(computePositionAbsolute(sortNodesParentFirst(Array.from(ynodesMap.values())))),
                 edges: Array.from(yedgesMap.values())
             });
 
@@ -517,7 +528,7 @@ export const useCanvasStore = create((set, get) => ({
         if (ydocUpdateHandler) ydoc.off('update', ydocUpdateHandler);
         ydocUpdateHandler = () => {
             set({
-                nodes: computePositionAbsolute(sortNodesParentFirst(Array.from(ynodesMap.values()))),
+                nodes: injectZIndex(computePositionAbsolute(sortNodesParentFirst(Array.from(ynodesMap.values())))),
                 edges: Array.from(yedgesMap.values())
             });
         };
