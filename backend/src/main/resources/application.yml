@@ -55,6 +55,10 @@ app:
     url: ${PYTHON_INTERNAL}
     # timeout: 5000 # 필요 시 타임아웃 설정 추가 가능
 
+  # 프론트엔드 URL 환경변수 설정(EmailService에 쓰임)
+  frontend:
+    url: ${FRONTEND_URL}
+
 jwt:
   secret: ${JWT_SECRET}
   expiration: 86400000
