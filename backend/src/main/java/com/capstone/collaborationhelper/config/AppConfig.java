@@ -1,22 +1,34 @@
 package com.capstone.collaborationhelper.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestTemplate;
 
 @Configuration
 public class AppConfig {
 
-    // CanvasService 등에서 JSON <-> Byte 변환 시 사용할 ObjectMapper 빈 등록
     @Bean
     public ObjectMapper objectMapper() {
         return new ObjectMapper();
     }
 
-    // LlmClient에서 FastAPI(AI 서버)와 HTTP 통신을 할 때 사용할 RestTemplate 빈 등록
     @Bean
-    public RestTemplate restTemplate() {
-        return new RestTemplate();
+    public RestTemplate restTemplate(
+            @Value("${app.ai-server.connect-timeout:10000}") int connectTimeoutMs,
+            @Value("${app.ai-server.read-timeout:120000}") int readTimeoutMs) {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(connectTimeoutMs);
+        factory.setReadTimeout(readTimeoutMs);
+        return new RestTemplate(factory);
+    }
+
+    @Bean
+    public TransactionTemplate transactionTemplate(PlatformTransactionManager transactionManager) {
+        return new TransactionTemplate(transactionManager);
     }
 }

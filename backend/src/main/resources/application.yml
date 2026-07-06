@@ -53,7 +53,8 @@ app:
   # AI 서버 설정 (파이썬 서버 주소)
   ai-server:
     url: ${PYTHON_INTERNAL}
-    # timeout: 5000 # 필요 시 타임아웃 설정 추가 가능
+    connect-timeout: 10000   # ms — 연결 타임아웃
+    read-timeout: 120000     # ms — LLM 응답 대기 (2분)
 
 jwt:
   secret: ${JWT_SECRET}

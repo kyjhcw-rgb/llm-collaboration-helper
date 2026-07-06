@@ -1,5 +1,7 @@
 package com.capstone.collaborationhelper.client;
 
+import com.capstone.collaborationhelper.dto.ChatDtos.LlmChatReq;
+import com.capstone.collaborationhelper.dto.ChatDtos.LlmChatRes;
 import com.capstone.collaborationhelper.dto.ProjectDtos.CreateReq;
 import com.capstone.collaborationhelper.dto.TranslationDtos.DiagramRes;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +37,23 @@ public class LlmClient {
         } catch (Exception e) {
             log.error("❌ [LlmClient] FastAPI 서버와 통신 중 에러가 발생했습니다: ", e);
             throw new RuntimeException("AI 다이어그램 생성 서버와의 통신에 실패했습니다.", e);
+        }
+    }
+
+    public String requestProjectChat(LlmChatReq req) {
+        String url = environment.getProperty("app.ai-server.url").replaceAll("/$", "")
+                + "/chat";
+        log.info("▶ [LlmClient] FastAPI AI 서버로 프로젝트 챗봇 요청. url={}", url);
+
+        try {
+            LlmChatRes response = restTemplate.postForObject(url, req, LlmChatRes.class);
+            if (response == null || response.getReply() == null || response.getReply().isBlank()) {
+                throw new RuntimeException("AI 서버로부터 빈 응답을 받았습니다.");
+            }
+            return response.getReply();
+        } catch (Exception e) {
+            log.error("❌ [LlmClient] 프로젝트 챗봇 통신 중 에러가 발생했습니다: ", e);
+            throw new RuntimeException("AI 챗봇 서버와의 통신에 실패했습니다.", e);
         }
     }
 }
