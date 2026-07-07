@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useCanvasStore } from "./store/useCanvasStore";
 import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
+import EditProfileModal from "./pages/EditProfileModal";
 import ProjectListPage from "./pages/ProjectListPage";
 import ProjectCreatePage from "./pages/ProjectCreatePage";
 import CanvasPage from "./pages/CanvasPage";
@@ -35,6 +36,7 @@ export default function App() {
                 <Route path="/" element={<Navigate to="/login" replace />} />
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/signup" element={<SignupPage />} />
+                <Route path="/profile" element={<EditProfileModal />}/>
                 <Route path="/projects" element={<ProjectListPage />} />
                 <Route path="/projects/new" element={<ProjectCreatePage />} />
                 <Route path="/canvas" element={<CanvasPage />} />
