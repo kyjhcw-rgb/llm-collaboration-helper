@@ -3,6 +3,7 @@ package com.capstone.collaborationhelper.service;
 import com.capstone.collaborationhelper.entity.EmailVerification;
 import com.capstone.collaborationhelper.repository.EmailVerificationRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
@@ -17,6 +18,9 @@ public class EmailService {
 
     private final JavaMailSender mailSender;
     private final EmailVerificationRepository emailVerificationRepository;
+
+    @Value("${app.frontend-url}")
+    private String frontendUrl;
 
     @Transactional
     public void sendVerificationEmail(String email) {
@@ -73,8 +77,8 @@ public class EmailService {
                 "안녕하세요!\n\n" +
                         "[%s]님이 회원님을 '%s' 프로젝트의 [%s] 권한으로 초대했습니다.\n\n" +
                         "지금 바로 Our Diagram에 접속하여 팀원들과 다이어그램 협업을 시작해 보세요!\n" +
-                        "접속 링크: http://localhost:3000/projects",
-                inviterNickname, projectName, roleName
+                        "접속 링크: %s/projects",
+                inviterNickname, projectName, roleName, frontendUrl
         );
 
         message.setText(text);

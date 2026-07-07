@@ -25,6 +25,17 @@ function injectZIndex(nodes) {
     }));
 }
 
+// React Flow의 UI 전용 상태(선택, 드래그 상태 등)를 제거하여 Yjs 맵을 깨끗하게 유지하고 무한 통신 스팸을 방지
+function stripUIProps(node) {
+    const { positionAbsolute, selected, dragging, zIndex, ...cleanNode } = node;
+    if (cleanNode.style) {
+        const cleanStyle = { ...cleanNode.style };
+        delete cleanStyle.zIndex;
+        cleanNode.style = cleanStyle;
+    }
+    return cleanNode;
+}
+
 // feature/class 컨테이너 크기를 자식 bounding box에 맞게 조정.
 // 규칙: 아래/오른쪽으로만 확장, position은 절대 수정하지 않음(idempotent).
 // method 등 리프 노드는 건드리지 않음(NodeResizer 결과 보존).
@@ -357,22 +368,19 @@ export const useCanvasStore = create((set, get) => ({
         // [에러 수정] React Flow가 키보드 삭제 등으로 부모를 삭제했지만 자식을 남겨둔 경우,
         // Yjs에 고아 노드가 들어가는 것을 방지하기 위한 이중 방어 로직
         const currentIds = new Set(newNodes.map(n => n.id));
-        const sanitizedNodes = newNodes.map(n => {
-            if (n.parentNode && !currentIds.has(n.parentNode)) {
-                return { ...n, parentNode: undefined };
-            }
-            return n;
-        });
 
         ydoc.transact(() => {
             Array.from(ynodesMap.keys()).forEach(id => {
                 if (!currentIds.has(id)) ynodesMap.delete(id);
             });
-            sanitizedNodes.forEach(n => {
-                const existing = ynodesMap.get(n.id);
-                // 값이 실제로 변경된 노드만 핀포인트로 Yjs에 업데이트하여 무한 스팸 트래픽 방지
-                if (!existing || JSON.stringify(existing) !== JSON.stringify(n)) {
-                    ynodesMap.set(n.id, n);
+            newNodes.forEach(n => {
+                let cleanNode = stripUIProps(n);
+                if (cleanNode.parentNode && !currentIds.has(cleanNode.parentNode)) {
+                    cleanNode = { ...cleanNode, parentNode: undefined };
+                }
+                const existing = ynodesMap.get(cleanNode.id);
+                if (!existing || JSON.stringify(existing) !== JSON.stringify(cleanNode)) {
+                    ynodesMap.set(cleanNode.id, cleanNode);
                 }
             });
         }, 'local');
@@ -386,9 +394,10 @@ export const useCanvasStore = create((set, get) => ({
                 if (!currentIds.has(id)) yedgesMap.delete(id);
             });
             newEdges.forEach(e => {
-                const existing = yedgesMap.get(e.id);
-                if (!existing || JSON.stringify(existing) !== JSON.stringify(e)) {
-                    yedgesMap.set(e.id, e);
+                const cleanEdge = stripUIProps(e);
+                const existing = yedgesMap.get(cleanEdge.id);
+                if (!existing || JSON.stringify(existing) !== JSON.stringify(cleanEdge)) {
+                    yedgesMap.set(cleanEdge.id, cleanEdge);
                 }
             });
         }, 'local');
@@ -402,32 +411,23 @@ export const useCanvasStore = create((set, get) => ({
         // 수정: 기존에 등록된 update 이벤트 리스너가 있다면 제거하여 중복 증식을 막음
         if (ydocUpdateHandler) {
             ydoc.off('update', ydocUpdateHandler);
+            ydocUpdateHandler = null;
         }
 
         const targetUrl = `ws://localhost:8080/ws/crdt/${projectId}?token=${token}`;
         ws = new WebSocket(targetUrl);
         ws.binaryType = 'arraybuffer';
 
+        // Yjs 평행우주 충돌 방지를 위해 REQUEST_SYNC 와 Y.encodeStateAsUpdate는 제거합니다.
         ws.onopen = () => {
             console.log('WebSocket Connected');
-            // 웹소켓이 열리면 내 Yjs의 전체 히스토리를 쏴주어 다른 팀원과 Causal History를 완벽 병합시킴
-            if (get().currentVersion === 'live') {
-                ws.send(Y.encodeStateAsUpdate(ydoc));
-                // 새로 방에 들어왔음을 알리고, 남들에게 최신 상태를 쏴달라고 Handshake 요청
-                ws.send(JSON.stringify({ type: 'REQUEST_SYNC' }));
-            }
         };
 
         ws.onmessage = (event) => {
             if (typeof event.data === 'string') {
                 try {
                     const msg = JSON.parse(event.data);
-                    if (msg.type === 'REQUEST_SYNC') {
-                        // 다른 팀원이 접속해서 동기화를 요청하면, 내 Yjs 상태를 즉시 쏴서 평행우주를 강제 병합
-                        if (get().currentVersion === 'live') {
-                            ws.send(Y.encodeStateAsUpdate(ydoc));
-                        }
-                    } else if (msg.type === 'FORCE_RELOAD') {
+                    if (msg.type === 'FORCE_RELOAD') {
                         alert("방장이 다이어그램을 이전 버전으로 복원했습니다! 라이브 도화지를 새로고침합니다.");
                         get().loadProjectFromServer(projectId, null);
                     } else if (msg.type === 'ROLE_UPDATED') {
@@ -492,7 +492,7 @@ export const useCanvasStore = create((set, get) => ({
     resetProject: () => {
         localStorage.removeItem('canvas-storage');
         get().disconnectWebSocket();
-        ydoc.transact(() => { ynodesMap.clear(); yedgesMap.clear(); }, 'local');
+        resetYjsEnv(); // 맵 clear 대신 환경 파기
         set({ currentProjectId: null, projectName: '', userRole: 'GUEST', availableVersions: [], nodes: [], edges: [], selectedNodeId: null, selectedEdgeId: null });
     },
 
@@ -580,12 +580,13 @@ export const useCanvasStore = create((set, get) => ({
             const { nodes, edges } = parseCanvasData(data);
             const finalNodes = sortNodesParentFirst(fixOverlapsAndRecalculate(nodes));
 
-            // 완전히 깨끗한 Yjs 문서로 갈아끼움
+            // Yjs 평행우주 충돌 방지를 위해 REST 로드 시 아예 백지로 갈아끼우기
             resetYjsEnv();
 
+            // REST API에서 가져온 순수 데이터를 Yjs에 세팅 (브로드캐스트 방지)
             ydoc.transact(() => {
-                finalNodes.forEach(node => ynodesMap.set(node.id, node));
-                edges.forEach(edge => yedgesMap.set(edge.id, edge));
+                finalNodes.forEach(node => ynodesMap.set(node.id, stripUIProps(node)));
+                edges.forEach(edge => yedgesMap.set(edge.id, stripUIProps(edge)));
             }, 'local');
 
             const rawNodes = Array.from(ynodesMap.values());
@@ -615,12 +616,15 @@ export const useCanvasStore = create((set, get) => ({
     },
 
     loadMockData: () => {
-        // initWebSocket을 거치지 않으므로 ydocUpdateHandler가 없음.
-        // WebSocket 없이 Yjs → React 상태만 동기화하는 최소 핸들러를 직접 등록.
-        if (ydocUpdateHandler) ydoc.off('update', ydocUpdateHandler);
+        if (ydocUpdateHandler) {
+            ydoc.off('update', ydocUpdateHandler);
+            ydocUpdateHandler = null;
+        }
+
         ydocUpdateHandler = () => {
+            const rawNodes = Array.from(ynodesMap.values());
             set({
-                nodes: injectZIndex(computePositionAbsolute(sortNodesParentFirst(Array.from(ynodesMap.values())))),
+                nodes: injectZIndex(computePositionAbsolute(sortNodesParentFirst(rawNodes))),
                 edges: Array.from(yedgesMap.values())
             });
         };
