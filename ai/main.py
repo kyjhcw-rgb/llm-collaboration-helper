@@ -32,20 +32,19 @@ MODEL_ID = "gemini-2.5-flash"
 # =====================================================================
 db_chat_history: Dict[str, List[dict]] = {}
 
-# [버그 수정] db_diagram_snapshots는 이제 다이어그램과 대화 히스토리를 쌍으로 가집니다.
 # 구조: { session_id: [ {"diagram": dict, "chat_history": list}, ... ] }
 db_diagram_snapshots: Dict[str, List[dict]] = {}
 
 
 # =====================================================================
-# Pydantic 데이터 구조 정의 (다이어그램 도메인)
+# Pydantic 데이터 구조 정의 (다이어그램 도메인 - 모두 snake_case로 통일)
 # =====================================================================
 class MethodNode(BaseModel):
     id: str = Field(description="고유 ID (예: method_login)")
     name: str = Field(description="메서드 이름 (예: login)")
     description: str = Field(default="", description="메서드 역할 설명")
     parameters: Optional[str] = Field(default=None, description="파라미터 (예: String email, String pwd)")
-    returnType: Optional[str] = Field(default=None, description="리턴 타입 (예: ResponseEntity)")
+    return_type: Optional[str] = Field(default=None, description="리턴 타입 (예: ResponseEntity)") # returnType -> return_type 변경
 
 class ClassNode(BaseModel):
     id: str = Field(description="고유 ID (예: cls_auth_controller)")
@@ -62,7 +61,7 @@ class FeatureNode(BaseModel):
 
 class RelationEdge(BaseModel):
     id: str = Field(description="엣지 고유 ID (예: edge_1)")
-    fromId: str = Field(description="출발 노드 id (class 또는 method)")
+    from_id: str = Field(description="출발 노드 id (class 또는 method)") # fromId -> from_id 변경
     to: str = Field(description="도착 노드 id")
     kind: str = Field(description="CALL, INHERIT, IMPLEMENT 중 하나")
 
@@ -75,8 +74,8 @@ class DiagramGenerationRequest(BaseModel):
     session_id: str = Field(description="클라이언트(프론트엔드)에서 생성한 고유 세션 ID")
     title: str
     framework: str
-    freedomLevel: int
-    descriptionPrompt: str
+    freedom_level: int # freedomLevel -> freedom_level 변경
+    description_prompt: str # descriptionPrompt -> description_prompt 변경
 
 class DiagramModificationRequest(BaseModel):
     session_id: str
@@ -92,7 +91,7 @@ class FileTreeRequest(BaseModel):
     target_framework: str = Field(description="변환할 타겟 프레임워크")
 
 class FileStructureResponse(BaseModel):
-    file_paths: Dict[str, str] = Field(description="Key: 파일 경로 (예: src/main/.../User.java), Value: 파일의 역할 요약")
+    file_paths: Dict[str, str] = Field(description="Key: 파일 경로, Value: 파일의 역할 요약")
 
 class SingleCodeGenerationRequest(BaseModel):
     diagram: DiagramRes = Field(description="최신 다이어그램 구조")
@@ -118,7 +117,7 @@ def validate_and_filter_edges(diagram: dict) -> dict:
 
     clean_edges = []
     for edge in diagram.get("edges", []):
-        from_id = edge.get("fromId")
+        from_id = edge.get("from_id") # fromId -> from_id로 대칭 수정
         to_id = edge.get("to")
         if from_id in valid_ids and to_id in valid_ids:
             clean_edges.append(edge)
@@ -195,7 +194,7 @@ async def generate_initial_diagram(request: DiagramGenerationRequest):
         "1. features: 도메인·기능 단위 (id, name, description)\n"
         "2. 각 feature 안에 classes 배열\n"
         "3. 각 class 안에 methods 배열\n"
-        "4. edges: 노드 간 관계. fromId, to는 반드시 위에서 만든 id와 일치\n"
+        "4. edges: 노드 간 관계. from_id, to는 반드시 위에서 만든 id와 일치\n"  # 프롬프트 가이드 내 fromId -> from_id 변경
         "5. edges.kind: CALL, INHERIT, IMPLEMENT\n"
         "6. 절대 부연 설명 없이 지정된 JSON 스키마로만 응답해."
     )
@@ -203,8 +202,8 @@ async def generate_initial_diagram(request: DiagramGenerationRequest):
     user_message = (
         f"프로젝트 제목: {request.title}\n"
         f"사용 프레임워크: {request.framework}\n"
-        f"자유도 레벨: {request.freedomLevel} — {_freedom_level_hint(request.freedomLevel)}\n"
-        f"기획 내용: {request.descriptionPrompt}"
+        f"자유도 레벨: {request.freedom_level} — {_freedom_level_hint(request.freedom_level)}\n"
+        f"기획 내용: {request.description_prompt}"
     )
 
     try:
@@ -224,7 +223,6 @@ async def generate_initial_diagram(request: DiagramGenerationRequest):
         
         session_id = request.session_id
         
-        # [버그 수정 적용] 초기 다이어그램 스냅숏 저장 시, 당시의 대화 히스토리 상태도 함께 묶어서 바인딩합니다.
         db_diagram_snapshots[session_id] = [{
             "diagram": json.loads(json.dumps(validated_diagram)),
             "chat_history": json.loads(json.dumps(db_chat_history.get(session_id, [])))
@@ -280,7 +278,6 @@ async def modify_diagram(request: DiagramModificationRequest):
         if session_id not in db_diagram_snapshots:
             db_diagram_snapshots[session_id] = []
             
-        # [버그 수정 적용] 수정 완료 시점의 다이어그램과 업데이트된 대화 히스토리(history)를 한 세트로 저장합니다.
         db_diagram_snapshots[session_id].append({
             "diagram": json.loads(json.dumps(validated_diagram)),
             "chat_history": json.loads(json.dumps(history))
@@ -299,13 +296,8 @@ async def undo_diagram(session_id: str):
     if session_id not in db_diagram_snapshots or len(db_diagram_snapshots[session_id]) <= 1:
         raise HTTPException(status_code=400, detail="되돌릴 수 있는 이전 히스토리가 없습니다.")
     
-    # 1. 가장 최신의 상태 스냅숏을 제거(pop)합니다.
     db_diagram_snapshots[session_id].pop()
-    
-    # 2. 직전 단계의 통합 상태 스냅숏을 가져옵니다.
     previous_state = db_diagram_snapshots[session_id][-1]
-    
-    # [버그 수정 핵심 적용] 다이어그램 복원과 동시에 대화 히스토리도 당시 상태로 원상복구합니다.
     db_chat_history[session_id] = json.loads(json.dumps(previous_state["chat_history"]))
     
     logger.info(f"Session {session_id} - Undo 성공 (다이어그램 및 대화 히스토리 동기화 완료)")
@@ -371,7 +363,7 @@ async def generate_single_code(request: SingleCodeGenerationRequest):
     )
     
     user_message = (
-        f"[전체 다이어그램 구조]\n{json.dumps(request.diagram.model_dump(), ensure_ascii=False)}\n\n"
+        f"[전체 다이어그램 구조]\\n{json.dumps(request.diagram.model_dump(), ensure_ascii=False)}\n\n"
         f"[생성할 대상 파일 경로]\n{request.target_file_path}\n\n"
         f"위 파일 경로에 들어갈 [{request.target_framework}] 보일러플레이트 코드를 짜줘."
     )
