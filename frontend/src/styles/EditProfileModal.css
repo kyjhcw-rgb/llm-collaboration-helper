@@ -1,0 +1,123 @@
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.4); 
+  backdrop-filter: blur(5px); /* 배경 블러 */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+
+.modal-content {
+  background: #ffffff;
+  padding: 25px 30px;
+  gap:25px;
+  border-radius: 20px;
+  width: 100%;
+  max-width: 500px;
+  position: relative;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column; 
+}
+
+.close-button {
+  position: absolute;
+  top: 25px;
+  right: 30px;
+  background: none;
+  border: none;
+  font-size: 30px;
+  color: #555;
+  cursor: pointer;
+}
+
+.modal-title {
+  margin-top: 0;
+  font-size: 23px;
+  text-align: center;
+  font-weight: bold;
+}
+.input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  width: 100%;
+}
+.input-group {
+  flex: 1;
+  display: flex;
+  flex-direction: column; 
+  align-items: flex-start; 
+}
+
+.input-group label {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 10px; 
+  color: #333;
+}
+
+.input-group input {
+  width: 100%; 
+  border: 2px solid #ddd;
+  border-radius: 10px;
+  font-size: 15px;
+  box-sizing: border-box; 
+}
+
+.input-group input:disabled {
+  background-color: #f9f9f9;
+  color: #999;
+  border: 2px solid #ddd;
+}
+
+.row-edit-button {
+  height: 42px;
+  padding: 10px 15px;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  cursor: pointer;
+}
+.row-action-buttons {
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.cancel-button,.save-button{
+  padding: 10px;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  cursor: pointer;
+}
+.cancel-button {
+  width: 100%;
+  background-color: #999;
+  color: #fff;
+}
+.cancel-button:hover:not(:disabled) {
+  background-color: #999;
+}
+
+.save-button {
+  width: 100%;
+  background-color: #4953BE;
+  color: white;
+}
+
+.save-button:hover:not(:disabled) {
+  background-color: #4953BE;
+}
+
+.cancel-button:disabled, .save-button:disabled {
+  background-color: #eaeaea;
+  color: #c0c0c0;
+  cursor: not-allowed;
+}
