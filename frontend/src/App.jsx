@@ -18,10 +18,11 @@ export default function App() {
             const modifier = isMac ? e.metaKey : e.ctrlKey;
 
             if (modifier && e.key.toLowerCase() === 'z') {
+                e.preventDefault();
                 if (e.shiftKey) {
-                    useCanvasStore.temporal.getState().redo();
+                    useCanvasStore.getState().redo();
                 } else {
-                    useCanvasStore.temporal.getState().undo();
+                    useCanvasStore.getState().undo();
                 }
             }
         };

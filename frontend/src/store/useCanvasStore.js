@@ -307,6 +307,9 @@ function parseCanvasData(data) {
 const ydoc = new Y.Doc();
 const ynodesMap = ydoc.getMap('nodes');
 const yedgesMap = ydoc.getMap('edges');
+const undoManager = new Y.UndoManager([ynodesMap, yedgesMap], {
+    trackedOrigins: new Set(['local']),
+});
 let ws = null;
 let syncDebounceTimer = null;
 let ydocUpdateHandler = null; // 추가: 이벤트 리스너 해제를 위한 참조 변수
@@ -327,6 +330,9 @@ export const useCanvasStore = create((set, get) => ({
     setProjectName: (name) => set({ projectName: name }),
     setSelectedNodeId: (id) => set({ selectedNodeId: id, selectedEdgeId: null }),
     setSelectedEdgeId: (id) => set({ selectedEdgeId: id, selectedNodeId: null }),
+
+    undo: () => undoManager.undo(),
+    redo: () => undoManager.redo(),
 
     // 💡 Yjs 동기화를 위해 노드와 엣지를 설정하는 핵심 메서드
     setNodes: (newNodes) => {
@@ -426,6 +432,7 @@ export const useCanvasStore = create((set, get) => ({
             ynodesMap.clear();
             yedgesMap.clear();
         }, 'local');
+        undoManager.clear();
 
         set({
             currentProjectId: null,

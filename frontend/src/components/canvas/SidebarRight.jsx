@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useCanvasStore } from "../../store/useCanvasStore";
+import { request } from "../../api/http";
 import './SidebarRight.css';
 
 const SidebarRight = () => {
@@ -15,16 +16,22 @@ const SidebarRight = () => {
         deleteNode,  // 새롭게 만든 Yjs 기반 노드 삭제 함수
         deleteEdge,  // 새롭게 만든 Yjs 기반 엣지 삭제 함수
         saveProjectToServer,
-        userRole     // GUEST 여부를 판단하기 위해 스토어에서 가져옴
+        userRole,    // GUEST 여부를 판단하기 위해 스토어에서 가져옴
+        currentProjectId,
     } = useCanvasStore();
 
     const [activeTab, setActiveTab] = useState("info");
     const [info, setInfo] = useState({ label: "", description: "" });
     const [edgeInfo, setEdgeInfo] = useState({ type: "call" });
+
     const [chatInput, setChatInput] = useState("");
+    const [messages, setMessages] = useState([]);
+    const [chatLoading, setChatLoading] = useState(false);
+    const chatBottomRef = useRef(null);
 
     // GUEST 권한일 경우 편집을 막기 위한 플래그
     const isEditable = userRole !== 'GUEST';
+    const isMockMode = currentProjectId === 'mock-project' || !currentProjectId;
 
     useEffect(() => {
         if (selectedNodeId) {
@@ -46,6 +53,19 @@ const SidebarRight = () => {
             }
         }
     }, [selectedEdgeId, edges]);
+
+    // LLM 탭 진입 시 이전 대화 기록 로드
+    useEffect(() => {
+        if (activeTab !== "llm" || isMockMode) return;
+        request(`/projects/${currentProjectId}/chat`)
+            .then(setMessages)
+            .catch(() => {});
+    }, [activeTab, currentProjectId]);
+
+    // 메시지 추가 시 스크롤 하단으로
+    useEffect(() => {
+        chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [messages]);
 
     const handleNodeChange = (e) => {
         const { name, value } = e.target;
@@ -91,6 +111,41 @@ const SidebarRight = () => {
         deleteEdge(selectedEdgeId);
         setSelectedEdgeId(null);
         saveProjectToServer();
+    };
+
+    const handleSendChat = async () => {
+        const text = chatInput.trim();
+        if (!text || chatLoading || isMockMode || !isEditable) return;
+
+        const userMsg = { id: `tmp-${Date.now()}`, sender: "USER", message: text };
+        setMessages((prev) => [...prev, userMsg]);
+        setChatInput("");
+        setChatLoading(true);
+
+        try {
+            const res = await request(`/projects/${currentProjectId}/chat`, {
+                method: "POST",
+                body: JSON.stringify({ message: text }),
+            });
+            setMessages((prev) => [
+                ...prev,
+                { id: `tmp-${Date.now() + 1}`, sender: "ASSISTANT", message: res.reply },
+            ]);
+        } catch {
+            setMessages((prev) => [
+                ...prev,
+                { id: `tmp-${Date.now() + 1}`, sender: "ASSISTANT", message: "응답 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요." },
+            ]);
+        } finally {
+            setChatLoading(false);
+        }
+    };
+
+    const handleChatKeyDown = (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            handleSendChat();
+        }
     };
 
     return (
@@ -197,18 +252,50 @@ const SidebarRight = () => {
                         <h3 className="info-title">AI 어시스턴트</h3>
                         <div className="chat-history">
                             <div className="chat-msg ai">
-                                안녕하세요. 선택하신 설계 블록에 대해 궁금한 점이나 보완할 점이 있다면 말씀해 주세요.
+                                안녕하세요. 현재 프로젝트 다이어그램을 기반으로 궁금한 점이나 보완할 점이 있다면 말씀해 주세요.
                             </div>
+                            {isMockMode && (
+                                <div className="chat-msg ai">
+                                    채팅 기능은 실제 프로젝트에서 사용할 수 있습니다.
+                                </div>
+                            )}
+                            {messages.map((msg) => (
+                                <div
+                                    key={msg.id}
+                                    className={`chat-msg ${msg.sender === "USER" ? "user" : "ai"}`}
+                                >
+                                    {msg.message}
+                                </div>
+                            ))}
+                            {chatLoading && (
+                                <div className="chat-msg ai chat-loading">
+                                    <span>.</span><span>.</span><span>.</span>
+                                </div>
+                            )}
+                            <div ref={chatBottomRef} />
                         </div>
 
                         <div className="chat-input-wrapper">
                             <textarea
                                 className="chat-textarea"
-                                placeholder="메시지를 입력하세요..."
+                                placeholder={
+                                    isMockMode
+                                        ? "실제 프로젝트에서 사용 가능합니다"
+                                        : !isEditable
+                                        ? "GUEST는 채팅을 사용할 수 없습니다"
+                                        : "메시지를 입력하세요... (Enter: 전송, Shift+Enter: 줄바꿈)"
+                                }
                                 value={chatInput}
                                 onChange={(e) => setChatInput(e.target.value)}
+                                onKeyDown={handleChatKeyDown}
+                                disabled={isMockMode || !isEditable || chatLoading}
                             />
-                            <button className="chat-send-icon-btn" title="전송">
+                            <button
+                                className="chat-send-icon-btn"
+                                title="전송"
+                                onClick={handleSendChat}
+                                disabled={isMockMode || !isEditable || chatLoading || !chatInput.trim()}
+                            >
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                                     <path d="M2.01 21L23 12L2.01 3L2 10L17 12L2 14L2.01 21Z" fill="currentColor"/>
                                 </svg>

@@ -162,15 +162,61 @@
     flex: 1;
     overflow-y: auto;
     margin-bottom: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 
 .chat-msg.ai {
     background-color: #f4f4f9;
-    padding: 15px;
+    padding: 12px 15px;
     border-radius: 12px;
     font-size: 13px;
     line-height: 1.6;
     color: #444;
+    align-self: flex-start;
+    max-width: 90%;
+    word-break: break-word;
+    white-space: pre-wrap;
+}
+
+.chat-msg.user {
+    background-color: #4953BE;
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #fff;
+    align-self: flex-end;
+    max-width: 90%;
+    word-break: break-word;
+    white-space: pre-wrap;
+}
+
+.chat-loading span {
+    animation: chat-blink 1.2s infinite;
+    font-size: 18px;
+    font-weight: bold;
+    color: #999;
+}
+
+.chat-loading span:nth-child(2) { animation-delay: 0.2s; }
+.chat-loading span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes chat-blink {
+    0%, 80%, 100% { opacity: 0; }
+    40% { opacity: 1; }
+}
+
+.chat-send-icon-btn:disabled {
+    background-color: #aaa;
+    cursor: not-allowed;
+}
+
+.chat-textarea:disabled {
+    background-color: #f5f5f5;
+    color: #999;
+    cursor: not-allowed;
 }
 
 .chat-input-wrapper {
