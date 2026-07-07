@@ -41,14 +41,8 @@ export default function ProjectCreatePage() {
         })
       });
 
-      useCanvasStore.getState().resetProject();
-      useCanvasStore.setState({
-        currentProjectId: res.id,
-        projectName: res.title
-      });
-
-      await useCanvasStore.getState().loadProjectFromServer(res.id);
-      navigate('/canvas');
+        // [수정] 새로 생성된 프로젝트 ID 기반의 URL로 이동
+        navigate(`/canvas/${res.id}`);
     } catch (error) {
       console.error("프로젝트 생성 오류:", error);
       alert("프로젝트 생성에 실패했습니다.");

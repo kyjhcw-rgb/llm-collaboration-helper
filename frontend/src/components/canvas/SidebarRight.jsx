@@ -15,7 +15,8 @@ const SidebarRight = () => {
         deleteNode,  // 새롭게 만든 Yjs 기반 노드 삭제 함수
         deleteEdge,  // 새롭게 만든 Yjs 기반 엣지 삭제 함수
         saveProjectToServer,
-        userRole     // GUEST 여부를 판단하기 위해 스토어에서 가져옴
+        userRole,     // GUEST 여부를 판단하기 위해 스토어에서 가져옴
+        currentVersion
     } = useCanvasStore();
 
     const [activeTab, setActiveTab] = useState("info");
@@ -23,8 +24,9 @@ const SidebarRight = () => {
     const [edgeInfo, setEdgeInfo] = useState({ type: "call" });
     const [chatInput, setChatInput] = useState("");
 
-    // GUEST 권한일 경우 편집을 막기 위한 플래그
-    const isEditable = userRole !== 'GUEST';
+    // GUEST이거나 라이브 상태가 아니면 수정 불가능
+    const isLive = currentVersion === 'live';
+    const isEditable = userRole !== 'GUEST' && isLive;
 
     useEffect(() => {
         if (selectedNodeId) {

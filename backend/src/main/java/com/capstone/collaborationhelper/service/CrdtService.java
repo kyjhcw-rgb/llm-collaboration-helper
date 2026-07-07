@@ -8,8 +8,13 @@ import com.capstone.collaborationhelper.repository.ProjectRepository;
 import com.capstone.collaborationhelper.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 @Slf4j
 @Service
@@ -20,20 +25,45 @@ public class CrdtService {
     private final ProjectRepository projectRepository;
     private final UserRepository userRepository;
 
+    // 인메모리 버퍼링 큐 (JPA 엔티티 대신 DTO 레코드 형태로 임시 저장하여 영속성 문제 방지)
+    private record CrdtLogTask(Integer projectId, Integer userId, byte[] updateData) {}
+    private final ConcurrentLinkedQueue<CrdtLogTask> logQueue = new ConcurrentLinkedQueue<>();
+
+    // 1-1. 마우스 드래그 발생 시 DB에 즉시 쏘지 않고 큐에 넣음
+    public void bufferCrdtLog(Integer projectId, Integer userId, byte[] updateData) {
+        logQueue.offer(new CrdtLogTask(projectId, userId, updateData));
+    }
+
+    // 1-2. 백그라운드 스케줄러 (3초마다 실행하여 통째로 DB에 밀어 넣음)
+    @Scheduled(fixedRate = 3000)
     @Transactional
-    public void saveCrdtLog(Integer projectId, Integer userId, byte[] updateData) {
+    public void flushCrdtLogs() {
+        if (logQueue.isEmpty()) return;
 
-        // N+1 해결: findById가 아니라 getReferenceById(프록시)를 사용
-        // 이렇게 하면 SELECT 쿼리를 날리지 않고 INSERT문에 외래키(FK) 숫자만 바로 집어넣어 압도적으로 빠름
-        Project projectProxy = projectRepository.getReferenceById(projectId);
-        User userProxy = userRepository.getReferenceById(userId);
+        List<ProjectCrdtLog> batchToSave = new ArrayList<>();
+        int count = 0;
 
-        ProjectCrdtLog logEntry = ProjectCrdtLog.builder()
-                .project(projectProxy)
-                .user(userProxy)
-                .updateData(updateData)
-                .build();
+        while (!logQueue.isEmpty() && count < 500) { // 한 번에 최대 500개씩 처리
+            CrdtLogTask task = logQueue.poll();
+            if (task == null) break;
+            // Null ID가 메모리 버퍼에 섞여 들어왔을 경우 스케줄러 폭파 방지
+            if (task.projectId() == null || task.userId() == null) continue;
 
-        crdtLogRepository.save(logEntry);
+            Project projectProxy = projectRepository.getReferenceById(task.projectId());
+            User userProxy = userRepository.getReferenceById(task.userId());
+
+            ProjectCrdtLog logEntry = ProjectCrdtLog.builder()
+                    .project(projectProxy)
+                    .user(userProxy)
+                    .updateData(task.updateData())
+                    .build();
+            batchToSave.add(logEntry);
+            count++;
+        }
+
+        if (!batchToSave.isEmpty()) {
+            crdtLogRepository.saveAll(batchToSave);
+            log.info("[CRDT Batch Insert] 인메모리 버퍼에서 {}개의 로그를 DB에 일괄 저장 완료", batchToSave.size());
+        }
     }
 }

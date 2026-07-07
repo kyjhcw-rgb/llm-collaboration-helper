@@ -32,7 +32,7 @@ public class CanvasController {
             @PathVariable Integer projectId,
             @RequestBody CanvasDtos.SyncReq req) {
         canvasService.syncLiveCanvas(projectId, req);
-        return ResponseEntity.ok(Map.of("message", "라이브 스냅샷 동기화 완료"));
+        return ResponseEntity.ok(Map.of("message", "동기화 완료"));
     }
 
     // 3. 다이어그램 버전 박제 (Commit)
@@ -42,6 +42,15 @@ public class CanvasController {
             @RequestBody CanvasDtos.CommitReq req) {
         Integer newVersion = canvasService.commitVersion(projectId, req.getCommitMessage());
         return ResponseEntity.ok(Map.of("newVersion", newVersion));
+    }
+
+    // 방장의 과거 버전 복원 엔드포인트
+    @PostMapping("/versions/{versionNumber}/restore")
+    public ResponseEntity<?> restoreVersion(
+            @PathVariable Integer projectId,
+            @PathVariable Integer versionNumber) {
+        canvasService.restoreVersion(projectId, versionNumber);
+        return ResponseEntity.ok(Map.of("message", "버전 복원 및 새로고침 지시 완료"));
     }
 
     // 4. 저장된 버전 히스토리 목록 조회
@@ -55,9 +64,7 @@ public class CanvasController {
     public ResponseEntity<?> deleteVersion(
             @PathVariable Integer projectId,
             @RequestParam Integer version) {
-
         canvasService.deleteSpecificVersion(projectId, version);
-
-        return ResponseEntity.ok(Map.of("message", version + " 버전이 성공적으로 삭제되었습니다."));
+        return ResponseEntity.ok(Map.of("message", version + " 버전이 삭제되었습니다."));
     }
 }

@@ -115,6 +115,11 @@ const FlowContents = () => {
     const { setSelectedNodeId, setSelectedEdgeId } = useCanvasStore();
     const { screenToFlowPosition } = useReactFlow();
 
+    // Read-Only 판단
+    const isLive = useCanvasStore(state => state.currentVersion === 'live');
+    const userRole = useCanvasStore(state => state.userRole);
+    const isEditable = isLive && userRole !== 'GUEST';
+
     const nodes = useCanvasStore((state) => state.nodes);
     const edges = useCanvasStore((state) => state.edges);
     const connectingHandleRef = useRef(null);
@@ -131,6 +136,7 @@ const FlowContents = () => {
     // drag 중 position 반영 + select/dimensions 배치 layout 보존 + 삭제 처리만 담당.
     // drag end 후처리(reparenting/clamp/overlap/recalc)는 onNodeDragStop으로 이전.
     const handleNodesChange = useCallback((changes) => {
+        if (!isEditable) return; // 권한 및 라이브 확인
         const state = useCanvasStore.getState();
         if (state.userRole === 'GUEST') return;
 
@@ -168,13 +174,14 @@ const FlowContents = () => {
 
         state.setNodes(nextNodes);
         if (edgesChanged) state.setEdges(nextEdges);
-    }, []);
+    }, [isEditable]);
 
     // ─── handleNodeDragStop ──────────────────────────────────────────────────
     // React Flow v11의 신뢰할 수 있는 drag end 신호.
     // 이 시점에 store.nodes에는 드래그 중 position 변화가 이미 반영돼 있음.
     // 후처리: D(면적겹침) → B(clamp) → reparenting → C(resolveOverlaps) → A(recalc)
     const handleNodeDragStop = useCallback((event, draggedNode) => {
+        if (!isEditable) return;
         const state = useCanvasStore.getState();
         if (state.userRole === 'GUEST') return;
 
@@ -295,15 +302,17 @@ const FlowContents = () => {
         // A: 컨테이너 크기 재계산 (bottom-up, position 불변, idempotent)
         nextNodes = recalculateContainerSizes(nextNodes);
         state.setNodes(nextNodes);
-    }, []);
+    }, [isEditable]);
 
     const handleEdgesChange = useCallback((chs) => {
+        if (!isEditable) return;
         const state = useCanvasStore.getState();
         if (state.userRole === 'GUEST') return;
         state.setEdges(applyEdgeChanges(chs, state.edges));
-    }, []);
+    }, [isEditable]);
 
     const handleConnect = useCallback((params) => {
+        if (!isEditable) return;
         const state = useCanvasStore.getState();
         if (state.userRole === 'GUEST') return;
 
@@ -341,13 +350,14 @@ const FlowContents = () => {
             };
             state.setEdges(state.edges.concat(newEdge));
         }
-    }, []);
+    }, [isEditable]);
 
     const onConnectStart = useCallback((event, { nodeId, handleId }) => {
         connectingHandleRef.current = { nodeId, handleId };
     }, []);
 
     const onConnectEnd = useCallback((event) => {
+        if (!isEditable) return;
         if (!connectingHandleRef.current) return;
 
         if (event.target.classList.contains('react-flow__handle')) {
@@ -394,17 +404,12 @@ const FlowContents = () => {
             }
         }
         connectingHandleRef.current = null;
-    }, [handleConnect]);
+    }, [handleConnect, isEditable]);
 
     const onDrop = useCallback((event) => {
         event.preventDefault();
+        if (!isEditable) { alert("읽기 전용 상태입니다."); return; } // [수정]
         const state = useCanvasStore.getState();
-
-        if (state.userRole === 'GUEST') {
-            alert("게스트는 편집할 수 없습니다.");
-            return;
-        }
-
         const type = event.dataTransfer.getData('application/reactflow');
         if (!type) return;
 
@@ -463,7 +468,7 @@ const FlowContents = () => {
         }
 
         state.setNodes(recalculateContainerSizes([...state.nodes, finalNode]));
-    }, [screenToFlowPosition]);
+    }, [screenToFlowPosition, isEditable]);
 
     return (
         <div
@@ -497,7 +502,11 @@ const FlowContents = () => {
                 connectionLineComponent={CustomConnectionLine}
                 elevateEdgesOnSelect={true}
                 connectionMode={ConnectionMode.Loose}
-                nodesConnectable={true}
+                // [STEP 4] 라이브 상태가 아니면 움직이거나 연결하는 것을 락 처리
+                nodesConnectable={isEditable}
+                nodesDraggable={isEditable}
+                elementsSelectable={true}
+
                 onNodesChange={handleNodesChange}
                 onEdgesChange={handleEdgesChange}
                 onConnect={handleConnect}

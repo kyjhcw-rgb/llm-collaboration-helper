@@ -32,19 +32,9 @@ export default function ProjectListPage() {
     };
 
     // 프로젝트 이어하기
-    const handleOpenProject = async (project) => {
-        // 1. 스토어에 현재 선택된 프로젝트 ID 셋팅
-        useCanvasStore.setState({
-            currentProjectId: project.id,
-            projectName: project.title,
-            userRole: project.myRole
-        });
-
-        // 2. 백엔드에서 해당 프로젝트의 캔버스(다이어그램) 데이터 로드 (단절 구간 해결)
-        await loadProjectFromServer(project.id);
-
-        // 3. 데이터 동기화 완료 후 화면 이동
-        navigate('/canvas');
+    // [수정] 스토어 조작 없이 깔끔하게 URL로만 이동 (CanvasPage가 스스로 로딩하도록 위임)
+    const handleOpenProject = (project) => {
+        navigate(`/canvas/${project.id}`);
     };
 
     // 프로젝트 정보 수정 및 단건 조회 API 활용 로직
