@@ -71,7 +71,6 @@ class DiagramRes(BaseModel):
 
 # 다이어그램 생성 및 수정 요청 스키마
 class DiagramGenerationRequest(BaseModel):
-    session_id: str = Field(description="클라이언트(프론트엔드)에서 생성한 고유 세션 ID")
     title: str
     framework: str
     freedom_level: int # freedomLevel -> freedom_level 변경
@@ -155,35 +154,57 @@ def handle_genai_error(e: Exception, context_msg: str):
 
 
 # =====================================================================
-# [기능 1] 멀티턴 채팅 기능 API
+# [기능 1] 프로젝트 다이어그램 기반 챗봇 (stateless, Spring 연동)
 # =====================================================================
-class ChatRequest(BaseModel):
-    session_id: str
+class ChatHistoryTurn(BaseModel):
+    sender: str
     message: str
 
-@app.post("/chat")
-async def chat_with_agent(request: ChatRequest):
-    session_id = request.session_id
-    history = db_chat_history.get(session_id, [])
-    history.append({"role": "user", "parts": [{"text": request.message}]})
+class ChatRequest(BaseModel):
+    message: str = Field(..., max_length=4000)
+    diagram: DiagramRes
+    history: List[ChatHistoryTurn] = Field(default_factory=list)
+    projectContext: Optional[str] = Field(default=None, description="프로젝트 초기 기획 설명")
+
+class ChatResponse(BaseModel):
+    reply: str
+
+@app.post("/chat", response_model=ChatResponse)
+async def chat_about_project(request: ChatRequest):
+    diagram_json = json.dumps(request.diagram.model_dump(), ensure_ascii=False)
+    context_block = ""
+    if request.projectContext:
+        context_block = f"\n[프로젝트 초기 기획]\n{request.projectContext}\n"
+
+    system_instruction = (
+        "당신은 소프트웨어 아키텍처를 설명하는 AI 어시스턴트입니다.\n"
+        "아래 [프로젝트 다이어그램] JSON만 근거로 답하세요.\n"
+        "다이어그램에 없는 내용은 추측하지 말고, 모르면 '다이어그램에 해당 정보가 없습니다'라고 답하세요.\n"
+        f"{context_block}"
+        f"[프로젝트 다이어그램]\n{diagram_json}"
+    )
+
+    contents = []
+    for turn in request.history:
+        role = "user" if turn.sender.upper() == "USER" else "model"
+        contents.append({"role": role, "parts": [{"text": turn.message}]})
+    contents.append({"role": "user", "parts": [{"text": request.message}]})
 
     try:
         response = client.models.generate_content(
             model=MODEL_ID,
-            contents=history,
+            contents=contents,
             config=types.GenerateContentConfig(
-                system_instruction="당신은 친절하고 유능한 소프트웨어 아키텍트 멘토입니다."
-            )
+                system_instruction=system_instruction,
+            ),
         )
-        history.append({"role": "model", "parts": [{"text": response.text}]})
-        db_chat_history[session_id] = history
-        return {"session_id": session_id, "reply": response.text, "status": "success"}
+        return ChatResponse(reply=response.text)
     except Exception as e:
-        handle_genai_error(e, "채팅 응답 생성")
+        handle_genai_error(e, "프로젝트 챗봇 응답 생성")
 
 
 # =====================================================================
-# [기능 2] 다이어그램 초기 생성 API
+# [기능 2] 다이어그램 초기 생성 API (stateless — DB 저장은 Spring)
 # =====================================================================
 @app.post("/projects/initial-diagram", response_model=DiagramRes)
 async def generate_initial_diagram(request: DiagramGenerationRequest):
@@ -220,14 +241,6 @@ async def generate_initial_diagram(request: DiagramGenerationRequest):
 
         diagram_data = json.loads(response.text)
         validated_diagram = validate_and_filter_edges(diagram_data)
-        
-        session_id = request.session_id
-        
-        db_diagram_snapshots[session_id] = [{
-            "diagram": json.loads(json.dumps(validated_diagram)),
-            "chat_history": json.loads(json.dumps(db_chat_history.get(session_id, [])))
-        }]
-        
         return validated_diagram
     except Exception as e:
         handle_genai_error(e, "다이어그램 초기 생성")

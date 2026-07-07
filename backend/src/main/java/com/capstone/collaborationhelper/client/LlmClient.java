@@ -1,14 +1,14 @@
 package com.capstone.collaborationhelper.client;
 
-import com.capstone.collaborationhelper.dto.ProjectDtos.*;
+import com.capstone.collaborationhelper.dto.ChatDtos.LlmChatReq;
+import com.capstone.collaborationhelper.dto.ChatDtos.LlmChatRes;
+import com.capstone.collaborationhelper.dto.ProjectDtos.CreateReq;
 import com.capstone.collaborationhelper.dto.TranslationDtos.DiagramRes;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
-
-import java.util.Map;
 
 @Slf4j
 @Component
@@ -25,88 +25,38 @@ public class LlmClient {
     // [기능 2] 초기 다이어그램 생성 요청
     public DiagramRes requestInitialDiagram(CreateReq req) {
         String url = getBaseUrl() + "/projects/initial-diagram";
-        log.info("▶ [LlmClient] AI 서버로 다이어그램 생성 요청. url={}, title={}", url, req.getTitle());
+        log.info("▶ [LlmClient] FastAPI AI 서버로 다이어그램 생성 요청. url={}, title={}", url, req.getTitle());
+
         try {
-            return restTemplate.postForObject(url, req, DiagramRes.class);
+            DiagramRes response = restTemplate.postForObject(url, req, DiagramRes.class);
+
+            if (response != null) {
+                log.info("✔ [LlmClient] AI 서버로부터 다이어그램 구조 수신 완료! (Features: {}개, Edges: {}개)",
+                        response.getFeatures() != null ? response.getFeatures().size() : 0,
+                        response.getEdges() != null ? response.getEdges().size() : 0);
+            }
+
+            return response;
+
         } catch (Exception e) {
-            log.error("❌ [LlmClient] 초기 생성 통신 에러: ", e);
-            throw new RuntimeException("AI 다이어그램 생성 실패", e);
+            log.error("❌ [LlmClient] FastAPI 서버와 통신 중 에러가 발생했습니다: ", e);
+            throw new RuntimeException("AI 다이어그램 생성 서버와의 통신에 실패했습니다.", e);
         }
     }
 
-    // [기능 3] 다이어그램 수정 요청
-    public DiagramRes requestModifyDiagram(String sessionId, DiagramRes currentDiagram, String instruction) {
-        String url = getBaseUrl() + "/projects/modify-diagram";
-        log.info("▶ [LlmClient] AI 서버로 다이어그램 수정 요청. sessionId={}", sessionId);
+    public String requestProjectChat(LlmChatReq req) {
+        String url = getBaseUrl() + "/chat";
+        log.info("▶ [LlmClient] FastAPI AI 서버로 프로젝트 챗봇 요청. url={}", url);
 
-        DiagramModifyReq modifyReq = DiagramModifyReq.builder()
-                .sessionId(sessionId)
-                .currentDiagram(currentDiagram)
-                .instruction(instruction)
-                .build();
         try {
-            return restTemplate.postForObject(url, modifyReq, DiagramRes.class);
+            LlmChatRes response = restTemplate.postForObject(url, req, LlmChatRes.class);
+            if (response == null || response.getReply() == null || response.getReply().isBlank()) {
+                throw new RuntimeException("AI 서버로부터 빈 응답을 받았습니다.");
+            }
+            return response.getReply();
         } catch (Exception e) {
-            log.error("❌ [LlmClient] 수정 통신 에러: ", e);
-            throw new RuntimeException("AI 다이어그램 수정 실패", e);
-        }
-    }
-
-    // [기능 4] 다이어그램 및 대화 히스토리 되돌리기 (Undo)
-    public DiagramRes requestUndoDiagram(String sessionId) {
-        String url = getBaseUrl() + "/projects/undo-diagram/" + sessionId;
-        log.info("▶ [LlmClient] AI 서버로 Undo 요청. sessionId={}", sessionId);
-        try {
-            return restTemplate.postForObject(url, null, DiagramRes.class);
-        } catch (Exception e) {
-            log.error("❌ [LlmClient] Undo 통신 에러: ", e);
-            throw new RuntimeException("AI 다이어그램 되돌리기 실패", e);
-        }
-    }
-
-    // [기능 4-2] 세션 초기화 (Clear)
-    public void requestResetChat(String sessionId) {
-        String url = getBaseUrl() + "/chat/" + sessionId;
-        log.info("▶ [LlmClient] AI 서버 세션 삭제 요청. sessionId={}", sessionId);
-        try {
-            restTemplate.delete(url);
-        } catch (Exception e) {
-            log.error("❌ [LlmClient] 세션 삭제 통신 에러: ", e);
-        }
-    }
-
-    // [기능 5-1] 1단계: 프로젝트 파일 트리 구조 생성
-    public FileStructureRes requestFileTree(DiagramRes diagram, String targetFramework) {
-        String url = getBaseUrl() + "/projects/generate-file-tree";
-        log.info("▶ [LlmClient] AI 서버로 파일 트리 구조 생성 요청. framework={}", targetFramework);
-
-        FileTreeReq treeReq = FileTreeReq.builder()
-                .diagram(diagram)
-                .targetFramework(targetFramework)
-                .build();
-        try {
-            return restTemplate.postForObject(url, treeReq, FileStructureRes.class);
-        } catch (Exception e) {
-            log.error("❌ [LlmClient] 파일 트리 생성 에러: ", e);
-            throw new RuntimeException("프로젝트 파일 구조 생성 실패", e);
-        }
-    }
-
-    // [기능 5-2] 2단계: 특정 단일 파일 코드 생성
-    public SingleCodeRes requestSingleCode(DiagramRes diagram, String targetFramework, String targetFilePath) {
-        String url = getBaseUrl() + "/projects/generate-single-code";
-        log.info("▶ [LlmClient] AI 서버로 코드 생성 요청. filePath={}", targetFilePath);
-
-        SingleCodeReq codeReq = SingleCodeReq.builder()
-                .diagram(diagram)
-                .targetFramework(targetFramework)
-                .targetFilePath(targetFilePath)
-                .build();
-        try {
-            return restTemplate.postForObject(url, codeReq, SingleCodeRes.class);
-        } catch (Exception e) {
-            log.error("❌ [LlmClient] 소스 코드 생성 에러: ", e);
-            throw new RuntimeException("소스 코드 생성 실패", e);
+            log.error("❌ [LlmClient] 프로젝트 챗봇 통신 중 에러가 발생했습니다: ", e);
+            throw new RuntimeException("AI 챗봇 서버와의 통신에 실패했습니다.", e);
         }
     }
 }
