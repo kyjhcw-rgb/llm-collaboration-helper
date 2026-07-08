@@ -16,8 +16,9 @@ const SidebarRight = () => {
         deleteNode,  // 새롭게 만든 Yjs 기반 노드 삭제 함수
         deleteEdge,  // 새롭게 만든 Yjs 기반 엣지 삭제 함수
         saveProjectToServer,
-        userRole,    // GUEST 여부를 판단하기 위해 스토어에서 가져옴
+        userRole,
         currentProjectId,
+        currentVersion,
     } = useCanvasStore();
 
     const [activeTab, setActiveTab] = useState("info");
@@ -29,8 +30,8 @@ const SidebarRight = () => {
     const [chatLoading, setChatLoading] = useState(false);
     const chatBottomRef = useRef(null);
 
-    // GUEST 권한일 경우 편집을 막기 위한 플래그
-    const isEditable = userRole !== 'GUEST';
+    const isLive = currentVersion === 'live';
+    const isEditable = userRole !== 'GUEST' && isLive;
     const isMockMode = currentProjectId === 'mock-project' || !currentProjectId;
 
     useEffect(() => {
@@ -281,7 +282,9 @@ const SidebarRight = () => {
                                 placeholder={
                                     isMockMode
                                         ? "실제 프로젝트에서 사용 가능합니다"
-                                        : !isEditable
+                                        : !isLive
+                                        ? "과거 버전은 읽기 전용입니다"
+                                        : userRole === 'GUEST'
                                         ? "GUEST는 채팅을 사용할 수 없습니다"
                                         : "메시지를 입력하세요... (Enter: 전송, Shift+Enter: 줄바꿈)"
                                 }

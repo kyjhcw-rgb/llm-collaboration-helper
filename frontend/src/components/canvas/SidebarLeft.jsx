@@ -6,26 +6,26 @@ import documentIcon from '../../images/document.png';
 import { useCanvasStore } from '../../store/useCanvasStore';
 
 const SidebarLeft = () => {
-    const projectName =
-        useCanvasStore(
-            (state) => state.projectName
-        );
+    const projectName = useCanvasStore((state) => state.projectName);
     const nodes = useCanvasStore((state) => state.nodes);
+    const currentVersion = useCanvasStore((state) => state.currentVersion);
+    const userRole = useCanvasStore((state) => state.userRole);
+
     const featureNodes = nodes.filter((node) => node.data.type === 'feature');
     const classNodes = nodes.filter((node) => node.data.type === 'class');
     const methodNodes = nodes.filter((node) => node.data.type === 'method');
-    
-    const onDragStart = (
-        event,
-        nodeType
-    ) => {
-        event.dataTransfer.setData(
-            'application/reactflow',
-            nodeType
-        );
 
-        event.dataTransfer.effectAllowed =
-            'move';
+    // 읽기 전용 상태 체크
+    const isLive = currentVersion === 'live';
+    const isEditable = isLive && userRole !== 'GUEST';
+
+    const onDragStart = (event, nodeType) => {
+        if (!isEditable) {
+            event.preventDefault();
+            return;
+        }
+        event.dataTransfer.setData('application/reactflow', nodeType);
+        event.dataTransfer.effectAllowed = 'move';
     };
 
     return (

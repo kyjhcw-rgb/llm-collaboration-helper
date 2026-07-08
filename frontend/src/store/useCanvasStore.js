@@ -25,6 +25,17 @@ function injectZIndex(nodes) {
     }));
 }
 
+// React Flow의 UI 전용 상태(선택, 드래그 상태 등)를 제거하여 Yjs 맵을 깨끗하게 유지하고 무한 통신 스팸을 방지
+function stripUIProps(node) {
+    const { positionAbsolute, selected, dragging, zIndex, ...cleanNode } = node;
+    if (cleanNode.style) {
+        const cleanStyle = { ...cleanNode.style };
+        delete cleanStyle.zIndex;
+        cleanNode.style = cleanStyle;
+    }
+    return cleanNode;
+}
+
 // feature/class 컨테이너 크기를 자식 bounding box에 맞게 조정.
 // 규칙: 아래/오른쪽으로만 확장, position은 절대 수정하지 않음(idempotent).
 // method 등 리프 노드는 건드리지 않음(NodeResizer 결과 보존).
@@ -99,16 +110,18 @@ export function recalculateContainerSizes(nodes) {
 // - 겹침 감지: LLM이 여러 블록을 같은 y에 생성한 경우 → 자동 재배치
 // - 겹침 없음: 유저가 직접 배치한 커스텀 위치 → 보존 (크기만 재계산)
 function fixOverlapsAndRecalculate(nodes) {
-    const nodeMap = new Map(nodes.map(n => [n.id, { ...n, style: { ...n.style } }]));
-    const childrenMap = new Map();
+    // 고아 노드 방지 로직 (부모가 리스트에 없으면 강제로 의존성 끊기)
+    const validNodeIds = new Set(nodes.map(n => n.id));
+    const safeNodes = nodes.map(n => (n.parentNode && !validNodeIds.has(n.parentNode)) ? { ...n, parentNode: undefined } : n);
 
-    for (const node of nodes) {
+    const nodeMap = new Map(safeNodes.map(n => [n.id, { ...n, style: { ...n.style } }]));
+    const childrenMap = new Map();
+    for (const node of safeNodes) {
         if (node.parentNode) {
             if (!childrenMap.has(node.parentNode)) childrenMap.set(node.parentNode, []);
             childrenMap.get(node.parentNode).push(node.id);
         }
     }
-
     const processed = new Set();
     const { HEADER_HEIGHT, PADDING } = LAYOUT;
 
@@ -179,7 +192,7 @@ function fixOverlapsAndRecalculate(nodes) {
         nodeMap.set(nodeId, { ...node, width: neededW, height: neededH, style: { ...node.style, width: neededW, height: neededH } });
     }
 
-    for (const node of nodes) processNode(node.id);
+    for (const node of safeNodes) processNode(node.id);
 
     // 최상위 노드(feature 등) 수평 겹침 감지 → FEATURE_GAP으로 자동 배치
     // 겹침 없으면 유저가 직접 배치한 위치 보존
@@ -217,11 +230,20 @@ function sortNodesParentFirst(nodes) {
     const nodeMap = new Map(nodes.map(n => [n.id, n]));
     const sorted = [];
     const visited = new Set();
+
     function visit(id) {
         if (visited.has(id)) return;
         visited.add(id);
-        const node = nodeMap.get(id);
+        let node = nodeMap.get(id);
         if (!node) return;
+
+        // [에러 수정] 존재하지 않는 부모를 가리키는 노드가 ReactFlow에 주입되면 화면이 즉시 크래시됨.
+        // 이를 방지하기 위해 부모가 맵에 존재하지 않는다면 고아 노드로 만듦.
+        if (node.parentNode && !nodeMap.has(node.parentNode)) {
+            node = { ...node, parentNode: undefined };
+            nodeMap.set(id, node);
+        }
+
         if (node.parentNode) visit(node.parentNode);
         sorted.push(node);
     }
@@ -304,21 +326,35 @@ function parseCanvasData(data) {
 // ==========================================
 // Yjs 엔진 및 공유 Map 초기화
 // ==========================================
-const ydoc = new Y.Doc();
-const ynodesMap = ydoc.getMap('nodes');
-const yedgesMap = ydoc.getMap('edges');
-const undoManager = new Y.UndoManager([ynodesMap, yedgesMap], {
+let ydoc = new Y.Doc();
+let ynodesMap = ydoc.getMap('nodes');
+let yedgesMap = ydoc.getMap('edges');
+let undoManager = new Y.UndoManager([ynodesMap, yedgesMap], {
     trackedOrigins: new Set(['local']),
 });
 let ws = null;
 let syncDebounceTimer = null;
 let ydocUpdateHandler = null; // 추가: 이벤트 리스너 해제를 위한 참조 변수
 
+function resetYjsEnv() {
+    if (ydocUpdateHandler) {
+        ydoc.off('update', ydocUpdateHandler);
+        ydocUpdateHandler = null;
+    }
+    ydoc = new Y.Doc();
+    ynodesMap = ydoc.getMap('nodes');
+    yedgesMap = ydoc.getMap('edges');
+    undoManager = new Y.UndoManager([ynodesMap, yedgesMap], {
+        trackedOrigins: new Set(['local']),
+    });
+}
+
 export const useCanvasStore = create((set, get) => ({
     projectName: '',
     currentProjectId: null,
     currentVersion: 'live', // 초기 상태를 'live'로 명확히 지정
     userRole: 'GUEST',
+    myUserId: null, // 권한 변경 감지용
     availableVersions: [], // { versionNumber, commitMessage, createdAt } 객체 배열
 
     nodes: [],
@@ -336,54 +372,98 @@ export const useCanvasStore = create((set, get) => ({
 
     // 💡 Yjs 동기화를 위해 노드와 엣지를 설정하는 핵심 메서드
     setNodes: (newNodes) => {
-        if (get().userRole === 'GUEST') return;
+        if (get().userRole === 'GUEST' || get().currentVersion !== 'live') return;
+
+        // [에러 수정] React Flow가 키보드 삭제 등으로 부모를 삭제했지만 자식을 남겨둔 경우,
+        // Yjs에 고아 노드가 들어가는 것을 방지하기 위한 이중 방어 로직
+        const currentIds = new Set(newNodes.map(n => n.id));
+
         ydoc.transact(() => {
-            const currentIds = new Set(newNodes.map(n => n.id));
             Array.from(ynodesMap.keys()).forEach(id => {
                 if (!currentIds.has(id)) ynodesMap.delete(id);
             });
-            newNodes.forEach(n => ynodesMap.set(n.id, n));
+            newNodes.forEach(n => {
+                let cleanNode = stripUIProps(n);
+                if (cleanNode.parentNode && !currentIds.has(cleanNode.parentNode)) {
+                    cleanNode = { ...cleanNode, parentNode: undefined };
+                }
+                const existing = ynodesMap.get(cleanNode.id);
+                if (!existing || JSON.stringify(existing) !== JSON.stringify(cleanNode)) {
+                    ynodesMap.set(cleanNode.id, cleanNode);
+                }
+            });
         }, 'local');
     },
 
     setEdges: (newEdges) => {
-        if (get().userRole === 'GUEST') return;
+        if (get().userRole === 'GUEST' || get().currentVersion !== 'live') return;
         ydoc.transact(() => {
             const currentIds = new Set(newEdges.map(e => e.id));
             Array.from(yedgesMap.keys()).forEach(id => {
                 if (!currentIds.has(id)) yedgesMap.delete(id);
             });
-            newEdges.forEach(e => yedgesMap.set(e.id, e));
+            newEdges.forEach(e => {
+                const cleanEdge = stripUIProps(e);
+                const existing = yedgesMap.get(cleanEdge.id);
+                if (!existing || JSON.stringify(existing) !== JSON.stringify(cleanEdge)) {
+                    yedgesMap.set(cleanEdge.id, cleanEdge);
+                }
+            });
         }, 'local');
     },
 
-    initWebSocket: (projectId, token, role) => {
-        set({ currentProjectId: projectId, userRole: role });
+    initWebSocket: (projectId, token, role, myUserId) => {
+        set({ currentProjectId: projectId, userRole: role, myUserId: myUserId });
 
         if (ws) ws.close();
 
         // 수정: 기존에 등록된 update 이벤트 리스너가 있다면 제거하여 중복 증식을 막음
         if (ydocUpdateHandler) {
             ydoc.off('update', ydocUpdateHandler);
+            ydocUpdateHandler = null;
         }
 
         const targetUrl = `ws://localhost:8080/ws/crdt/${projectId}?token=${token}`;
         ws = new WebSocket(targetUrl);
         ws.binaryType = 'arraybuffer';
 
-        ws.onopen = () => {};
+        // Yjs 평행우주 충돌 방지를 위해 REQUEST_SYNC 와 Y.encodeStateAsUpdate는 제거합니다.
+        ws.onopen = () => {
+            console.log('WebSocket Connected');
+        };
 
         ws.onmessage = (event) => {
+            if (typeof event.data === 'string') {
+                try {
+                    const msg = JSON.parse(event.data);
+                    if (msg.type === 'FORCE_RELOAD') {
+                        alert("방장이 다이어그램을 이전 버전으로 복원했습니다! 라이브 도화지를 새로고침합니다.");
+                        get().loadProjectFromServer(projectId, null);
+                    } else if (msg.type === 'ROLE_UPDATED') {
+                        if (msg.userId === get().myUserId) {
+                            alert(`방장에 의해 귀하의 권한이 [${msg.newRole === 'MEMBER' ? '편집자(MEMBER)' : '조회자(GUEST)'}]로 변경되었습니다.`);
+                            set({ userRole: msg.newRole });
+                        }
+                    } else if (msg.type === 'KICKED') {
+                        alert("방장에 의해 프로젝트에서 내보내졌습니다.");
+                        get().disconnectWebSocket();
+                        window.location.href = '/projects';
+                    }
+                } catch(e) {}
+                return;
+            }
+
             const update = new Uint8Array(event.data);
             Y.applyUpdate(ydoc, update, 'remote');
         };
 
         // 추가: 비정상 종료 시 자동 재연결 방어 로직
         ws.onclose = () => {
-            if (get().currentProjectId !== null) {
+            if (get().currentProjectId !== null && get().currentVersion === 'live') {
                 setTimeout(() => {
-                    if (get().currentProjectId !== null) {
-                        get().initWebSocket(projectId, token, role);
+                    if (get().currentProjectId !== null && get().currentVersion === 'live') {
+                        // 재연결 시 상태에서 최신 권한과 ID 유지
+                        get().initWebSocket(projectId, token, get().userRole, get().myUserId);
                     }
                 }, 3000);
             }
@@ -391,49 +471,37 @@ export const useCanvasStore = create((set, get) => ({
 
         // 수정: 익명 함수 대신 기명 함수(핸들러)로 정의하여 등록
         ydocUpdateHandler = (update, origin) => {
-            if (origin !== 'remote' && ws && ws.readyState === WebSocket.OPEN) {
+            if (origin !== 'remote' && ws && ws.readyState === WebSocket.OPEN && get().currentVersion === 'live') {
                 ws.send(update);
             }
 
+            // 모든 노드를 꺼내고, 에러 방지용 Sanitize 후 주입
+            const rawNodes = Array.from(ynodesMap.values());
             set({
-                nodes: injectZIndex(computePositionAbsolute(sortNodesParentFirst(Array.from(ynodesMap.values())))),
+                nodes: injectZIndex(computePositionAbsolute(sortNodesParentFirst(rawNodes))),
                 edges: Array.from(yedgesMap.values())
             });
 
-            if (get().userRole !== 'GUEST') {
+            if (get().userRole !== 'GUEST' && get().currentVersion === 'live') {
                 clearTimeout(syncDebounceTimer);
                 syncDebounceTimer = setTimeout(() => {
                     get().saveProjectToServer();
                 }, 3000);
             }
         };
-
         ydoc.on('update', ydocUpdateHandler);
     },
 
     disconnectWebSocket: () => {
-        if (ws) {
-            ws.close();
-            ws = null;
-        }
-        // 소켓을 끊을 때 이벤트 리스너와 타이머도 확실히 정리
-        if (ydocUpdateHandler) {
-            ydoc.off('update', ydocUpdateHandler);
-            ydocUpdateHandler = null;
-        }
+        if (ws) { ws.close(); ws = null; }
+        if (ydocUpdateHandler) { ydoc.off('update', ydocUpdateHandler); ydocUpdateHandler = null; }
         clearTimeout(syncDebounceTimer);
     },
 
     resetProject: () => {
         localStorage.removeItem('canvas-storage');
-        get().disconnectWebSocket(); // 통합 호출
-
-        ydoc.transact(() => {
-            ynodesMap.clear();
-            yedgesMap.clear();
-        }, 'local');
-        undoManager.clear();
-
+        get().disconnectWebSocket();
+        resetYjsEnv();
         set({
             currentProjectId: null,
             projectName: '',
@@ -447,44 +515,63 @@ export const useCanvasStore = create((set, get) => ({
     },
 
     updateNodeData: (nodeId, newData) => {
-        if (get().userRole === 'GUEST') return;
+        if (get().userRole === 'GUEST' || get().currentVersion !== 'live') return;
         ydoc.transact(() => {
             const node = ynodesMap.get(nodeId);
             if (node) {
                 const updatedData = { ...node.data, ...newData };
                 if (newData.name) updatedData.label = newData.name;
                 if (newData.label) updatedData.name = newData.label;
-                ynodesMap.set(nodeId, { ...node, data: updatedData });
+                const newNode = { ...node, data: updatedData };
+
+                // 불필요한 트래픽 억제
+                if (JSON.stringify(node) !== JSON.stringify(newNode)) {
+                    ynodesMap.set(nodeId, newNode);
+                }
             }
         }, 'local');
     },
 
     updateEdgeData: (edgeId, newData) => {
-        if (get().userRole === 'GUEST') return;
+        if (get().userRole === 'GUEST' || get().currentVersion !== 'live') return;
         ydoc.transact(() => {
             const edge = yedgesMap.get(edgeId);
             if (edge) {
-                yedgesMap.set(edgeId, { ...edge, data: { ...edge.data, ...newData } });
+                const newEdge = { ...edge, data: { ...edge.data, ...newData } };
+                if (JSON.stringify(edge) !== JSON.stringify(newEdge)) yedgesMap.set(edgeId, newEdge);
             }
         }, 'local');
     },
 
     deleteNode: (nodeId) => {
-        if (get().userRole === 'GUEST') return;
+        if (get().userRole === 'GUEST' || get().currentVersion !== 'live') return;
         ydoc.transact(() => {
-            ynodesMap.delete(nodeId);
-            const connectedEdges = Array.from(yedgesMap.values()).filter(
-                e => e.source === nodeId || e.target === nodeId
-            );
-            connectedEdges.forEach(e => yedgesMap.delete(e.id));
+            // [에러 수정] 부모 삭제 시 자식 노드까지 연쇄 삭제(Cascading Delete)하여 고아 노드 남김 방지
+            const nodesToDelete = new Set([nodeId]);
+            let isAdding = true;
+
+            while(isAdding) {
+                isAdding = false;
+                for (const node of ynodesMap.values()) {
+                    if (node.parentNode && nodesToDelete.has(node.parentNode) && !nodesToDelete.has(node.id)) {
+                        nodesToDelete.add(node.id);
+                        isAdding = true;
+                    }
+                }
+            }
+
+            nodesToDelete.forEach(id => {
+                ynodesMap.delete(id);
+                // 연결된 Edge도 삭제
+                const connectedEdges = Array.from(yedgesMap.values()).filter(e => e.source === id || e.target === id);
+                connectedEdges.forEach(e => yedgesMap.delete(e.id));
+            });
         }, 'local');
     },
 
     deleteEdge: (edgeId) => {
-        if (get().userRole === 'GUEST') return;
-        ydoc.transact(() => {
-            yedgesMap.delete(edgeId);
-        }, 'local');
+        if (get().userRole === 'GUEST' || get().currentVersion !== 'live') return;
+        ydoc.transact(() => { yedgesMap.delete(edgeId); }, 'local');
     },
 
     loadVersionsFromServer: async (projectId) => {
@@ -498,29 +585,46 @@ export const useCanvasStore = create((set, get) => ({
 
     loadProjectFromServer: async (projectId, versionNumber = null) => {
         try {
+            // 과거 버전 조회 시 읽기 전용 모드로 전환 (웹소켓 연결 해제)
+            if (versionNumber) {
+                get().disconnectWebSocket();
+            }
+
             const url = versionNumber
                 ? `/projects/${projectId}/canvas?version=${versionNumber}`
                 : `/projects/${projectId}/canvas`;
-
             const data = await request(url, { method: "GET" });
+
             const { nodes, edges } = parseCanvasData(data);
             const finalNodes = sortNodesParentFirst(fixOverlapsAndRecalculate(nodes));
 
-            // 초기 로드는 다른 사람에게 뿌리지 않도록 remote 트랜잭션 사용
+            // Yjs 평행우주 충돌 방지를 위해 REST 로드 시 아예 백지로 갈아끼우기
+            resetYjsEnv();
+
+            // REST API에서 가져온 순수 데이터를 Yjs에 세팅 (브로드캐스트 방지)
             ydoc.transact(() => {
-                ynodesMap.clear();
-                yedgesMap.clear();
-                finalNodes.forEach(node => ynodesMap.set(node.id, node));
-                edges.forEach(edge => yedgesMap.set(edge.id, edge));
-            }, 'remote');
+                finalNodes.forEach(node => ynodesMap.set(node.id, stripUIProps(node)));
+                edges.forEach(edge => yedgesMap.set(edge.id, stripUIProps(edge)));
+            }, 'local');
+
+            const rawNodes = Array.from(ynodesMap.values());
+            const displayNodes = injectZIndex(computePositionAbsolute(sortNodesParentFirst(rawNodes)));
+            const displayEdges = Array.from(yedgesMap.values());
 
             set({
                 currentProjectId: projectId,
-                // 백엔드 응답에서 버전 번호가 안 오므로, 넘겨받은 파라미터를 그대로 사용해 상태 유지
                 currentVersion: versionNumber || 'live',
                 selectedNodeId: null,
-                selectedEdgeId: null
+                selectedEdgeId: null,
+                nodes: displayNodes, // 화면 강제 갱신
+                edges: displayEdges  // 화면 강제 갱신
             });
+
+            // 다시 Live로 돌아왔을 때 웹소켓 재연결
+            if (!versionNumber && !ws && get().currentProjectId) {
+                const token = localStorage.getItem("accessToken");
+                if (token) get().initWebSocket(projectId, token, get().userRole, get().myUserId);
+            }
 
             get().loadVersionsFromServer(projectId);
         } catch (error) {
@@ -530,12 +634,15 @@ export const useCanvasStore = create((set, get) => ({
     },
 
     loadMockData: () => {
-        // initWebSocket을 거치지 않으므로 ydocUpdateHandler가 없음.
-        // WebSocket 없이 Yjs → React 상태만 동기화하는 최소 핸들러를 직접 등록.
-        if (ydocUpdateHandler) ydoc.off('update', ydocUpdateHandler);
+        if (ydocUpdateHandler) {
+            ydoc.off('update', ydocUpdateHandler);
+            ydocUpdateHandler = null;
+        }
+
         ydocUpdateHandler = () => {
+            const rawNodes = Array.from(ynodesMap.values());
             set({
-                nodes: injectZIndex(computePositionAbsolute(sortNodesParentFirst(Array.from(ynodesMap.values())))),
+                nodes: injectZIndex(computePositionAbsolute(sortNodesParentFirst(rawNodes))),
                 edges: Array.from(yedgesMap.values())
             });
         };
@@ -562,10 +669,11 @@ export const useCanvasStore = create((set, get) => ({
 
     },
 
+    // 자동 스냅샷 병합 및 DB 청소 요청 추가
     saveProjectToServer: async () => {
         const state = get();
         const projectId = state.currentProjectId;
-        if (!projectId || state.userRole === 'GUEST') return;
+        if (!projectId || state.userRole === 'GUEST' || state.currentVersion !== 'live') return;
 
         const blocks = state.nodes.map(node => ({
             frontendId: node.id,
@@ -576,8 +684,10 @@ export const useCanvasStore = create((set, get) => ({
             parameters: node.data?.parameters || null,
             returnType: node.data?.returnType || null,
             annotations: node.data?.annotations || null,
-            posX: node.position.x,
-            posY: node.position.y,
+            posX: parseFloat(node.position.x || 0),
+            posY: parseFloat(node.position.y || 0),
+            width: parseFloat(node.width || node.style?.width || DEFAULT_SIZES[node.data?.type]?.w || 150),
+            height: parseFloat(node.height || node.style?.height || DEFAULT_SIZES[node.data?.type]?.h || 50)
         }));
 
         const edges = state.edges.map(edge => ({
@@ -600,19 +710,16 @@ export const useCanvasStore = create((set, get) => ({
         }
     },
 
+    // 영구 버전 삭제 추가
     commitVersionToServer: async (commitMessage = "새로운 버전 저장") => {
-        const { currentProjectId, saveProjectToServer, userRole } = get();
-        if (!currentProjectId) {
-            alert("연결된 프로젝트가 없습니다.");
-            return;
-        }
-        if (userRole === 'GUEST') {
-            alert("버전을 저장할 권한이 없습니다.");
+        const { currentProjectId, saveProjectToServer, userRole, currentVersion } = get();
+        if (!currentProjectId || userRole === 'GUEST' || currentVersion !== 'live') {
+            alert("라이브 상태의 편집 권한이 있어야만 커밋할 수 있습니다.");
             return;
         }
 
         try {
-            await saveProjectToServer();
+            await saveProjectToServer(); // 찰나의 누락된 데이터 억지로 동기화
             const response = await request(`/projects/${currentProjectId}/canvas/commit`, {
                 method: "POST",
                 body: JSON.stringify({ commitMessage })
@@ -626,6 +733,25 @@ export const useCanvasStore = create((set, get) => ({
         } catch (error) {
             console.error("버전 저장(Commit) 실패:", error);
             alert("버전 저장에 실패했습니다.");
+        }
+    },
+
+    // 방장의 라이브 복원 요청
+    restoreProjectFromServer: async (versionNumber) => {
+        const { currentProjectId, userRole } = get();
+        if (!currentProjectId || userRole !== 'OWNER') {
+            alert("방장만 버전을 복원할 수 있습니다.");
+            return;
+        }
+
+        try {
+            await request(`/projects/${currentProjectId}/canvas/versions/${versionNumber}/restore`, {
+                method: "POST"
+            });
+            // 복원에 성공하면 백엔드가 FORCE_RELOAD 웹소켓을 모두에게 뿌리므로, 방장 본인도 onmessage에서 새로고침 됨.
+        } catch (error) {
+            console.error("복원 에러:", error);
+            alert("버전 복원에 실패했습니다.");
         }
     },
 

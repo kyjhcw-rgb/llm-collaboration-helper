@@ -21,6 +21,12 @@ export async function request(url, options = {}) {
     });
 
     if (!response.ok) {
+        // 토큰이 만료되었거나 다중 탭 테스트로 토큰이 날아간 경우 깔끔하게 로그아웃 처리
+        if (response.status === 401 || response.status === 403) {
+            localStorage.removeItem("accessToken");
+            window.location.href = "/login";
+            throw new Error(`Auth Error: ${response.status}`);
+        }
         throw new Error(`API Error: ${response.status}`);
     }
 

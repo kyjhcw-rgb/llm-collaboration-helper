@@ -32,7 +32,7 @@ export default function App() {
     }, []);
 
     return (
-        <BrowserRouter>
+        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <Routes>
                 <Route path="/" element={<Navigate to="/login" replace />} />
                 <Route path="/login" element={<LoginPage />} />
@@ -40,7 +40,8 @@ export default function App() {
                 <Route path="/profile" element={<EditProfileModal />}/>
                 <Route path="/projects" element={<ProjectListPage />} />
                 <Route path="/projects/new" element={<ProjectCreatePage />} />
-                <Route path="/canvas" element={<CanvasPage />} />
+                {/* URL에 projectId를 명시하도록 변경 */}
+                <Route path="/canvas/:projectId" element={<CanvasPage />} />
                 <Route path="/guideline" element={<Guideline />} />
             </Routes>
         </BrowserRouter>

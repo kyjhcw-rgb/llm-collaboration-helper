@@ -16,7 +16,8 @@ const CanvasHeader = () => {
         commitVersionToServer,
         loadProjectFromServer,
         loadVersionsFromServer,
-        deleteVersionFromServer
+        deleteVersionFromServer,
+        restoreProjectFromServer
     } = useCanvasStore();
 
     // 모달 및 멤버 관리 상태
@@ -118,8 +119,9 @@ const CanvasHeader = () => {
     const goToProjectList = () => navigate('/projects');
 
     const handleVersionChange = async (e) => {
-        const targetVersion = Number(e.target.value);
-        if (currentProjectId && targetVersion) {
+        const value = e.target.value;
+        const targetVersion = value === 'live' ? null : Number(value);
+        if (currentProjectId) {
             await loadProjectFromServer(currentProjectId, targetVersion);
         }
     };
@@ -143,17 +145,27 @@ const CanvasHeader = () => {
 
                 <div className="version-select-container">
                     <select value={currentVersion || ""} onChange={handleVersionChange} className="version-dropdown">
+                        <option value="live">Live (현재 작업 중)</option>
                         {availableVersions.map((v) => (
                             <option key={v.versionNumber || v} value={v.versionNumber || v}>
                                 Version {v.versionNumber || v} {(v.versionNumber || v) === Math.max(...availableVersions.map(av => av.versionNumber || av)) ? "(최신)" : ""}
                             </option>
                         ))}
                     </select>
-                    {availableVersions.length > 0 && userRole === 'OWNER' && (
-                        <button className="delete-version-btn" onClick={() => {
-                            if (window.confirm(`정말 버전 ${currentVersion}을 삭제하시겠습니까?`)) deleteVersionFromServer(currentVersion);
-                        }}
-                                >
+
+                    {/* 과거 버전 확인 중 방장만 사용 가능한 복원 버튼 */}
+                    {currentVersion !== 'live' && userRole === 'OWNER' && (
+                        <button className="commit-btn" style={{ marginLeft: '10px', backgroundColor: '#e67e22' }} onClick={() => {
+                            if (window.confirm(`이 버전(v${currentVersion})으로 현재 라이브 도화지를 완전히 덮어쓰시겠습니까?`)) {
+                                restoreProjectFromServer(currentVersion);
+                            }
+                        }}>
+                            이 버전으로 복원
+                        </button>
+                    )}
+
+                    {currentVersion !== 'live' && userRole === 'OWNER' && (
+                        <button className="delete-version-btn" onClick={() => deleteVersionFromServer(currentVersion)}>
                             버전 삭제
                         </button>
                     )}

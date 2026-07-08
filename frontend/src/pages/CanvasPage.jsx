@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useCanvasStore } from '../store/useCanvasStore';
 import { request } from '../api/http';
 import FlowArea from '../components/canvas/FlowArea';
@@ -22,7 +22,7 @@ const parseJwt = (token) => {
 };
 
 export default function CanvasPage() {
-    const currentProjectId = useCanvasStore((state) => state.currentProjectId);
+    const { projectId } = useParams();
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const isMockMode = searchParams.get('mock') === 'true';
@@ -38,7 +38,7 @@ export default function CanvasPage() {
             }
 
             // 새로고침 등으로 스토어에 ID가 날아갔을 경우 방어 로직
-            if (!currentProjectId) {
+            if (!projectId) {
                 alert("프로젝트 정보가 없습니다. 목록에서 다시 접속해주세요.");
                 navigate("/projects");
                 return;
@@ -55,8 +55,12 @@ export default function CanvasPage() {
                 const decoded = parseJwt(token);
                 const username = decoded?.sub;
 
-                // Party 테이블을 기준으로 내 역할(Role) 확인
-                const members = await request(`/projects/${currentProjectId}/members`, { method: "GET" });
+                // [수정] 1. 새로고침을 대비하여 프로젝트 기본 정보(이름 등)를 백엔드에서 조회
+                const projectInfo = await request(`/projects/${projectId}`, { method: "GET" });
+                useCanvasStore.setState({ projectName: projectInfo.title });
+
+                // [수정] 2. 멤버 목록을 조회하여 내 권한 및 고유 ID 확보
+                const members = await request(`/projects/${projectId}/members`, { method: "GET" });
                 const myInfo = members?.find(m => m.username === username);
 
                 if (!myInfo) {
@@ -65,13 +69,14 @@ export default function CanvasPage() {
                     return;
                 }
 
-                const assignedRole = myInfo.role; // 'OWNER', 'MEMBER', 'GUEST'
+                // 과거 찌꺼기를 지우고 REST API로 도화지를 완전히 새로 세팅
+                await useCanvasStore.getState().loadProjectFromServer(projectId, null);
 
-                // 권한을 바탕으로 웹소켓 연결 및 캔버스 초기화
-                useCanvasStore.getState().initWebSocket(currentProjectId, token, assignedRole);
-                await useCanvasStore.getState().loadProjectFromServer(currentProjectId, null);
+                // 그 다음 웹소켓을 연결하여 라이브 팀원들과 합류 (Handshake)
+                useCanvasStore.getState().initWebSocket(projectId, token, myInfo.role, myInfo.userId);
 
                 setIsLoading(false);
+
             } catch (error) {
                 console.error("작업 공간 초기화 실패:", error);
                 alert("프로젝트 공간을 조회할 수 없습니다.");
@@ -84,7 +89,7 @@ export default function CanvasPage() {
         return () => {
             if (!isMockMode) useCanvasStore.getState().disconnectWebSocket();
         };
-    }, [currentProjectId, navigate, isMockMode]);
+    }, [projectId, navigate, isMockMode]);
 
     if (isLoading) {
         return (

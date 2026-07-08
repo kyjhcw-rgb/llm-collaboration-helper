@@ -6,13 +6,14 @@ import com.capstone.collaborationhelper.security.JwtTokenProvider;
 import com.capstone.collaborationhelper.service.CrdtService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.BinaryMessage;
 import org.springframework.web.socket.CloseStatus;
+import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
-import org.springframework.web.socket.handler.BinaryWebSocketHandler;
+import org.springframework.web.socket.handler.AbstractWebSocketHandler;
 
-import java.io.IOException;
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.util.Map;
@@ -22,27 +23,29 @@ import java.util.concurrent.CopyOnWriteArrayList;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class CrdtWebSocketHandler extends BinaryWebSocketHandler {
+public class CrdtWebSocketHandler extends AbstractWebSocketHandler {
 
     private final CrdtService crdtService;
     private final JwtTokenProvider jwtTokenProvider;
     private final PartyRepository partyRepository;
-
     private final Map<Integer, CopyOnWriteArrayList<WebSocketSession>> projectSessions = new ConcurrentHashMap<>();
 
+    // 서비스 로직과의 분리를 위한 이벤트 레코드 정의
+    public record RoleChangeEvent(Integer projectId, Integer userId, String newRole) {}
+    public record KickUserEvent(Integer projectId, Integer userId) {}
+    public record ForceReloadEvent(Integer projectId) {}
+
+    // --- 웹소켓 생명주기 및 CRDT 브로드캐스트 로직 ---
+
     private Integer extractProjectId(WebSocketSession session) {
-        String path = session.getUri().getPath();
-        return Integer.parseInt(path.substring(path.lastIndexOf('/') + 1));
+        return Integer.parseInt(session.getUri().getPath().substring(session.getUri().getPath().lastIndexOf('/') + 1));
     }
 
     private String extractToken(WebSocketSession session) {
         URI uri = session.getUri();
         if (uri != null && uri.getQuery() != null) {
-            String[] queryParams = uri.getQuery().split("&");
-            for (String param : queryParams) {
-                if (param.startsWith("token=")) {
-                    return param.substring(6);
-                }
+            for (String param : uri.getQuery().split("&")) {
+                if (param.startsWith("token=")) return param.substring(6);
             }
         }
         return null;
@@ -54,51 +57,69 @@ public class CrdtWebSocketHandler extends BinaryWebSocketHandler {
         String token = extractToken(session);
 
         if (token == null || !jwtTokenProvider.validateToken(token)) {
-            log.warn("웹소켓 연결 차단: 유효하지 않은 토큰");
+            log.warn("인증 실패: 유효하지 않은 웹소켓 토큰");
             session.close(CloseStatus.NOT_ACCEPTABLE.withReason("Invalid Token"));
             return;
         }
 
         String email = jwtTokenProvider.getEmail(token);
-
         Party party = partyRepository.findByProject_IdAndUser_Email(projectId, email).orElse(null);
 
         if (party == null) {
-            log.warn("웹소켓 연결 차단: Party 테이블에 등록되지 않은 유저 ({})", email);
+            log.warn("권한 거부: Party 멤버 아님 ({})", email);
             session.close(CloseStatus.NOT_ACCEPTABLE.withReason("No Access Rights"));
             return;
         }
 
-        String role = party.getRole();
-        Integer userId = party.getUser().getId(); // 최적화: 매번 DB를 조회하지 않도록 userId 추출
-
         session.getAttributes().put("email", email);
-        session.getAttributes().put("userId", userId); // 세션에 캐싱
-        session.getAttributes().put("role", role);
+        session.getAttributes().put("userId", party.getUser().getId());
+        session.getAttributes().put("role", party.getRole());
 
         projectSessions.computeIfAbsent(projectId, k -> new CopyOnWriteArrayList<>()).add(session);
-        log.info("웹소켓 연결됨: 프로젝트 ID = {}, 세션 ID = {}, 유저 = {}, 권한 = {}",
-                projectId, session.getId(), email, role);
+        log.info("웹소켓 연결 성공: 프로젝트 ID = {}, 유저 이메일 = {}", projectId, email);
     }
 
+    // Yjs 바이너리 데이터 수신 시 (실시간 동시 편집)
     @Override
     protected void handleBinaryMessage(WebSocketSession session, BinaryMessage message) throws Exception {
+        Integer userId = (Integer) session.getAttributes().get("userId");
         String role = (String) session.getAttributes().get("role");
-        Integer userId = (Integer) session.getAttributes().get("userId"); // 캐싱된 ID 가져오기
 
-        if ("GUEST".equalsIgnoreCase(role)) {
-            return;
-        }
+        // 권한이 없어서 쫓겨나는 중인 유저(userId가 셋팅 안됨)나 GUEST의 데이터는 즉시 무시
+        if (userId == null || "GUEST".equalsIgnoreCase(role)) return;
 
         Integer projectId = extractProjectId(session);
         ByteBuffer payload = message.getPayload();
         byte[] updateData = new byte[payload.remaining()];
         payload.get(updateData);
 
-        broadcastUpdate(projectId, session, updateData);
+        CopyOnWriteArrayList<WebSocketSession> sessions = projectSessions.get(projectId);
+        if (sessions != null) {
+            for (WebSocketSession s : sessions) {
+                if (s.isOpen() && !s.getId().equals(session.getId())) {
+                    synchronized (s) { try { s.sendMessage(new BinaryMessage(updateData)); } catch (Exception e) {} }
+                }
+            }
+        }
+        crdtService.bufferCrdtLog(projectId, userId, updateData);
+    }
 
-        // 🚀 성능 저하를 막기 위해 email 대신 DB 쿼리를 생략할 수 있는 userId를 넘깁니다.
-        crdtService.saveCrdtLog(projectId, userId, updateData);
+    @Override
+    protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
+        Integer userId = (Integer) session.getAttributes().get("userId");
+
+        // 비정상 세션 텍스트 명령어 무시
+        if (userId == null) return;
+
+        Integer projectId = extractProjectId(session);
+        CopyOnWriteArrayList<WebSocketSession> sessions = projectSessions.get(projectId);
+        if (sessions != null) {
+            for (WebSocketSession s : sessions) {
+                if (s.isOpen() && !s.getId().equals(session.getId())) {
+                    synchronized (s) { try { s.sendMessage(new TextMessage(message.getPayload())); } catch (Exception e) {} }
+                }
+            }
+        }
     }
 
     @Override
@@ -106,12 +127,63 @@ public class CrdtWebSocketHandler extends BinaryWebSocketHandler {
         Integer projectId = extractProjectId(session);
         if (projectSessions.containsKey(projectId)) {
             projectSessions.get(projectId).remove(session);
-            if (projectSessions.get(projectId).isEmpty()) {
-                projectSessions.remove(projectId);
+            if (projectSessions.get(projectId).isEmpty()) projectSessions.remove(projectId);
+        }
+    }
+
+    // --- 스프링 이벤트 리스너 (서비스 레이어에서 호출 시 반응) ---
+
+    @EventListener
+    public void handleRoleChangeEvent(RoleChangeEvent event) {
+        CopyOnWriteArrayList<WebSocketSession> sessions = projectSessions.get(event.projectId());
+        if (sessions != null) {
+            TextMessage textMsg = new TextMessage(String.format("{\"type\": \"ROLE_UPDATED\", \"userId\": %d, \"newRole\": \"%s\"}", event.userId(), event.newRole()));
+            for (WebSocketSession s : sessions) {
+                if (s.isOpen()) {
+                    if (event.userId().equals(s.getAttributes().get("userId"))) {
+                        s.getAttributes().put("role", event.newRole());
+                    }
+                    synchronized (s) { try { s.sendMessage(textMsg); } catch (Exception e) {} }
+                }
             }
         }
-        log.info("웹소켓 종료됨: 세션 ID = {}", session.getId());
     }
+
+    @EventListener
+    public void handleKickUserEvent(KickUserEvent event) {
+        CopyOnWriteArrayList<WebSocketSession> sessions = projectSessions.get(event.projectId());
+        if (sessions != null) {
+            for (WebSocketSession s : sessions) {
+                if (s.isOpen() && event.userId().equals(s.getAttributes().get("userId"))) {
+                    try {
+                        synchronized (s) { s.sendMessage(new TextMessage("{\"type\": \"KICKED\"}")); }
+                        s.close(CloseStatus.NORMAL.withReason("Kicked by OWNER"));
+                    } catch (Exception e) {}
+                }
+            }
+        }
+    }
+
+    @EventListener
+    public void handleForceReloadEvent(ForceReloadEvent event) {
+        CopyOnWriteArrayList<WebSocketSession> sessions = projectSessions.get(event.projectId());
+        if (sessions != null) {
+            TextMessage textMsg = new TextMessage("{\"type\": \"FORCE_RELOAD\"}");
+            for (WebSocketSession s : sessions) {
+                if (s.isOpen()) {
+                    synchronized (s) { try { s.sendMessage(textMsg); } catch (Exception e) {} }
+                }
+            }
+        }
+    }
+
+
+
+    /*@Override
+    protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
+        // 프론트에서 넘어오는 Text 명령이 있다면 여기서 처리 (현재는 서버 -> 프론트 단방향 명령만 사용)
+    }
+
 
     private void broadcastUpdate(Integer projectId, WebSocketSession senderSession, byte[] updateData) {
         CopyOnWriteArrayList<WebSocketSession> sessions = projectSessions.get(projectId);
@@ -120,14 +192,66 @@ public class CrdtWebSocketHandler extends BinaryWebSocketHandler {
             for (WebSocketSession s : sessions) {
                 if (s.isOpen() && !s.getId().equals(senderSession.getId())) {
                     try {
-                        synchronized (s) {
-                            s.sendMessage(msgToSend);
-                        }
+                        synchronized (s) { s.sendMessage(msgToSend); }
                     } catch (IOException e) {
-                        log.error("메시지 브로드캐스트 실패: {}", e.getMessage());
+                        log.error("바이너리 브로드캐스트 에러: {}", e.getMessage());
                     }
                 }
             }
         }
     }
+
+    // 방장이 라이브를 복원했을 때, 다른 모든 팀원들의 화면을 강제로 새로고침시키는 Text 커맨드
+    public void broadcastCommand(Integer projectId, String command) {
+        CopyOnWriteArrayList<WebSocketSession> sessions = projectSessions.get(projectId);
+        if (sessions != null) {
+            TextMessage textMsg = new TextMessage(command);
+            for (WebSocketSession s : sessions) {
+                if (s.isOpen()) {
+                    try {
+                        synchronized (s) { s.sendMessage(textMsg); }
+                    } catch (IOException e) {
+                        log.error("명령 브로드캐스트 에러: {}", e.getMessage());
+                    }
+                }
+            }
+        }
+    }
+
+    // 방장이 팀원의 권한을 변경했을 때, 타겟 유저의 백엔드 세션을 즉시 조작하고 프론트에 알림
+    public void updateSessionRole(Integer projectId, Integer targetUserId, String newRole) {
+        CopyOnWriteArrayList<WebSocketSession> sessions = projectSessions.get(projectId);
+        if (sessions != null) {
+            String payload = String.format("{\"type\": \"ROLE_UPDATED\", \"userId\": %d, \"newRole\": \"%s\"}", targetUserId, newRole);
+            TextMessage textMsg = new TextMessage(payload);
+            for (WebSocketSession s : sessions) {
+                if (s.isOpen()) {
+                    try {
+                        // 세션 주인이 타겟 유저라면 백엔드의 세션 권한을 강제 업데이트
+                        if (targetUserId.equals(s.getAttributes().get("userId"))) {
+                            s.getAttributes().put("role", newRole);
+                        }
+                        // 모든 클라이언트에게 권한 변경 이벤트 전송
+                        synchronized (s) { s.sendMessage(textMsg); }
+                    } catch (IOException e) {}
+                }
+            }
+        }
+    }
+
+    // 방장이 멤버를 강퇴했을 때, 해당 유저의 웹소켓 연결 강제 종료
+    public void disconnectUser(Integer projectId, Integer targetUserId) {
+        CopyOnWriteArrayList<WebSocketSession> sessions = projectSessions.get(projectId);
+        if (sessions != null) {
+            for (WebSocketSession s : sessions) {
+                if (s.isOpen() && targetUserId.equals(s.getAttributes().get("userId"))) {
+                    try {
+                        String payload = "{\"type\": \"KICKED\"}";
+                        synchronized (s) { s.sendMessage(new TextMessage(payload)); }
+                        s.close(CloseStatus.NORMAL.withReason("Kicked by OWNER"));
+                    } catch (IOException e) {}
+                }
+            }
+        }
+    }*/
 }
