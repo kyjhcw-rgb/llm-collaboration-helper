@@ -19,8 +19,8 @@ public class EmailService {
     private final JavaMailSender mailSender;
     private final EmailVerificationRepository emailVerificationRepository;
 
-    @Value("${app.frontend-url}")
-    private String frontendUrl;
+    @Value("${app.frontend.external}")
+    private String frontendExternalUrl;
 
     @Transactional
     public void sendVerificationEmail(String email) {
@@ -78,7 +78,7 @@ public class EmailService {
                         "[%s]님이 회원님을 '%s' 프로젝트의 [%s] 권한으로 초대했습니다.\n\n" +
                         "지금 바로 Our Diagram에 접속하여 팀원들과 다이어그램 협업을 시작해 보세요!\n" +
                         "접속 링크: %s/projects",
-                inviterNickname, projectName, roleName, frontendUrl
+                inviterNickname, projectName, roleName, frontendExternalUrl
         );
 
         message.setText(text);

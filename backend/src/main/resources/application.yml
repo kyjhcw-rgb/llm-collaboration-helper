@@ -46,12 +46,11 @@ spring:
 
 # 리액트 & 파이썬 서버 연동 설정
 app:
-  # CORS 설정 (리액트가 접속할 주소)
   cors:
     allowed-origins: ${ALLOWED_ORIGINS}
 
-    # 프론트엔드 접속 주소 (이메일 초대 링크용, 환경변수 설정 안 하면 기본값 localhost)
-    frontend-url: ${FRONTEND_URL:http://localhost:3000}
+  frontend:
+    external: ${FRONTEND_EXTERNAL:http://localhost:3000}  # 이메일 초대 링크, CORS용 공개 URL
 
   # AI 서버 설정 (파이썬 서버 주소)
   ai-server:
