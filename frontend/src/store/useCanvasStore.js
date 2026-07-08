@@ -423,7 +423,7 @@ export const useCanvasStore = create((set, get) => ({
             ydocUpdateHandler = null;
         }
 
-        const targetUrl = `ws://localhost:8080/ws/crdt/${projectId}?token=${token}`;
+        const targetUrl = `ws://api.oud.ai.kr/ws/crdt/${projectId}?token=${token}`;
         ws = new WebSocket(targetUrl);
         ws.binaryType = 'arraybuffer';
 
