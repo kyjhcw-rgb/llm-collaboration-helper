@@ -37,14 +37,14 @@ db_diagram_snapshots: Dict[str, List[dict]] = {}
 
 
 # =====================================================================
-# Pydantic 데이터 구조 정의 (다이어그램 도메인 - 모두 snake_case로 통일)
+# Pydantic 데이터 구조 (Spring/Java와 동일한 camelCase)
 # =====================================================================
 class MethodNode(BaseModel):
     id: str = Field(description="고유 ID (예: method_login)")
     name: str = Field(description="메서드 이름 (예: login)")
     description: str = Field(default="", description="메서드 역할 설명")
     parameters: Optional[str] = Field(default=None, description="파라미터 (예: String email, String pwd)")
-    return_type: Optional[str] = Field(default=None, description="리턴 타입 (예: ResponseEntity)") # returnType -> return_type 변경
+    returnType: Optional[str] = Field(default=None, description="리턴 타입 (예: ResponseEntity)")
 
 class ClassNode(BaseModel):
     id: str = Field(description="고유 ID (예: cls_auth_controller)")
@@ -61,7 +61,7 @@ class FeatureNode(BaseModel):
 
 class RelationEdge(BaseModel):
     id: str = Field(description="엣지 고유 ID (예: edge_1)")
-    from_id: str = Field(description="출발 노드 id (class 또는 method)") # fromId -> from_id 변경
+    fromId: str = Field(description="출발 노드 id (class 또는 method)")
     to: str = Field(description="도착 노드 id")
     kind: str = Field(description="CALL, INHERIT, IMPLEMENT 중 하나")
 
@@ -69,16 +69,15 @@ class DiagramRes(BaseModel):
     features: List[FeatureNode]
     edges: List[RelationEdge] = Field(default_factory=list)
 
-# 다이어그램 생성 및 수정 요청 스키마
 class DiagramGenerationRequest(BaseModel):
     title: str
     framework: str
-    freedom_level: int # freedomLevel -> freedom_level 변경
-    description_prompt: str # descriptionPrompt -> description_prompt 변경
+    freedomLevel: int
+    descriptionPrompt: str
 
 class DiagramModificationRequest(BaseModel):
-    session_id: str
-    current_diagram: DiagramRes = Field(description="현재 캔버스에 존재하는 최신 다이어그램 구조")
+    sessionId: str
+    currentDiagram: DiagramRes = Field(description="현재 캔버스에 존재하는 최신 다이어그램 구조")
     instruction: str = Field(description="사용자의 수정 요청 사항")
 
 
@@ -87,18 +86,18 @@ class DiagramModificationRequest(BaseModel):
 # =====================================================================
 class FileTreeRequest(BaseModel):
     diagram: DiagramRes = Field(description="코드로 변환할 최신 다이어그램 구조")
-    target_framework: str = Field(description="변환할 타겟 프레임워크")
+    targetFramework: str = Field(description="변환할 타겟 프레임워크")
 
 class FileStructureResponse(BaseModel):
-    file_paths: Dict[str, str] = Field(description="Key: 파일 경로, Value: 파일의 역할 요약")
+    filePaths: Dict[str, str] = Field(description="Key: 파일 경로, Value: 파일의 역할 요약")
 
 class SingleCodeGenerationRequest(BaseModel):
     diagram: DiagramRes = Field(description="최신 다이어그램 구조")
-    target_framework: str = Field(description="타겟 프레임워크")
-    target_file_path: str = Field(description="코드를 생성할 대상 파일 경로")
+    targetFramework: str = Field(description="타겟 프레임워크")
+    targetFilePath: str = Field(description="코드를 생성할 대상 파일 경로")
 
 class SingleCodeGenerationResponse(BaseModel):
-    file_path: str
+    filePath: str
     code: str = Field(description="해당 파일의 완벽한 소스 코드 내용")
 
 
@@ -116,9 +115,9 @@ def validate_and_filter_edges(diagram: dict) -> dict:
 
     clean_edges = []
     for edge in diagram.get("edges", []):
-        from_id = edge.get("from_id") # fromId -> from_id로 대칭 수정
+        fromId = edge.get("fromId")
         to_id = edge.get("to")
-        if from_id in valid_ids and to_id in valid_ids:
+        if fromId in valid_ids and to_id in valid_ids:
             clean_edges.append(edge)
         else:
             logger.warning(f"유령 엣지가 감지되어 제거되었습니다: {edge.get('id')}")
@@ -215,7 +214,7 @@ async def generate_initial_diagram(request: DiagramGenerationRequest):
         "1. features: 도메인·기능 단위 (id, name, description)\n"
         "2. 각 feature 안에 classes 배열\n"
         "3. 각 class 안에 methods 배열\n"
-        "4. edges: 노드 간 관계. from_id, to는 반드시 위에서 만든 id와 일치\n"  # 프롬프트 가이드 내 fromId -> from_id 변경
+        "4. edges: 노드 간 관계. fromId, to는 반드시 위에서 만든 id와 일치\n"
         "5. edges.kind: CALL, INHERIT, IMPLEMENT\n"
         "6. 절대 부연 설명 없이 지정된 JSON 스키마로만 응답해."
     )
@@ -223,8 +222,8 @@ async def generate_initial_diagram(request: DiagramGenerationRequest):
     user_message = (
         f"프로젝트 제목: {request.title}\n"
         f"사용 프레임워크: {request.framework}\n"
-        f"자유도 레벨: {request.freedom_level} — {_freedom_level_hint(request.freedom_level)}\n"
-        f"기획 내용: {request.description_prompt}"
+        f"자유도 레벨: {request.freedomLevel} — {_freedom_level_hint(request.freedomLevel)}\n"
+        f"기획 내용: {request.descriptionPrompt}"
     )
 
     try:
@@ -251,7 +250,7 @@ async def generate_initial_diagram(request: DiagramGenerationRequest):
 # =====================================================================
 @app.post("/projects/modify-diagram", response_model=DiagramRes)
 async def modify_diagram(request: DiagramModificationRequest):
-    session_id = request.session_id
+    session_id = request.sessionId
     
     system_instruction = (
         "너는 소프트웨어 아키텍처 다이어그램을 수정하고 고도화하는 시니어 개발자야.\n"
@@ -265,7 +264,7 @@ async def modify_diagram(request: DiagramModificationRequest):
 
     history = db_chat_history.get(session_id, [])
     user_message_text = (
-        f"[현재 다이어그램 상태]\n{json.dumps(request.current_diagram.model_dump(), ensure_ascii=False)}\n\n"
+        f"[현재 다이어그램 상태]\n{json.dumps(request.currentDiagram.model_dump(), ensure_ascii=False)}\n\n"
         f"[사용자 수정 요청 사항]\n{request.instruction}"
     )
     history.append({"role": "user", "parts": [{"text": user_message_text}]})
@@ -339,7 +338,7 @@ async def reset_chat(session_id: str):
 async def generate_file_tree(request: FileTreeRequest):
     system_instruction = (
         f"너는 다이어그램(JSON)을 보고 소프트웨어 패키지 구조를 설계하는 아키텍트야.\n"
-        f"제공된 구조를 바탕으로 [{request.target_framework}] 프로젝트에 필요한 파일 경로 목록을 작성해.\n"
+        f"제공된 구조를 바탕으로 [{request.targetFramework}] 프로젝트에 필요한 파일 경로 목록을 작성해.\n"
         "실제 코드는 작성하지 말고, 오직 파일 경로와 해당 파일의 간단한 역할만 JSON으로 응답해."
     )
 
@@ -371,14 +370,14 @@ async def generate_file_tree(request: FileTreeRequest):
 async def generate_single_code(request: SingleCodeGenerationRequest):
     system_instruction = (
         f"너는 다이어그램(JSON)을 실제 소스 코드로 변환하는 천재 개발자야.\n"
-        f"전체 다이어그램 구조를 바탕으로, 요청받은 딱 하나의 파일 [{request.target_file_path}] 의 소스 코드만 완성도 있게 작성해줘.\n"
+        f"전체 다이어그램 구조를 바탕으로, 요청받은 딱 하나의 파일 [{request.targetFilePath}] 의 소스 코드만 완성도 있게 작성해줘.\n"
         "다른 파일의 코드는 절대 포함하지 말고, 지정된 스키마에 맞춰 이 파일의 순수 코드만 응답해."
     )
     
     user_message = (
         f"[전체 다이어그램 구조]\\n{json.dumps(request.diagram.model_dump(), ensure_ascii=False)}\n\n"
-        f"[생성할 대상 파일 경로]\n{request.target_file_path}\n\n"
-        f"위 파일 경로에 들어갈 [{request.target_framework}] 보일러플레이트 코드를 짜줘."
+        f"[생성할 대상 파일 경로]\n{request.targetFilePath}\n\n"
+        f"위 파일 경로에 들어갈 [{request.targetFramework}] 보일러플레이트 코드를 짜줘."
     )
 
     try:
@@ -394,7 +393,7 @@ async def generate_single_code(request: SingleCodeGenerationRequest):
         )
         return json.loads(response.text)
     except Exception as e:
-        handle_genai_error(e, f"[{request.target_file_path}] 단일 코드 생성")
+        handle_genai_error(e, f"[{request.targetFilePath}] 단일 코드 생성")
 
 
 if __name__ == "__main__":
