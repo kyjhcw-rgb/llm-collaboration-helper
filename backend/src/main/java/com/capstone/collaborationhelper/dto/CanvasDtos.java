@@ -11,12 +11,14 @@ public class CanvasDtos {
     public static class SyncReq {
         private List<BlockDto> blocks;
         private List<EdgeDto> edges;
+        private String yjsData; // Yjs 이진 데이터를 Base64로 인코딩한 문자열
     }
 
     @Data @NoArgsConstructor @AllArgsConstructor
     public static class SyncRes {
         private List<BlockDto> blocks;
         private List<EdgeDto> edges;
+        private String yjsData;
     }
 
     @Data

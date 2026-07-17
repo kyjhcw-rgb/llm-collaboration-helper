@@ -2,6 +2,7 @@ import React, { memo, useEffect, useState } from 'react';
 import { Handle, Position, useUpdateNodeInternals, useStore } from 'reactflow';
 import { NodeResizer } from '@reactflow/node-resizer';
 import '@reactflow/node-resizer/dist/style.css';
+import { useCanvasStore } from '../../store/useCanvasStore';
 
 const CustomNode = ({ id, data, selected }) => {
     const updateNodeInternals = useUpdateNodeInternals();
@@ -10,6 +11,11 @@ const CustomNode = ({ id, data, selected }) => {
     // 현재 엣지를 드래그 중인지 React Flow 내부 상태로 감지
     const isConnecting = useStore((state) => !!state.connectionNodeId);
     const [isHovered, setIsHovered] = useState(false);
+
+    // 수정자 정보 찾기
+    const projectMembers = useCanvasStore(state => state.projectMembers || []);
+    const updater = projectMembers.find(m => m.userId === data.lastUpdatedBy);
+    const updaterName = updater ? updater.nickname : null;
 
     // 핸들을 보여줄 조건:
     // 1. 이 노드가 선택(클릭)됐을 때
@@ -38,6 +44,17 @@ const CustomNode = ({ id, data, selected }) => {
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
         >
+            {updaterName && (
+                <div style={{
+                    position: 'absolute', top: '-18px', left: 0,
+                    fontSize: '11px', color: '#fff', background: '#e67e22',
+                    padding: '2px 6px', borderRadius: '4px', zIndex: 10,
+                    fontWeight: 'bold', boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                }}>
+                    ✍️ {updaterName}
+                </div>
+            )}
+
             <NodeResizer color="#4953BE" isVisible={selected} minWidth={100} minHeight={40} />
 
             <Handle type="source" position={Position.Top}    id="top"    style={handleStyle(showHandles)} />

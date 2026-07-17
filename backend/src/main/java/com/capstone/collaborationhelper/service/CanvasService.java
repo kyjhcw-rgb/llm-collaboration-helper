@@ -37,9 +37,15 @@ public class CanvasService {
     @Transactional(readOnly = true)
     public CanvasDtos.SyncRes loadLiveCanvas(Integer projectId) {
         assertPartyMember(projectId);
+        Project project = projectRepository.findById(projectId).orElseThrow(); // [추가된 부분] 프로젝트 조회
         List<Block> blocks = blockRepository.findByProjectIdAndIsDeletedFalse(projectId);
         List<Edge> edges = edgeRepository.findByProjectIdAndIsDeletedFalse(projectId);
-        return new CanvasDtos.SyncRes(mapBlocksToDto(blocks), mapEdgesToDto(edges));
+
+        // DB에 저장된 Yjs Binary를 Base64로 변환하여 전달
+        String yjsDataBase64 = project.getCrdtSnapshot() != null ?
+                java.util.Base64.getEncoder().encodeToString(project.getCrdtSnapshot()) : null;
+
+        return new CanvasDtos.SyncRes(mapBlocksToDto(blocks), mapEdgesToDto(edges), yjsDataBase64); // [수정된 부분] yjsDataBase64 포함 반환
     }
 
     @Transactional(readOnly = true)
@@ -54,7 +60,7 @@ public class CanvasService {
         }
     }
 
-    // [STEP 2] 자동 스냅샷 병합 및 DB 청소
+    // [STEP 2] 프론트엔드의 최신 상태를 DB와 동기화
     @Transactional
     public void syncLiveCanvas(Integer projectId, CanvasDtos.SyncReq req) {
         LocalDateTime syncStartTime = LocalDateTime.now();
@@ -62,6 +68,12 @@ public class CanvasService {
         assertNotGuest(projectId);
 
         project.setUpdatedAt(ZonedDateTime.now());
+
+        // 프론트엔드가 보낸 Yjs Binary를 디코딩하여 DB에 저장
+        if (req.getYjsData() != null && !req.getYjsData().isBlank()) {
+            project.setCrdtSnapshot(java.util.Base64.getDecoder().decode(req.getYjsData()));
+        }
+
         projectRepository.save(project);
 
         // Block UPSERT
@@ -100,7 +112,7 @@ public class CanvasService {
         List<Edge> edgesToDelete = edgeMap.values().stream().filter(e -> !e.isDeleted()).peek(e -> e.setDeleted(true)).toList();
         edgeRepository.saveAll(edgesToDelete);
 
-        // 안전한 찌꺼기 청소: 동기화 시점 이전의 CRDT 로그 날리기
+        // 누적된 CRDT 로그 삭제
         crdtLogRepository.deleteByProjectIdAndCreatedAtBefore(projectId, syncStartTime);
     }
 
@@ -144,11 +156,12 @@ public class CanvasService {
         CanvasDtos.SyncReq restoreReq = new CanvasDtos.SyncReq();
         restoreReq.setBlocks(snapshot.getBlocks());
         restoreReq.setEdges(snapshot.getEdges());
+        restoreReq.setYjsData(snapshot.getYjsData());
 
         syncLiveCanvas(projectId, restoreReq);
         log.info("[Restore] 프로젝트 {}의 라이브 화면이 버전 {} 상태로 덮어씌워졌습니다.", projectId, versionNumber);
 
-        // 직접 참조 대신 이벤트 발행
+        // 현재 접속중인 사용자들에게 강제 새로고침 트리거 전송
         eventPublisher.publishEvent(new ForceReloadEvent(projectId));
     }
 

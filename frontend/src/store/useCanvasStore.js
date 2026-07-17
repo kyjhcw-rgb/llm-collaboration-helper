@@ -27,7 +27,7 @@ function injectZIndex(nodes) {
 
 // React Flow의 UI 전용 상태(선택, 드래그 상태 등)를 제거하여 Yjs 맵을 깨끗하게 유지하고 무한 통신 스팸을 방지
 function stripUIProps(node) {
-    const { positionAbsolute, selected, dragging, zIndex, ...cleanNode } = node;
+    const { positionAbsolute, selected, dragging, resizing, measured, zIndex, ...cleanNode } = node;
     if (cleanNode.style) {
         const cleanStyle = { ...cleanNode.style };
         delete cleanStyle.zIndex;
@@ -301,7 +301,8 @@ function parseCanvasData(data) {
                 description: block.description || '',
                 parameters: block.parameters || '',
                 returnType: block.returnType || '',
-                annotations: block.annotations || ''
+                annotations: block.annotations || '',
+                lastUpdatedBy: null
             }
         };
     });
@@ -316,11 +317,32 @@ function parseCanvasData(data) {
         zIndex: 9999,
         data: {
             type: edge.type || 'call',
-            badgeCount: edge.badgeCount || 1
+            badgeCount: edge.badgeCount || 1,
+            lastUpdatedBy: null
         }
     }));
 
     return { nodes, edges };
+}
+
+// Uint8Array <-> Base64 변환 헬퍼 (Yjs 이진 데이터 송수신 용)
+function uint8ArrayToBase64(bytes) {
+    let binary = '';
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    return window.btoa(binary);
+}
+
+function base64ToUint8Array(base64) {
+    const binary_string = window.atob(base64);
+    const len = binary_string.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        bytes[i] = binary_string.charCodeAt(i);
+    }
+    return bytes;
 }
 
 // ==========================================
@@ -355,6 +377,7 @@ export const useCanvasStore = create((set, get) => ({
     currentVersion: 'live', // 초기 상태를 'live'로 명확히 지정
     userRole: 'GUEST',
     myUserId: null, // 권한 변경 감지용
+    projectMembers: [], // 멤버 정보 상태 추가
     availableVersions: [], // { versionNumber, commitMessage, createdAt } 객체 배열
 
     nodes: [],
@@ -371,13 +394,12 @@ export const useCanvasStore = create((set, get) => ({
     redo: () => undoManager.redo(),
 
     // 💡 Yjs 동기화를 위해 노드와 엣지를 설정하는 핵심 메서드
+    // 💡 수정됨: Zustand 로컬 상태를 우선 업데이트하여 UI 반응성 확보
     setNodes: (newNodes) => {
+        set({ nodes: newNodes }); // 💡 먼저 로컬 UI 업데이트하여 버벅임/튕김 해결
+
         if (get().userRole === 'GUEST' || get().currentVersion !== 'live') return;
-
-        // [에러 수정] React Flow가 키보드 삭제 등으로 부모를 삭제했지만 자식을 남겨둔 경우,
-        // Yjs에 고아 노드가 들어가는 것을 방지하기 위한 이중 방어 로직
         const currentIds = new Set(newNodes.map(n => n.id));
-
         ydoc.transact(() => {
             Array.from(ynodesMap.keys()).forEach(id => {
                 if (!currentIds.has(id)) ynodesMap.delete(id);
@@ -396,6 +418,8 @@ export const useCanvasStore = create((set, get) => ({
     },
 
     setEdges: (newEdges) => {
+        set({ edges: newEdges }); // 💡 로컬 UI 우선 업데이트
+
         if (get().userRole === 'GUEST' || get().currentVersion !== 'live') return;
         ydoc.transact(() => {
             const currentIds = new Set(newEdges.map(e => e.id));
@@ -415,37 +439,69 @@ export const useCanvasStore = create((set, get) => ({
     initWebSocket: (projectId, token, role, myUserId) => {
         set({ currentProjectId: projectId, userRole: role, myUserId: myUserId });
 
-        if (ws) ws.close();
+        // React 18 StrictMode로 인해 웹소켓이 두 번 열리는 현상 방지
+        if (ws) {
+            ws.onclose = null;
+            ws.close();
+            ws = null;
+        }
 
-        // 수정: 기존에 등록된 update 이벤트 리스너가 있다면 제거하여 중복 증식을 막음
+        // 기존에 등록된 update 이벤트 리스너가 있다면 제거하여 중복 증식을 막음
         if (ydocUpdateHandler) {
             ydoc.off('update', ydocUpdateHandler);
             ydocUpdateHandler = null;
         }
 
-        const targetUrl = `wss://api.oud.ai.kr/ws/crdt/${projectId}?token=${token}`;
+        // 💡 수정됨: 현재 도메인 환경에 맞추어 동적으로 WebSocket URL 설정
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const currentHost = window.location.host;
+
+        // [수정된 부분] 3000번 포트로 들어와도 백엔드(8080) 웹소켓으로 자동 우회
+        const targetHost = (currentHost.includes('localhost:3000') || currentHost.includes('localhost:5173'))
+            ? 'localhost:8080'
+            : currentHost;
+
+        // [🚨 가장 치명적이었던 변수명 에러 수정 (host -> targetHost)]
+        const targetUrl = `${protocol}//${targetHost}/ws/crdt/${projectId}?token=${token}`;
+
         ws = new WebSocket(targetUrl);
         ws.binaryType = 'arraybuffer';
 
-        // Yjs 평행우주 충돌 방지를 위해 REQUEST_SYNC 와 Y.encodeStateAsUpdate는 제거합니다.
         ws.onopen = () => {
-            console.log('WebSocket Connected');
+            console.log('WebSocket Connected - 서버에 최신 상태를 요청합니다 (REQUEST_SYNC)');
+
+            // 접속 즉시 서버에게 현재까지의 완벽한 Yjs 상태를 요청함
+            ws.send(JSON.stringify({
+                type: 'REQUEST_SYNC'
+            }));
         };
 
         ws.onmessage = (event) => {
             if (typeof event.data === 'string') {
                 try {
                     const msg = JSON.parse(event.data);
-                    if (msg.type === 'FORCE_RELOAD') {
-                        alert("방장이 다이어그램을 이전 버전으로 복원했습니다! 라이브 도화지를 새로고침합니다.");
+
+                    // 서버가 내려준 스냅샷 + 누적 로그 적용
+                    if (msg.type === 'SYNC_STATE') {
+                        if (msg.snapshot) {
+                            Y.applyUpdate(ydoc, base64ToUint8Array(msg.snapshot), 'remote');
+                        }
+                        if (msg.logs && msg.logs.length > 0) {
+                            msg.logs.forEach(logBase64 => {
+                                Y.applyUpdate(ydoc, base64ToUint8Array(logBase64), 'remote');
+                            });
+                        }
+                        console.log('서버로부터 Yjs 통합 상태 동기화 완료!');
+                    } else if (msg.type === 'FORCE_RELOAD') {
+                        alert("프로젝트가 새로운 버전으로 복원되었습니다. 화면을 새로고침합니다.");
                         get().loadProjectFromServer(projectId, null);
                     } else if (msg.type === 'ROLE_UPDATED') {
                         if (msg.userId === get().myUserId) {
-                            alert(`방장에 의해 귀하의 권한이 [${msg.newRole === 'MEMBER' ? '편집자(MEMBER)' : '조회자(GUEST)'}]로 변경되었습니다.`);
+                            alert(`당신의 권한이 [${msg.newRole === 'MEMBER' ? '편집자 (MEMBER)' : '조회자 (GUEST)'}] 로 변경되었습니다.`);
                             set({ userRole: msg.newRole });
                         }
                     } else if (msg.type === 'KICKED') {
-                        alert("방장에 의해 프로젝트에서 내보내졌습니다.");
+                        alert("프로젝트에서 추방되었습니다.");
                         get().disconnectWebSocket();
                         window.location.href = '/projects';
                     }
@@ -453,6 +509,7 @@ export const useCanvasStore = create((set, get) => ({
                 return;
             }
 
+            // 실시간 편집으로 발생하는 바이너리 데이터 적용
             const update = new Uint8Array(event.data);
             Y.applyUpdate(ydoc, update, 'remote');
         };
@@ -469,17 +526,41 @@ export const useCanvasStore = create((set, get) => ({
             }
         };
 
-        // 수정: 익명 함수 대신 기명 함수(핸들러)로 정의하여 등록
+        // 💡 수정됨: Yjs 갱신 시 기존 로컬 UI 상태(selected, measured 등)를 병합하여 UI 튕김 방지
         ydocUpdateHandler = (update, origin) => {
             if (origin !== 'remote' && ws && ws.readyState === WebSocket.OPEN && get().currentVersion === 'live') {
                 ws.send(update);
             }
 
-            // 모든 노드를 꺼내고, 에러 방지용 Sanitize 후 주입
-            const rawNodes = Array.from(ynodesMap.values());
+            // 현재 Zustand에 있는 노드의 UI 전용 상태들(선택, 드래그, 크기 정보) 가져오기
+            const currentNodes = get().nodes;
+            const uiStateMap = new Map(currentNodes.map(n => [n.id, {
+                selected: n.selected, dragging: n.dragging, resizing: n.resizing, measured: n.measured
+            }]));
+
+            const rawNodes = Array.from(ynodesMap.values()).map(n => {
+                const ui = uiStateMap.get(n.id) || {};
+                const res = { ...n };
+                if (ui.selected !== undefined) res.selected = ui.selected;
+                if (ui.dragging !== undefined) res.dragging = ui.dragging;
+                if (ui.resizing !== undefined) res.resizing = ui.resizing;
+                if (ui.measured !== undefined) res.measured = ui.measured;
+                return res;
+            });
+
+            const currentEdges = get().edges;
+            const edgeUiMap = new Map(currentEdges.map(e => [e.id, { selected: e.selected }]));
+
+            const rawEdges = Array.from(yedgesMap.values()).map(e => {
+                const ui = edgeUiMap.get(e.id) || {};
+                const res = { ...e };
+                if (ui.selected !== undefined) res.selected = ui.selected;
+                return res;
+            });
+
             set({
                 nodes: injectZIndex(computePositionAbsolute(sortNodesParentFirst(rawNodes))),
-                edges: Array.from(yedgesMap.values())
+                edges: rawEdges
             });
 
             if (get().userRole !== 'GUEST' && get().currentVersion === 'live') {
@@ -516,6 +597,12 @@ export const useCanvasStore = create((set, get) => ({
 
     updateNodeData: (nodeId, newData) => {
         if (get().userRole === 'GUEST' || get().currentVersion !== 'live') return;
+
+        // 💡 로컬 상태 즉시 반영하여 빠른 피드백 제공
+        set(state => ({
+            nodes: state.nodes.map(n => n.id === nodeId ? { ...n, data: { ...n.data, ...newData } } : n)
+        }));
+
         ydoc.transact(() => {
             const node = ynodesMap.get(nodeId);
             if (node) {
@@ -534,6 +621,12 @@ export const useCanvasStore = create((set, get) => ({
 
     updateEdgeData: (edgeId, newData) => {
         if (get().userRole === 'GUEST' || get().currentVersion !== 'live') return;
+
+        // 로컬 엣지 즉시 반영
+        set(state => ({
+            edges: state.edges.map(e => e.id === edgeId ? { ...e, data: { ...e.data, ...newData } } : e)
+        }));
+
         ydoc.transact(() => {
             const edge = yedgesMap.get(edgeId);
             if (edge) {
@@ -545,6 +638,10 @@ export const useCanvasStore = create((set, get) => ({
 
     deleteNode: (nodeId) => {
         if (get().userRole === 'GUEST' || get().currentVersion !== 'live') return;
+
+        // 화면에서 노드 즉시 제거
+        set(state => ({ nodes: state.nodes.filter(n => n.id !== nodeId) }));
+
         ydoc.transact(() => {
             // [에러 수정] 부모 삭제 시 자식 노드까지 연쇄 삭제(Cascading Delete)하여 고아 노드 남김 방지
             const nodesToDelete = new Set([nodeId]);
@@ -593,19 +690,25 @@ export const useCanvasStore = create((set, get) => ({
             const url = versionNumber
                 ? `/projects/${projectId}/canvas?version=${versionNumber}`
                 : `/projects/${projectId}/canvas`;
-            const data = await request(url, { method: "GET" });
 
+            const data = await request(url, { method: "GET" });
             const { nodes, edges } = parseCanvasData(data);
-            const finalNodes = sortNodesParentFirst(fixOverlapsAndRecalculate(nodes));
+            const { yjsData } = data;   // 서버에서 전달받은 Base64 Yjs 바이너리
 
             // Yjs 평행우주 충돌 방지를 위해 REST 로드 시 아예 백지로 갈아끼우기
             resetYjsEnv();
 
-            // REST API에서 가져온 순수 데이터를 Yjs에 세팅 (브로드캐스트 방지)
-            ydoc.transact(() => {
-                finalNodes.forEach(node => ynodesMap.set(node.id, stripUIProps(node)));
-                edges.forEach(edge => yedgesMap.set(edge.id, stripUIProps(edge)));
-            }, 'local');
+            // Yjs 바이너리 데이터가 있으면 Apply, 없으면 (구버전) 수동 주입
+            if (yjsData) {
+                const bytes = base64ToUint8Array(yjsData);
+                Y.applyUpdate(ydoc, bytes); // CRDT 편집 히스토리 완벽 복원
+            } else {
+                const finalNodes = sortNodesParentFirst(fixOverlapsAndRecalculate(nodes));
+                ydoc.transact(() => {
+                    finalNodes.forEach(node => ynodesMap.set(node.id, stripUIProps(node)));
+                    edges.forEach(edge => yedgesMap.set(edge.id, stripUIProps(edge)));
+                }, 'local');
+            }
 
             const rawNodes = Array.from(ynodesMap.values());
             const displayNodes = injectZIndex(computePositionAbsolute(sortNodesParentFirst(rawNodes)));
@@ -616,12 +719,13 @@ export const useCanvasStore = create((set, get) => ({
                 currentVersion: versionNumber || 'live',
                 selectedNodeId: null,
                 selectedEdgeId: null,
-                nodes: displayNodes, // 화면 강제 갱신
-                edges: displayEdges  // 화면 강제 갱신
+                nodes: displayNodes,
+                edges: displayEdges
             });
 
             // 다시 Live로 돌아왔을 때 웹소켓 재연결
-            if (!versionNumber && !ws && get().currentProjectId) {
+            // 초기 마운트 시 중복 호출 방지를 위해 조건 강화
+            if (!versionNumber && !ws && get().currentProjectId && get().myUserId !== null) {
                 const token = localStorage.getItem("accessToken");
                 if (token) get().initWebSocket(projectId, token, get().userRole, get().myUserId);
             }
@@ -633,17 +737,28 @@ export const useCanvasStore = create((set, get) => ({
         }
     },
 
+    // 💡 mockData도 로직 동일하게 맞춤
     loadMockData: () => {
         if (ydocUpdateHandler) {
             ydoc.off('update', ydocUpdateHandler);
             ydocUpdateHandler = null;
         }
-
         ydocUpdateHandler = () => {
-            const rawNodes = Array.from(ynodesMap.values());
+            const currentNodes = get().nodes;
+            const uiStateMap = new Map(currentNodes.map(n => [n.id, { selected: n.selected, dragging: n.dragging, resizing: n.resizing, measured: n.measured }]));
+            const rawNodes = Array.from(ynodesMap.values()).map(n => {
+                const ui = uiStateMap.get(n.id) || {};
+                return { ...n, selected: ui.selected, dragging: ui.dragging, resizing: ui.resizing, measured: ui.measured };
+            });
+            const currentEdges = get().edges;
+            const edgeUiMap = new Map(currentEdges.map(e => [e.id, { selected: e.selected }]));
+            const rawEdges = Array.from(yedgesMap.values()).map(e => {
+                const ui = edgeUiMap.get(e.id) || {};
+                return { ...e, selected: ui.selected };
+            });
             set({
                 nodes: injectZIndex(computePositionAbsolute(sortNodesParentFirst(rawNodes))),
-                edges: Array.from(yedgesMap.values())
+                edges: rawEdges
             });
         };
         ydoc.on('update', ydocUpdateHandler);
@@ -700,10 +815,14 @@ export const useCanvasStore = create((set, get) => ({
             badgeCount: edge.data?.badgeCount || 1,
         }));
 
+        // 현재 Yjs 전체 상태를 바이너리로 추출하여 Base64 인코딩
+        const yjsUpdate = Y.encodeStateAsUpdate(ydoc);
+        const yjsDataBase64 = uint8ArrayToBase64(yjsUpdate);
+
         try {
             await request(`/projects/${projectId}/canvas/sync`, {
                 method: "POST",
-                body: JSON.stringify({ blocks, edges })
+                body: JSON.stringify({ blocks, edges, yjsData: yjsDataBase64 })
             });
         } catch (error) {
             console.error("동기화 오류:", error);
