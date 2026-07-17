@@ -41,6 +41,7 @@ public class CrdtWebSocketHandler extends AbstractWebSocketHandler {
     public record RoleChangeEvent(Integer projectId, Integer userId, String newRole) {}
     public record KickUserEvent(Integer projectId, Integer userId) {}
     public record ForceReloadEvent(Integer projectId) {}
+    public record VersionCreatedEvent(Integer projectId) {}
 
     // --- 웹소켓 생명주기 및 CRDT 브로드캐스트 로직 ---
 
@@ -203,6 +204,20 @@ public class CrdtWebSocketHandler extends AbstractWebSocketHandler {
         CopyOnWriteArrayList<WebSocketSession> sessions = projectSessions.get(event.projectId());
         if (sessions != null) {
             TextMessage textMsg = new TextMessage("{\"type\": \"FORCE_RELOAD\"}");
+            for (WebSocketSession s : sessions) {
+                if (s.isOpen()) {
+                    synchronized (s) { try { s.sendMessage(textMsg); } catch (Exception e) {} }
+                }
+            }
+        }
+    }
+
+    // 방장이 버전을 저장했을 때 접속 중인 팀원들에게 쏘는 이벤트 핸들러
+    @EventListener
+    public void handleVersionCreatedEvent(VersionCreatedEvent event) {
+        CopyOnWriteArrayList<WebSocketSession> sessions = projectSessions.get(event.projectId());
+        if (sessions != null) {
+            TextMessage textMsg = new TextMessage("{\"type\": \"VERSION_CREATED\"}");
             for (WebSocketSession s : sessions) {
                 if (s.isOpen()) {
                     synchronized (s) { try { s.sendMessage(textMsg); } catch (Exception e) {} }

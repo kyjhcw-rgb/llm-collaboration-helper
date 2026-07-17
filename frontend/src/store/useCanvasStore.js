@@ -493,8 +493,12 @@ export const useCanvasStore = create((set, get) => ({
                         }
                         console.log('서버로부터 Yjs 통합 상태 동기화 완료!');
                     } else if (msg.type === 'FORCE_RELOAD') {
-                        alert("프로젝트가 새로운 버전으로 복원되었습니다. 화면을 새로고침합니다.");
-                        get().loadProjectFromServer(projectId, null);
+                        // 과거 버전 복원 시 (방장을 포함한 모두에게 적용)
+                        alert("방장이 다이어그램을 이전 버전으로 복원했습니다. Live 캔버스로 동기화합니다.");
+                        window.location.reload();
+                    } else if (msg.type === 'VERSION_CREATED') {
+                        // 방장이 버전을 생성했다는 알림을 받으면, 접속자 모두가 드롭다운 목록을 업데이트
+                        get().loadVersionsFromServer(projectId);
                     } else if (msg.type === 'ROLE_UPDATED') {
                         if (msg.userId === get().myUserId) {
                             alert(`당신의 권한이 [${msg.newRole === 'MEMBER' ? '편집자 (MEMBER)' : '조회자 (GUEST)'}] 로 변경되었습니다.`);
@@ -832,8 +836,9 @@ export const useCanvasStore = create((set, get) => ({
     // 영구 버전 삭제 추가
     commitVersionToServer: async (commitMessage = "새로운 버전 저장") => {
         const { currentProjectId, saveProjectToServer, userRole, currentVersion } = get();
-        if (!currentProjectId || userRole === 'GUEST' || currentVersion !== 'live') {
-            alert("라이브 상태의 편집 권한이 있어야만 커밋할 수 있습니다.");
+        // 방장만 버전 생성이 가능하도록 권한 확인 변경
+        if (!currentProjectId || userRole !== 'OWNER' || currentVersion !== 'live') {
+            alert("방장만 버전을 생성할 수 있습니다.");
             return;
         }
 
@@ -845,9 +850,9 @@ export const useCanvasStore = create((set, get) => ({
             });
 
             if (response && response.newVersion) {
-                alert(`v${response.newVersion} 버전이 성공적으로 기록(Commit) 되었습니다!`);
-                set({ currentVersion: response.newVersion });
-                await get().loadVersionsFromServer(currentProjectId);
+                // [수정된 부분] 과거 버전으로 강제 이동하던 코드 삭제 (계속 Live로 남음)
+                alert(`v${response.newVersion} 버전이 성공적으로 저장되었습니다!\n계속해서 Live 상태로 편집을 진행합니다.`);
+                // 갱신은 백엔드에서 쏘는 VERSION_CREATED 웹소켓을 통해 자동 처리됨
             }
         } catch (error) {
             console.error("버전 저장(Commit) 실패:", error);
@@ -867,7 +872,11 @@ export const useCanvasStore = create((set, get) => ({
             await request(`/projects/${currentProjectId}/canvas/versions/${versionNumber}/restore`, {
                 method: "POST"
             });
-            // 복원에 성공하면 백엔드가 FORCE_RELOAD 웹소켓을 모두에게 뿌리므로, 방장 본인도 onmessage에서 새로고침 됨.
+            // 복원 버튼을 누른 방장은 과거 버전 조회 중이어서 웹소켓이 끊겨있음
+            // 따라서 본인 스스로 리로드해서 Live 캔버스로 복귀시킴
+            // 팀원들은 웹소켓 연결이 되어있으므로 FORCE_RELOAD 신호를 받고 리로드됨
+            alert(`v${versionNumber} 상태로 복원되었습니다. Live 캔버스로 이동합니다.`);
+            window.location.reload();
         } catch (error) {
             console.error("복원 에러:", error);
             alert("버전 복원에 실패했습니다.");

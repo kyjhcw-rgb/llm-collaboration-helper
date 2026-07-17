@@ -4,6 +4,7 @@ import com.capstone.collaborationhelper.dto.CanvasDtos;
 import com.capstone.collaborationhelper.entity.*;
 import com.capstone.collaborationhelper.repository.*;
 import com.capstone.collaborationhelper.websocket.CrdtWebSocketHandler.ForceReloadEvent;
+import com.capstone.collaborationhelper.websocket.CrdtWebSocketHandler.VersionCreatedEvent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -120,7 +121,7 @@ public class CanvasService {
     @Transactional
     public Integer commitVersion(Integer projectId, String commitMessage) {
         Project project = projectRepository.findById(projectId).orElseThrow();
-        assertNotGuest(projectId);
+        assertOwner(projectId);
 
         CanvasDtos.SyncRes currentState = loadLiveCanvas(projectId);
         byte[] snapshotBytes;
@@ -140,6 +141,8 @@ public class CanvasService {
                 .crdtSnapshot(snapshotBytes)
                 .build();
         versionRepository.save(newVersion);
+
+        eventPublisher.publishEvent(new VersionCreatedEvent(projectId));
 
         return nextVersion;
     }
