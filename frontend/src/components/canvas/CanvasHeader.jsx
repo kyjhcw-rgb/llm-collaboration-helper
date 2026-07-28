@@ -126,11 +126,6 @@ const CanvasHeader = () => {
         }
     };
 
-    const handleLiveSync = async () => {
-        await saveProjectToServer();
-        alert("현재 다이어그램 상태가 캔버스 라이브 DB에 동기화되었습니다.");
-    };
-
     const handleCommit = async () => {
         const commitMessage = window.prompt("버전 히스토리에 남길 커밋 메시지를 입력하세요", "새로운 다이어그램 구조 업데이트");
         if (commitMessage !== null) await commitVersionToServer(commitMessage);
@@ -156,11 +151,11 @@ const CanvasHeader = () => {
                     {/* 과거 버전 확인 중 방장만 사용 가능한 복원 버튼 */}
                     {currentVersion !== 'live' && userRole === 'OWNER' && (
                         <button className="commit-btn" style={{ marginLeft: '10px', backgroundColor: '#e67e22' }} onClick={() => {
-                            if (window.confirm(`이 버전(v${currentVersion})으로 현재 라이브 도화지를 완전히 덮어쓰시겠습니까?`)) {
+                            if (window.confirm(`이 버전(v${currentVersion})으로 현재 프로젝트를 완전히 덮어쓰시겠습니까?`)) {
                                 restoreProjectFromServer(currentVersion);
                             }
                         }}>
-                            이 버전으로 복원
+                            복원하기
                         </button>
                     )}
 
@@ -172,10 +167,9 @@ const CanvasHeader = () => {
                 </div>
 
                 <div className="action-buttons" style={{ display: 'flex', gap: '8px', marginLeft: '15px' }}>
-                    {userRole !== 'GUEST' && (
+                    {userRole === 'OWNER' && (
                         <>
-                            <button className="sync-btn" onClick={handleLiveSync}>라이브 동기화</button>
-                            <button className="commit-btn" onClick={handleCommit}>버전 박제 (Commit)</button>
+                            <button className="commit-btn" onClick={handleCommit}>버전 저장 (Commit)</button>
                         </>
                     )}
                 </div>

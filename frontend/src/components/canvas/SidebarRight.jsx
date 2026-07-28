@@ -19,6 +19,7 @@ const SidebarRight = () => {
         userRole,
         currentProjectId,
         currentVersion,
+        myUserId, projectMembers
     } = useCanvasStore();
 
     const [activeTab, setActiveTab] = useState("info");
@@ -40,7 +41,8 @@ const SidebarRight = () => {
             if (node) {
                 setInfo({
                     label: node.data?.label || node.data?.name || "",
-                    description: node.data?.description || ""
+                    description: node.data?.description || "",
+                    lastUpdatedBy: node.data?.lastUpdatedBy || null
                 });
             }
         }
@@ -50,7 +52,10 @@ const SidebarRight = () => {
         if (selectedEdgeId) {
             const edge = edges.find((e) => e.id === selectedEdgeId);
             if (edge) {
-                setEdgeInfo({ type: edge.data?.type || "call" });
+                setEdgeInfo({
+                    type: edge.data?.type || "call",
+                    lastUpdatedBy: edge.data?.lastUpdatedBy || null
+                });
             }
         }
     }, [selectedEdgeId, edges]);
@@ -80,7 +85,7 @@ const SidebarRight = () => {
 
     const handleSaveNode = async () => {
         if (selectedNodeId && isEditable) {
-            updateNodeData(selectedNodeId, info);
+            updateNodeData(selectedNodeId, { ...info, lastUpdatedBy: myUserId });
             await saveProjectToServer();
             alert("블록 정보가 성공적으로 저장 및 동기화되었습니다.");
         }
@@ -88,7 +93,7 @@ const SidebarRight = () => {
 
     const handleSaveEdge = async () => {
         if (selectedEdgeId && isEditable) {
-            updateEdgeData(selectedEdgeId, edgeInfo);
+            updateEdgeData(selectedEdgeId, { ...edgeInfo, lastUpdatedBy: myUserId });
             await saveProjectToServer();
             alert("선 타입이 성공적으로 변경 및 동기화되었습니다.");
         }
@@ -149,6 +154,11 @@ const SidebarRight = () => {
         }
     };
 
+    const getUpdaterName = (userId) => {
+        const member = projectMembers.find(m => m.userId === userId);
+        return member ? member.nickname : "정보 없음";
+    };
+
     return (
         <aside className="sidebar-right">
             <div className="right-tabs">
@@ -185,6 +195,12 @@ const SidebarRight = () => {
                                         <option value="inheritance">상속 (보라색 실선)</option>
                                         <option value="implementation">구현 (초록색 점선)</option>
                                     </select>
+                                </div>
+                                <div className="property-group">
+                                    <label>최근 수정자</label>
+                                    <div style={{ padding: '8px', backgroundColor: '#f0f2fb', borderRadius: '8px', fontSize: '13px', color: '#4953BE', fontWeight: 'bold' }}>
+                                        {getUpdaterName(edgeInfo.lastUpdatedBy)}
+                                    </div>
                                 </div>
                                 {/* GUEST에게는 저장/삭제 버튼 자체를 숨김 */}
                                 {isEditable && (

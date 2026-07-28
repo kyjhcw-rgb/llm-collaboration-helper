@@ -112,6 +112,10 @@ function CustomConnectionLine({ fromX, fromY, toX, toY, fromPosition, toPosition
 }
 
 const FlowContents = () => {
+    // [수정된 부분] 경고를 없애기 위해 useMemo를 사용하여 타입 객체를 메모이제이션
+    const nodeTypes = useMemo(() => ({ custom: CustomNode }), []);
+    const edgeTypes = useMemo(() => ({ custom: CustomEdge }), []);
+
     const { setSelectedNodeId, setSelectedEdgeId } = useCanvasStore();
     const { screenToFlowPosition } = useReactFlow();
 
@@ -122,6 +126,8 @@ const FlowContents = () => {
 
     const nodes = useCanvasStore((state) => state.nodes);
     const edges = useCanvasStore((state) => state.edges);
+    const myUserId = useCanvasStore((state) => state.myUserId);
+
     const connectingHandleRef = useRef(null);
     const [hoveredEdgeId, setHoveredEdgeId] = useState(null);
 
@@ -144,6 +150,15 @@ const FlowContents = () => {
         let nextEdges = state.edges;
         let edgesChanged = false;
 
+        // 내가 움직인 노드에 내 ID(lastUpdatedBy) 추가
+        const changedNodeIds = new Set(changes.filter(c => c.type === 'position' || c.type === 'dimensions').map(c => c.id));
+        nextNodes = nextNodes.map(n => {
+            if (changedNodeIds.has(n.id)) {
+                return { ...n, data: { ...n.data, lastUpdatedBy: myUserId } };
+            }
+            return n;
+        });
+
         for (const change of changes) {
             if (change.type === 'remove') {
                 nextEdges = nextEdges.filter(
@@ -153,28 +168,13 @@ const FlowContents = () => {
             }
         }
 
-        // Method 1: select·dimensions 배치는 layout 속성(position·size·parentNode)을
-        // store 현재값으로 보존 → select 배치가 recalc 결과를 덮어쓰지 않음.
-        const hasPositionOrRemove = changes.some(c => c.type === 'position' || c.type === 'remove');
-        if (!hasPositionOrRemove) {
-            const prevMap = new Map(state.nodes.map(n => [n.id, n]));
-            nextNodes = nextNodes.map(n => {
-                const prev = prevMap.get(n.id);
-                if (!prev) return n;
-                return { ...prev, selected: n.selected, dragging: n.dragging };
-            });
-            state.setNodes(nextNodes);
-            return;
-        }
-
-        // 노드 삭제 시 컨테이너 크기 재계산
         if (changes.some(c => c.type === 'remove')) {
             nextNodes = recalculateContainerSizes(nextNodes);
         }
 
         state.setNodes(nextNodes);
         if (edgesChanged) state.setEdges(nextEdges);
-    }, [isEditable]);
+    }, [isEditable, myUserId]);
 
     // ─── handleNodeDragStop ──────────────────────────────────────────────────
     // React Flow v11의 신뢰할 수 있는 drag end 신호.
@@ -308,8 +308,17 @@ const FlowContents = () => {
         if (!isEditable) return;
         const state = useCanvasStore.getState();
         if (state.userRole === 'GUEST') return;
-        state.setEdges(applyEdgeChanges(chs, state.edges));
-    }, [isEditable]);
+
+        const changedEdgeIds = new Set(chs.map(c => c.id));
+        const nextEdges = applyEdgeChanges(chs, state.edges).map(e => {
+            if (changedEdgeIds.has(e.id)) {
+                return { ...e, data: { ...e.data, lastUpdatedBy: myUserId } };
+            }
+            return e;
+        });
+
+        state.setEdges(nextEdges);
+    }, [isEditable, myUserId]);
 
     const handleConnect = useCallback((params) => {
         if (!isEditable) return;
@@ -324,7 +333,6 @@ const FlowContents = () => {
 
         const sourceNode = state.nodes.find((n) => n.id === safeParams.source);
         const sourceNodeType = sourceNode?.data?.type || 'method';
-
         const existingEdgeIndex = state.edges.findIndex(
             e => e.source === safeParams.source && e.target === safeParams.target
         );
@@ -337,7 +345,7 @@ const FlowContents = () => {
                 ...existingEdge,
                 sourceHandle: safeParams.sourceHandle,
                 targetHandle: safeParams.targetHandle,
-                data: { ...existingEdge.data, badgeCount: currentCount + 1 }
+                data: { ...existingEdge.data, badgeCount: currentCount + 1, lastUpdatedBy: myUserId }
             };
             state.setEdges(newEdges);
         } else {
@@ -346,11 +354,11 @@ const FlowContents = () => {
                 id: `edge_${Date.now()}`,
                 type: 'custom',
                 zIndex: 9999,
-                data: { type: 'call', badgeCount: 1, sourceNodeType }
+                data: { type: 'call', badgeCount: 1, sourceNodeType, lastUpdatedBy: myUserId }
             };
             state.setEdges(state.edges.concat(newEdge));
         }
-    }, [isEditable]);
+    }, [isEditable, myUserId]);
 
     const onConnectStart = useCallback((event, { nodeId, handleId }) => {
         connectingHandleRef.current = { nodeId, handleId };

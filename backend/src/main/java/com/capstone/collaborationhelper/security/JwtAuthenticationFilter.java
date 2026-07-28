@@ -23,19 +23,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter{
         //헤더에서 토큰 추출
         String header = request.getHeader("Authorization");
         String token = null;
-        String email = null;
+        String username = null;
 
         if (header != null && header.startsWith("Bearer ")) {
             token = header.substring(7);
             if (jwtTokenProvider.validateToken(token)) {
-                email = jwtTokenProvider.getEmail(token);
+                username = jwtTokenProvider.getUsername(token);
             }
         }
         
         //토큰이 유효하고 인증되지 않은 상태일 때
-        if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+        if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
             //role 다루는 로직으로 추후에 추가필요
-            UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(email, null, Collections.emptyList());
+            UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(username, null, Collections.emptyList());
 
             //통과
             SecurityContextHolder.getContext().setAuthentication(authToken);

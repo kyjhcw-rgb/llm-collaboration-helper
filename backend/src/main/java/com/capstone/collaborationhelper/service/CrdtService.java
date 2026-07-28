@@ -13,7 +13,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 @Slf4j
@@ -65,5 +68,32 @@ public class CrdtService {
             crdtLogRepository.saveAll(batchToSave);
             log.info("[CRDT Batch Insert] 인메모리 버퍼에서 {}개의 로그를 DB에 일괄 저장 완료", batchToSave.size());
         }
+    }
+
+    // 프론트엔드의 REQUEST_SYNC 요청에 응답할 완벽한 통합 상태 패키징 API 추가
+    public Map<String, Object> getFullSyncState(Integer projectId) {
+        Project project = projectRepository.findById(projectId).orElse(null);
+        String snapshotBase64 = (project != null && project.getCrdtSnapshot() != null) ?
+                Base64.getEncoder().encodeToString(project.getCrdtSnapshot()) : null;
+
+        List<String> logsBase64 = new ArrayList<>();
+
+        // 1. DB에 밀려있는 로그 추출
+        crdtLogRepository.findByProjectIdOrderByCreatedAtAsc(projectId)
+                .forEach(log -> logsBase64.add(Base64.getEncoder().encodeToString(log.getUpdateData())));
+
+        // 2. 메모리에 있는 최신 로그 추출
+        for (CrdtLogTask task : logQueue) {
+            if (projectId.equals(task.projectId())) {
+                logsBase64.add(Base64.getEncoder().encodeToString(task.updateData()));
+            }
+        }
+
+        // 스냅샷과 로그들을 묶어서 리턴
+        Map<String, Object> state = new HashMap<>();
+        state.put("type", "SYNC_STATE");
+        state.put("snapshot", snapshotBase64);
+        state.put("logs", logsBase64);
+        return state;
     }
 }

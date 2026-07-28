@@ -23,8 +23,8 @@ public class JwtTokenProvider {
         this.secretKey = Keys.hmacShaKeyFor(salt.getBytes(StandardCharsets.UTF_8));
     }
 
-    public String createToken(String email) {
-        Claims claims = Jwts.claims().subject(email).build();
+    public String createToken(String username) {
+        Claims claims = Jwts.claims().subject(username).build();
         Date now = new Date();
         Date validity = new Date(now.getTime() + validityInMilliseconds);
 
@@ -36,7 +36,7 @@ public class JwtTokenProvider {
                 .compact();
     }
 
-    public String getEmail(String token) {
+    public String getUsername(String token) {
         return Jwts.parser()
                 .verifyWith(secretKey)
                 .build()

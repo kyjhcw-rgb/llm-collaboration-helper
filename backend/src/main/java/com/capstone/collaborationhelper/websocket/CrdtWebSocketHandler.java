@@ -1,9 +1,13 @@
 package com.capstone.collaborationhelper.websocket;
 
 import com.capstone.collaborationhelper.entity.Party;
+import com.capstone.collaborationhelper.entity.User;
 import com.capstone.collaborationhelper.repository.PartyRepository;
+import com.capstone.collaborationhelper.repository.UserRepository;
 import com.capstone.collaborationhelper.security.JwtTokenProvider;
 import com.capstone.collaborationhelper.service.CrdtService;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
@@ -28,12 +32,16 @@ public class CrdtWebSocketHandler extends AbstractWebSocketHandler {
     private final CrdtService crdtService;
     private final JwtTokenProvider jwtTokenProvider;
     private final PartyRepository partyRepository;
+    private final UserRepository userRepository; // Username 조회를 위한 의존성 주입
+    private final ObjectMapper objectMapper;
+
     private final Map<Integer, CopyOnWriteArrayList<WebSocketSession>> projectSessions = new ConcurrentHashMap<>();
 
     // 서비스 로직과의 분리를 위한 이벤트 레코드 정의
     public record RoleChangeEvent(Integer projectId, Integer userId, String newRole) {}
     public record KickUserEvent(Integer projectId, Integer userId) {}
     public record ForceReloadEvent(Integer projectId) {}
+    public record VersionCreatedEvent(Integer projectId) {}
 
     // --- 웹소켓 생명주기 및 CRDT 브로드캐스트 로직 ---
 
@@ -62,21 +70,32 @@ public class CrdtWebSocketHandler extends AbstractWebSocketHandler {
             return;
         }
 
-        String email = jwtTokenProvider.getEmail(token);
-        Party party = partyRepository.findByProject_IdAndUser_Email(projectId, email).orElse(null);
+        String username = jwtTokenProvider.getUsername(token);
+        User user = userRepository.findByUsername(username).orElse(null);
+
+        if (user == null) {
+            log.warn("웹소켓 연결 거부: 존재하지 않는 유저 ({})", username);
+            session.close(CloseStatus.NOT_ACCEPTABLE.withReason("User Not Found"));
+            return;
+        }
+
+        // 이메일 조회가 아닌 UserId 기반의 안전한 파티원 조회로 변경
+        Party party = partyRepository.findByProjectIdAndUserId(projectId, user.getId()).orElse(null);
 
         if (party == null) {
-            log.warn("권한 거부: Party 멤버 아님 ({})", email);
+            log.warn("웹소켓 연결 거부: Party 권한 없음 ({})", username);
             session.close(CloseStatus.NOT_ACCEPTABLE.withReason("No Access Rights"));
             return;
         }
 
-        session.getAttributes().put("email", email);
+        // 세션 속성 저장 시 실제 유저의 진짜 이메일과, 토큰에서 뽑은 username을 명확하게 분리해서 저장
+        session.getAttributes().put("email", user.getEmail());
+        session.getAttributes().put("username", username);
         session.getAttributes().put("userId", party.getUser().getId());
         session.getAttributes().put("role", party.getRole());
 
         projectSessions.computeIfAbsent(projectId, k -> new CopyOnWriteArrayList<>()).add(session);
-        log.info("웹소켓 연결 성공: 프로젝트 ID = {}, 유저 이메일 = {}", projectId, email);
+        log.info("웹소켓 연결 성공: 프로젝트 ID = {}, 유저 이메일 = {}", projectId, username);
     }
 
     // Yjs 바이너리 데이터 수신 시 (실시간 동시 편집)
@@ -107,11 +126,27 @@ public class CrdtWebSocketHandler extends AbstractWebSocketHandler {
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
         Integer userId = (Integer) session.getAttributes().get("userId");
-
         // 비정상 세션 텍스트 명령어 무시
         if (userId == null) return;
 
         Integer projectId = extractProjectId(session);
+
+        // 프론트엔드의 상태 동기화 요청(REQUEST_SYNC) 완벽 대응
+        try {
+            JsonNode json = objectMapper.readTree(message.getPayload());
+            if (json.has("type") && "REQUEST_SYNC".equals(json.get("type").asText())) {
+                // 백엔드가 쥐고 있는 스냅샷+로그들을 한 팩으로 묶어서 요청한 클라이언트에게만 응답
+                Map<String, Object> syncState = crdtService.getFullSyncState(projectId);
+                synchronized (session) {
+                    session.sendMessage(new TextMessage(objectMapper.writeValueAsString(syncState)));
+                }
+                log.info("클라이언트에게 Yjs 통합 상태(SYNC_STATE)를 전송했습니다. (프로젝트 ID: {})", projectId);
+                return;
+            }
+        } catch (Exception e) {
+            // JSON 파싱 에러나 일반 텍스트면 그냥 무시하고 브로드캐스트로 넘김
+        }
+
         CopyOnWriteArrayList<WebSocketSession> sessions = projectSessions.get(projectId);
         if (sessions != null) {
             for (WebSocketSession s : sessions) {
@@ -169,6 +204,20 @@ public class CrdtWebSocketHandler extends AbstractWebSocketHandler {
         CopyOnWriteArrayList<WebSocketSession> sessions = projectSessions.get(event.projectId());
         if (sessions != null) {
             TextMessage textMsg = new TextMessage("{\"type\": \"FORCE_RELOAD\"}");
+            for (WebSocketSession s : sessions) {
+                if (s.isOpen()) {
+                    synchronized (s) { try { s.sendMessage(textMsg); } catch (Exception e) {} }
+                }
+            }
+        }
+    }
+
+    // 방장이 버전을 저장했을 때 접속 중인 팀원들에게 쏘는 이벤트 핸들러
+    @EventListener
+    public void handleVersionCreatedEvent(VersionCreatedEvent event) {
+        CopyOnWriteArrayList<WebSocketSession> sessions = projectSessions.get(event.projectId());
+        if (sessions != null) {
+            TextMessage textMsg = new TextMessage("{\"type\": \"VERSION_CREATED\"}");
             for (WebSocketSession s : sessions) {
                 if (s.isOpen()) {
                     synchronized (s) { try { s.sendMessage(textMsg); } catch (Exception e) {} }

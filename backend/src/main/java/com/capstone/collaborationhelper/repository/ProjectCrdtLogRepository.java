@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 public interface ProjectCrdtLogRepository extends JpaRepository<ProjectCrdtLog, Integer> {
 
@@ -14,4 +15,7 @@ public interface ProjectCrdtLogRepository extends JpaRepository<ProjectCrdtLog, 
     @Modifying
     @Query("delete from ProjectCrdtLog p where p.project.id = :projectId and p.createdAt <= :syncTime")
     void deleteByProjectIdAndCreatedAtBefore(@Param("projectId") Integer projectId, @Param("syncTime") LocalDateTime syncTime);
+
+    // 특정 프로젝트의 미동기화 로그를 생성 시간 오름차순으로 조회 (Catch-up 용)
+    List<ProjectCrdtLog> findByProjectIdOrderByCreatedAtAsc(Integer projectId);
 }
