@@ -19,16 +19,17 @@ export default function CustomEdge({
     const hasFocus = selectedNodeId !== null;
     const isConnected = hasFocus && (source === selectedNodeId || target === selectedNodeId);
 
-    // 우선순위: hover/selected > 연결된 focus > 비연결 focus > 기본
+    // 우선순위: hover/selected > 연결된 focus > 비연결 focus(완전히 숨김) > 기본(완전히 숨김)
+    // 블록을 클릭했을 때만 그 블록과 연결된 엣지가 나타나도록, 그 외에는 아예 안 보이게 처리
     let opacity, strokeWidthValue;
     if (hovered || selected) {
         opacity = 1;
         strokeWidthValue = 4;
     } else if (hasFocus) {
-        opacity = isConnected ? 1 : 0.1;
+        opacity = isConnected ? 1 : 0;
         strokeWidthValue = isConnected ? 3 : 2;
     } else {
-        opacity = 0.35;
+        opacity = 0;
         strokeWidthValue = 2;
     }
 

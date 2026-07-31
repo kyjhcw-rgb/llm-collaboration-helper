@@ -151,10 +151,14 @@ const FlowContents = () => {
         let edgesChanged = false;
 
         // 내가 움직인 노드에 내 ID(lastUpdatedBy) 추가
-        const changedNodeIds = new Set(changes.filter(c => c.type === 'position' || c.type === 'dimensions').map(c => c.id));
+        // dimensions 타입은 React Flow가 최초 렌더링 시 자동 측정하면서도 똑같이 발생시키므로,
+        // 실제 사용자가 리사이즈(resizing: true)한 경우만 "수정"으로 취급한다.
+        const changedNodeIds = new Set(
+            changes.filter(c => c.type === 'position' || (c.type === 'dimensions' && c.resizing)).map(c => c.id)
+        );
         nextNodes = nextNodes.map(n => {
             if (changedNodeIds.has(n.id)) {
-                return { ...n, data: { ...n.data, lastUpdatedBy: myUserId } };
+                return { ...n, data: { ...n.data, lastUpdatedBy: myUserId, lastUpdatedAt: Date.now() } };
             }
             return n;
         });
@@ -312,7 +316,7 @@ const FlowContents = () => {
         const changedEdgeIds = new Set(chs.map(c => c.id));
         const nextEdges = applyEdgeChanges(chs, state.edges).map(e => {
             if (changedEdgeIds.has(e.id)) {
-                return { ...e, data: { ...e.data, lastUpdatedBy: myUserId } };
+                return { ...e, data: { ...e.data, lastUpdatedBy: myUserId, lastUpdatedAt: Date.now() } };
             }
             return e;
         });
@@ -345,7 +349,7 @@ const FlowContents = () => {
                 ...existingEdge,
                 sourceHandle: safeParams.sourceHandle,
                 targetHandle: safeParams.targetHandle,
-                data: { ...existingEdge.data, badgeCount: currentCount + 1, lastUpdatedBy: myUserId }
+                data: { ...existingEdge.data, badgeCount: currentCount + 1, lastUpdatedBy: myUserId, lastUpdatedAt: Date.now() }
             };
             state.setEdges(newEdges);
         } else {
@@ -354,7 +358,7 @@ const FlowContents = () => {
                 id: `edge_${Date.now()}`,
                 type: 'custom',
                 zIndex: 9999,
-                data: { type: 'call', badgeCount: 1, sourceNodeType, lastUpdatedBy: myUserId }
+                data: { type: 'call', badgeCount: 1, sourceNodeType, lastUpdatedBy: myUserId, lastUpdatedAt: Date.now() }
             };
             state.setEdges(state.edges.concat(newEdge));
         }
