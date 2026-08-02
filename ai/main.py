@@ -75,12 +75,6 @@ class DiagramGenerationRequest(BaseModel):
     freedomLevel: int
     descriptionPrompt: str
 
-class DiagramModificationRequest(BaseModel):
-    sessionId: str
-    currentDiagram: DiagramRes = Field(description="현재 캔버스에 존재하는 최신 다이어그램 구조")
-    instruction: str = Field(description="사용자의 수정 요청 사항")
-
-
 # =====================================================================
 # 2단계 코드 생성을 위한 Pydantic 스키마
 # =====================================================================
@@ -168,7 +162,11 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     reply: str
 
-@app.post("/chat", response_model=ChatResponse)
+class ModifyResponse(BaseModel):
+    reply: str = Field(description="변경 요약 설명 (한국어)")
+    diagram: DiagramRes = Field(description="수정이 반영된 전체 다이어그램")
+
+@app.post("/project/ask", response_model=ChatResponse)
 async def chat_about_project(request: ChatRequest):
     diagram_json = json.dumps(request.diagram.model_dump(), ensure_ascii=False)
     context_block = ""
@@ -246,56 +244,66 @@ async def generate_initial_diagram(request: DiagramGenerationRequest):
 
 
 # =====================================================================
-# [기능 3] 다이어그램 지속 수정 API
+# [기능 3] 다이어그램 수정 API (stateless — Spring Agent 연동)
+# 요청 스키마는 /project/ask와 동일(ChatRequest). 응답은 reply + diagram.
 # =====================================================================
-@app.post("/projects/modify-diagram", response_model=DiagramRes)
-async def modify_diagram(request: DiagramModificationRequest):
-    session_id = request.sessionId
-    
+@app.post("/project/agent", response_model=ModifyResponse)
+async def modify_diagram(request: ChatRequest):
+    diagram_json = json.dumps(request.diagram.model_dump(), ensure_ascii=False)
+    context_block = ""
+    if request.projectContext:
+        context_block = f"\n[프로젝트 초기 기획]\n{request.projectContext}\n"
+
     system_instruction = (
-        "너는 소프트웨어 아키텍처 다이어그램을 수정하고 고도화하는 시니어 개발자야.\n"
-        "사용자가 제공한 [현재 상태]와 [수정 요청]을 분석해 전체 다이어그램을 JSON으로 응답해.\n"
-        "변환 규칙:\n"
+        "당신은 소프트웨어 아키텍처 다이어그램을 수정하는 AI 에이전트입니다.\n"
+        "사용자의 수정 요청을 반영한 전체 다이어그램과, 무엇을 바꿨는지 설명하는 reply를 함께 반환하세요.\n"
+        "\n"
+        "[수정 규칙]\n"
         "1. ID 유지: 명시적 삭제/변경이 없는 기존 feature, class, method ID는 절대 유지\n"
-        "2. 노드 추가: 기존 ID와 겹치지 않는 고유 ID 부여\n"
-        "3. edges 동기화: 노드 변경에 맞춰 갱신\n"
-        "4. 순수 JSON 응답 필수"
+        "2. 노드 추가: 기존 ID와 겹치지 않는 고유 ID 부여 (예: feat_xxx, cls_xxx, method_xxx)\n"
+        "3. edges 동기화: 노드 추가/삭제에 맞춰 edges를 갱신. fromId/to는 실제 존재하는 id만\n"
+        "4. edges.kind: CALL, INHERIT, IMPLEMENT 중 하나\n"
+        "5. 요청과 무관한 부분은 임의로 바꾸지 말 것\n"
+        "6. 다이어그램에 없는 가정을 크게 늘리지 말 것 (필요하면 reply에 가정을 짧게 명시)\n"
+        "\n"
+        "[응답]\n"
+        "- reply: 한국어로 변경 요약 (무엇을 추가/수정/삭제했는지 2~5문장)\n"
+        "- diagram: 수정이 반영된 전체 다이어그램 JSON (부분 패치가 아님)\n"
+        f"{context_block}"
+        f"[현재 프로젝트 다이어그램]\n{diagram_json}"
     )
 
-    history = db_chat_history.get(session_id, [])
-    user_message_text = (
-        f"[현재 다이어그램 상태]\n{json.dumps(request.currentDiagram.model_dump(), ensure_ascii=False)}\n\n"
-        f"[사용자 수정 요청 사항]\n{request.instruction}"
-    )
-    history.append({"role": "user", "parts": [{"text": user_message_text}]})
+    contents = []
+    for turn in request.history:
+        role = "user" if turn.sender.upper() == "USER" else "model"
+        contents.append({"role": role, "parts": [{"text": turn.message}]})
+    contents.append({"role": "user", "parts": [{"text": request.message}]})
 
     try:
         response = client.models.generate_content(
             model=MODEL_ID,
-            contents=history,
+            contents=contents,
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 response_mime_type="application/json",
-                response_schema=DiagramRes,
+                response_schema=ModifyResponse,
                 temperature=0.2,
             ),
         )
 
-        history.append({"role": "model", "parts": [{"text": response.text}]})
-        db_chat_history[session_id] = history
+        payload = json.loads(response.text)
+        raw_diagram = payload.get("diagram")
+        if not raw_diagram:
+            raise HTTPException(status_code=502, detail="AI가 수정된 다이어그램을 반환하지 않았습니다.")
 
-        updated_diagram_data = json.loads(response.text)
-        validated_diagram = validate_and_filter_edges(updated_diagram_data)
-        
-        if session_id not in db_diagram_snapshots:
-            db_diagram_snapshots[session_id] = []
-            
-        db_diagram_snapshots[session_id].append({
-            "diagram": json.loads(json.dumps(validated_diagram)),
-            "chat_history": json.loads(json.dumps(history))
-        })
-        
-        return validated_diagram
+        validated_diagram = validate_and_filter_edges(raw_diagram)
+        reply = (payload.get("reply") or "").strip()
+        if not reply:
+            raise HTTPException(status_code=502, detail="AI가 변경 설명(reply)을 반환하지 않았습니다.")
+
+        return ModifyResponse(reply=reply, diagram=validated_diagram)
+    except HTTPException:
+        raise
     except Exception as e:
         handle_genai_error(e, "다이어그램 수정")
 
