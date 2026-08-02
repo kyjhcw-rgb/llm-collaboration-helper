@@ -6,9 +6,6 @@ import './FlowArea.css';
 import CustomNode from './CustomNode';
 import CustomEdge from './CustomEdge';
 
-const nodeTypes = { custom: CustomNode };
-const edgeTypes = { custom: CustomEdge };
-
 const VALID_PARENT_TYPES = {
     method: ['class', 'feature'],
     class:  ['feature'],
@@ -50,8 +47,6 @@ function findBestParent(draggedNode, allNodes, validParentTypes, nodesMap) {
     return best;
 }
 
-// C: 이동된 노드와 겹치는 형제를 DOWN/RIGHT로만 밀어냄 (clamp 재충돌 없음, idempotent).
-// 반환: { nodes: 수정된 배열, affectedIds: 실제로 밀린 형제 ID 집합 }
 function resolveOverlaps(nodes, movedNodeId) {
     const movedNode = nodes.find(n => n.id === movedNodeId);
     if (!movedNode || !movedNode.parentNode) return { nodes, affectedIds: new Set() };
@@ -112,12 +107,14 @@ function CustomConnectionLine({ fromX, fromY, toX, toY, fromPosition, toPosition
 }
 
 const FlowContents = () => {
-    // [수정된 부분] 경고를 없애기 위해 useMemo를 사용하여 타입 객체를 메모이제이션
     const nodeTypes = useMemo(() => ({ custom: CustomNode }), []);
     const edgeTypes = useMemo(() => ({ custom: CustomEdge }), []);
 
     const { setSelectedNodeId, setSelectedEdgeId } = useCanvasStore();
     const { screenToFlowPosition } = useReactFlow();
+
+    // '기능만 보기' 토글 상태 추가
+    const [showOnlyFeatures, setShowOnlyFeatures] = useState(false);
 
     // Read-Only 판단
     const isLive = useCanvasStore(state => state.currentVersion === 'live');
@@ -131,18 +128,41 @@ const FlowContents = () => {
     const connectingHandleRef = useRef(null);
     const [hoveredEdgeId, setHoveredEdgeId] = useState(null);
 
-    // 표시 전용: Yjs edge 데이터를 건드리지 않고 zIndex만 주입.
-    // 기본 0 → 노드(1~3) 뒤, hover 시 10 → 노드 앞
-    const displayEdges = useMemo(
-        () => edges.map(e => ({ ...e, zIndex: e.id === hoveredEdgeId ? 10 : 0 })),
-        [edges, hoveredEdgeId]
-    );
+    // ─── [기능만 보기 필터링 로직] ────────────────────────────────────────────────
+    const visibleNodes = useMemo(() => {
+        if (!showOnlyFeatures) return nodes;
+
+        // 1. feature 타입인 노드 선택
+        const featureNodes = nodes.filter(n => n.data?.type === 'feature');
+        const featureNodeIds = new Set(featureNodes.map(n => n.id));
+
+        // 2. feature를 부모(또는 상위 부모)로 두고 있는 자식 노드들도 포함
+        const isChildOfFeature = (node) => {
+            let currentParentId = node.parentNode;
+            while (currentParentId) {
+                if (featureNodeIds.has(currentParentId)) return true;
+                const parentNode = nodes.find(n => n.id === currentParentId);
+                currentParentId = parentNode ? parentNode.parentNode : null;
+            }
+            return false;
+        };
+
+        return nodes.filter(n => n.data?.type === 'feature' || isChildOfFeature(n));
+    }, [nodes, showOnlyFeatures]);
+
+    // 표시할 노드 ID 집합
+    const visibleNodeIds = useMemo(() => new Set(visibleNodes.map(n => n.id)), [visibleNodes]);
+
+    // 표시 가능한 노드 간에 연결된 Edge만 필터링
+    const displayEdges = useMemo(() => {
+        return edges
+            .filter(e => visibleNodeIds.has(e.source) && visibleNodeIds.has(e.target))
+            .map(e => ({ ...e, zIndex: e.id === hoveredEdgeId ? 10 : 0 }));
+    }, [edges, visibleNodeIds, hoveredEdgeId]);
 
     // ─── handleNodesChange ───────────────────────────────────────────────────
-    // drag 중 position 반영 + select/dimensions 배치 layout 보존 + 삭제 처리만 담당.
-    // drag end 후처리(reparenting/clamp/overlap/recalc)는 onNodeDragStop으로 이전.
     const handleNodesChange = useCallback((changes) => {
-        if (!isEditable) return; // 권한 및 라이브 확인
+        if (!isEditable) return;
         const state = useCanvasStore.getState();
         if (state.userRole === 'GUEST') return;
 
@@ -150,9 +170,6 @@ const FlowContents = () => {
         let nextEdges = state.edges;
         let edgesChanged = false;
 
-        // 내가 움직인 노드에 내 ID(lastUpdatedBy) 추가
-        // dimensions 타입은 React Flow가 최초 렌더링 시 자동 측정하면서도 똑같이 발생시키므로,
-        // 실제 사용자가 리사이즈(resizing: true)한 경우만 "수정"으로 취급한다.
         const changedNodeIds = new Set(
             changes.filter(c => c.type === 'position' || (c.type === 'dimensions' && c.resizing)).map(c => c.id)
         );
@@ -181,15 +198,11 @@ const FlowContents = () => {
     }, [isEditable, myUserId]);
 
     // ─── handleNodeDragStop ──────────────────────────────────────────────────
-    // React Flow v11의 신뢰할 수 있는 drag end 신호.
-    // 이 시점에 store.nodes에는 드래그 중 position 변화가 이미 반영돼 있음.
-    // 후처리: D(면적겹침) → B(clamp) → reparenting → C(resolveOverlaps) → A(recalc)
     const handleNodeDragStop = useCallback((event, draggedNode) => {
         if (!isEditable) return;
         const state = useCanvasStore.getState();
         if (state.userRole === 'GUEST') return;
 
-        // 멀티셀렉트: selected인 노드 전체를 드래그 대상으로 포함
         const draggedIds = new Set(
             state.nodes
                 .filter(n => n.selected || n.id === draggedNode.id)
@@ -203,7 +216,7 @@ const FlowContents = () => {
             if (!node) continue;
 
             const validParentTypes = VALID_PARENT_TYPES[node.data?.type] || [];
-            if (validParentTypes.length === 0) continue; // feature는 reparenting 없음
+            if (validParentTypes.length === 0) continue;
 
             const nodesMap = new Map(nextNodes.map(n => [n.id, n]));
             const absPos = getAbsolutePosition(node.id, nodesMap);
@@ -218,12 +231,10 @@ const FlowContents = () => {
                     const pw = curParent.width || curParent.style?.width || 400;
                     const ph = curParent.height || curParent.style?.height || 300;
 
-                    // D: 면적 겹침이 조금이라도 있으면 부모 안에 유지
                     const overlapX = Math.min(absPos.x + dw, parentAbs.x + pw) - Math.max(absPos.x, parentAbs.x);
                     const overlapY = Math.min(absPos.y + dh, parentAbs.y + ph) - Math.max(absPos.y, parentAbs.y);
 
                     if (overlapX > 0 && overlapY > 0) {
-                        // B: 위/왼쪽 경계 초과 시에만 clamp (아래/오른쪽은 A가 부모를 확장)
                         const clampedX = Math.max(LAYOUT.PADDING, node.position.x);
                         const clampedY = Math.max(LAYOUT.HEADER_HEIGHT, node.position.y);
                         if (clampedX !== node.position.x || clampedY !== node.position.y) {
@@ -236,7 +247,6 @@ const FlowContents = () => {
                     }
                 }
 
-                // 현재 부모와 면적 겹침 없음 → 새 부모 탐색 또는 완전 분리
                 const nodesMapCurrent = new Map(nextNodes.map(n => [n.id, n]));
                 const otherNodes = nextNodes.filter(n => n.id !== currentParentId);
                 const bestParent = findBestParent(node, otherNodes, validParentTypes, nodesMapCurrent);
@@ -257,7 +267,6 @@ const FlowContents = () => {
                         position: { x: relX, y: relY },
                     });
                 } else {
-                    // 완전 탈출 → 자유 노드 (절대좌표로 전환, parentNode 제거)
                     nextNodes = nextNodes.map(n => n.id !== nodeId ? n :
                         { ...n, parentNode: undefined, position: absPos }
                     );
@@ -265,7 +274,6 @@ const FlowContents = () => {
                 continue;
             }
 
-            // 부모 없는 노드가 drag 후 부모 위에 드롭된 경우
             const nodesMapFresh = new Map(nextNodes.map(n => [n.id, n]));
             const bestParent = findBestParent(node, nextNodes, validParentTypes, nodesMapFresh);
             if (bestParent) {
@@ -286,14 +294,12 @@ const FlowContents = () => {
             }
         }
 
-        // C: 이동 노드 기준 형제 겹침 해소 (DOWN/RIGHT only → idempotent)
         const siblingAffectedIds = new Set();
         for (const movedId of draggedIds) {
             const { nodes: newNodes, affectedIds } = resolveOverlaps(nextNodes, movedId);
             nextNodes = newNodes;
             for (const id of affectedIds) siblingAffectedIds.add(id);
         }
-        // 밀린 형제만 선택적 clamp — 가만히 있는 자식은 절대 건드리지 않음
         if (siblingAffectedIds.size > 0) {
             nextNodes = nextNodes.map(n => {
                 if (!siblingAffectedIds.has(n.id)) return n;
@@ -303,7 +309,6 @@ const FlowContents = () => {
                     : { ...n, position: { x: cx, y: cy } };
             });
         }
-        // A: 컨테이너 크기 재계산 (bottom-up, position 불변, idempotent)
         nextNodes = recalculateContainerSizes(nextNodes);
         state.setNodes(nextNodes);
     }, [isEditable]);
@@ -420,7 +425,7 @@ const FlowContents = () => {
 
     const onDrop = useCallback((event) => {
         event.preventDefault();
-        if (!isEditable) { alert("읽기 전용 상태입니다."); return; } // [수정]
+        if (!isEditable) { alert("읽기 전용 상태입니다."); return; }
         const state = useCanvasStore.getState();
         const type = event.dataTransfer.getData('application/reactflow');
         if (!type) return;
@@ -492,6 +497,66 @@ const FlowContents = () => {
             }}
             style={{ flex: 1, width: '100%', height: '100%', position: 'relative' }}
         >
+            <div
+                style={{
+                    position: 'absolute',
+                    top: '15px',
+                    right: '15px',
+                    zIndex: 100,
+                    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                    padding: '8px 14px',
+                    borderRadius: '20px',
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    backdropFilter: 'blur(4px)',
+                    userSelect: 'none',
+                }}
+            >
+                <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#333' }}>
+                    기능만 보기
+                </span>
+                <label
+                    style={{
+                        position: 'relative',
+                        display: 'inline-block',
+                        width: '40px',
+                        height: '22px',
+                        cursor: 'pointer',
+                    }}
+                >
+                    <input
+                        type="checkbox"
+                        checked={showOnlyFeatures}
+                        onChange={(e) => setShowOnlyFeatures(e.target.checked)}
+                        style={{ opacity: 0, width: 0, height: 0 }}
+                    />
+                    <span
+                        style={{
+                            position: 'absolute',
+                            top: 0, left: 0, right: 0, bottom: 0,
+                            backgroundColor: showOnlyFeatures ? '#4953BE' : '#ccc',
+                            transition: '0.3s',
+                            borderRadius: '22px',
+                        }}
+                    />
+                    <span
+                        style={{
+                            position: 'absolute',
+                            content: '""',
+                            height: '16px',
+                            width: '16px',
+                            left: showOnlyFeatures ? '21px' : '3px',
+                            bottom: '3px',
+                            backgroundColor: 'white',
+                            transition: '0.3s',
+                            borderRadius: '50%',
+                        }}
+                    />
+                </label>
+            </div>
+
             <svg style={{ position: 'absolute', width: 0, height: 0 }}>
                 <defs>
                     <marker id="marker-call" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto">
@@ -507,14 +572,13 @@ const FlowContents = () => {
             </svg>
 
             <ReactFlow
-                nodes={nodes}
+                nodes={visibleNodes}
                 edges={displayEdges}
                 nodeTypes={nodeTypes}
                 edgeTypes={edgeTypes}
                 connectionLineComponent={CustomConnectionLine}
                 elevateEdgesOnSelect={true}
                 connectionMode={ConnectionMode.Loose}
-                // [STEP 4] 라이브 상태가 아니면 움직이거나 연결하는 것을 락 처리
                 nodesConnectable={isEditable}
                 nodesDraggable={isEditable}
                 elementsSelectable={true}
