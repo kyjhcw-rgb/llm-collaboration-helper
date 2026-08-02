@@ -42,6 +42,7 @@ public class CrdtWebSocketHandler extends AbstractWebSocketHandler {
     public record KickUserEvent(Integer projectId, Integer userId) {}
     public record ForceReloadEvent(Integer projectId) {}
     public record VersionCreatedEvent(Integer projectId) {}
+    public record MentionEvent(Integer projectId, Integer targetUserId, String senderNickname) {}
 
     // --- 웹소켓 생명주기 및 CRDT 브로드캐스트 로직 ---
 
@@ -226,81 +227,21 @@ public class CrdtWebSocketHandler extends AbstractWebSocketHandler {
         }
     }
 
-
-
-    /*@Override
-    protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
-        // 프론트에서 넘어오는 Text 명령이 있다면 여기서 처리 (현재는 서버 -> 프론트 단방향 명령만 사용)
-    }
-
-
-    private void broadcastUpdate(Integer projectId, WebSocketSession senderSession, byte[] updateData) {
-        CopyOnWriteArrayList<WebSocketSession> sessions = projectSessions.get(projectId);
+    @EventListener
+    public void handleMentionEvent(MentionEvent event) {
+        CopyOnWriteArrayList<WebSocketSession> sessions = projectSessions.get(event.projectId());
         if (sessions != null) {
-            BinaryMessage msgToSend = new BinaryMessage(updateData);
+            // 전달할 JSON 메시지 포맷 구성
+            TextMessage textMsg = new TextMessage(String.format("{\"type\": \"MENTIONED\", \"senderNickname\": \"%s\"}", event.senderNickname()));
+
             for (WebSocketSession s : sessions) {
-                if (s.isOpen() && !s.getId().equals(senderSession.getId())) {
-                    try {
-                        synchronized (s) { s.sendMessage(msgToSend); }
-                    } catch (IOException e) {
-                        log.error("바이너리 브로드캐스트 에러: {}", e.getMessage());
+                // 멘션 대상자의 세션을 찾아 메시지 전송
+                if (s.isOpen() && event.targetUserId().equals(s.getAttributes().get("userId"))) {
+                    synchronized (s) {
+                        try { s.sendMessage(textMsg); } catch (Exception e) { log.error("멘션 실시간 알림 전송 실패", e); }
                     }
                 }
             }
         }
     }
-
-    // 방장이 라이브를 복원했을 때, 다른 모든 팀원들의 화면을 강제로 새로고침시키는 Text 커맨드
-    public void broadcastCommand(Integer projectId, String command) {
-        CopyOnWriteArrayList<WebSocketSession> sessions = projectSessions.get(projectId);
-        if (sessions != null) {
-            TextMessage textMsg = new TextMessage(command);
-            for (WebSocketSession s : sessions) {
-                if (s.isOpen()) {
-                    try {
-                        synchronized (s) { s.sendMessage(textMsg); }
-                    } catch (IOException e) {
-                        log.error("명령 브로드캐스트 에러: {}", e.getMessage());
-                    }
-                }
-            }
-        }
-    }
-
-    // 방장이 팀원의 권한을 변경했을 때, 타겟 유저의 백엔드 세션을 즉시 조작하고 프론트에 알림
-    public void updateSessionRole(Integer projectId, Integer targetUserId, String newRole) {
-        CopyOnWriteArrayList<WebSocketSession> sessions = projectSessions.get(projectId);
-        if (sessions != null) {
-            String payload = String.format("{\"type\": \"ROLE_UPDATED\", \"userId\": %d, \"newRole\": \"%s\"}", targetUserId, newRole);
-            TextMessage textMsg = new TextMessage(payload);
-            for (WebSocketSession s : sessions) {
-                if (s.isOpen()) {
-                    try {
-                        // 세션 주인이 타겟 유저라면 백엔드의 세션 권한을 강제 업데이트
-                        if (targetUserId.equals(s.getAttributes().get("userId"))) {
-                            s.getAttributes().put("role", newRole);
-                        }
-                        // 모든 클라이언트에게 권한 변경 이벤트 전송
-                        synchronized (s) { s.sendMessage(textMsg); }
-                    } catch (IOException e) {}
-                }
-            }
-        }
-    }
-
-    // 방장이 멤버를 강퇴했을 때, 해당 유저의 웹소켓 연결 강제 종료
-    public void disconnectUser(Integer projectId, Integer targetUserId) {
-        CopyOnWriteArrayList<WebSocketSession> sessions = projectSessions.get(projectId);
-        if (sessions != null) {
-            for (WebSocketSession s : sessions) {
-                if (s.isOpen() && targetUserId.equals(s.getAttributes().get("userId"))) {
-                    try {
-                        String payload = "{\"type\": \"KICKED\"}";
-                        synchronized (s) { s.sendMessage(new TextMessage(payload)); }
-                        s.close(CloseStatus.NORMAL.withReason("Kicked by OWNER"));
-                    } catch (IOException e) {}
-                }
-            }
-        }
-    }*/
 }

@@ -302,7 +302,7 @@ function parseCanvasData(data) {
                 parameters: block.parameters || '',
                 returnType: block.returnType || '',
                 annotations: block.annotations || '',
-                lastUpdatedBy: null
+                lastUpdatedBy: block.lastUpdatedBy || null
             }
         };
     });
@@ -318,7 +318,7 @@ function parseCanvasData(data) {
         data: {
             type: edge.type || 'call',
             badgeCount: edge.badgeCount || 1,
-            lastUpdatedBy: null
+            lastUpdatedBy: edge.lastUpdatedBy || null
         }
     }));
 
@@ -508,6 +508,8 @@ export const useCanvasStore = create((set, get) => ({
                         alert("프로젝트에서 추방되었습니다.");
                         get().disconnectWebSocket();
                         window.location.href = '/projects';
+                    } else if (msg.type === 'MENTIONED') {
+                        alert(`🔔 ${msg.senderNickname}님이 댓글에서 회원님을 멘션했습니다!`);
                     }
                 } catch(e) {}
                 return;
@@ -806,7 +808,8 @@ export const useCanvasStore = create((set, get) => ({
             posX: parseFloat(node.position.x || 0),
             posY: parseFloat(node.position.y || 0),
             width: parseFloat(node.width || node.style?.width || DEFAULT_SIZES[node.data?.type]?.w || 150),
-            height: parseFloat(node.height || node.style?.height || DEFAULT_SIZES[node.data?.type]?.h || 50)
+            height: parseFloat(node.height || node.style?.height || DEFAULT_SIZES[node.data?.type]?.h || 50),
+            lastUpdatedBy: node.data?.lastUpdatedBy || null
         }));
 
         const edges = state.edges.map(edge => ({
@@ -817,6 +820,7 @@ export const useCanvasStore = create((set, get) => ({
             targetHandle: edge.targetHandle || null,
             type: edge.data?.type || 'call',
             badgeCount: edge.data?.badgeCount || 1,
+            lastUpdatedBy: edge.data?.lastUpdatedBy || null
         }));
 
         // 현재 Yjs 전체 상태를 바이너리로 추출하여 Base64 인코딩

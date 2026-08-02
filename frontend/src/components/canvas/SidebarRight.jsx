@@ -31,6 +31,14 @@ const SidebarRight = () => {
     const [chatLoading, setChatLoading] = useState(false);
     const chatBottomRef = useRef(null);
 
+    // 댓글 및 멘션 관련 상태
+    const [comments, setComments] = useState([]);
+    const [commentInput, setCommentInput] = useState("");
+    const [editingCommentId, setEditingCommentId] = useState(null);
+    const [mentionQuery, setMentionQuery] = useState(null);
+    const [membersList, setMembersList] = useState([]);
+    const commentInputRef = useRef(null);
+
     const isLive = currentVersion === 'live';
     const isEditable = userRole !== 'GUEST' && isLive;
     const isMockMode = currentProjectId === 'mock-project' || !currentProjectId;
@@ -72,6 +80,26 @@ const SidebarRight = () => {
     useEffect(() => {
         chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);
+
+    // 댓글 조회 및 멤버 리스트 로드
+    useEffect(() => {
+        if (activeTab === "comments" && selectedNodeId && !isMockMode) {
+            fetchComments();
+            // 멘션을 위한 멤버 리스트 로드
+            request(`/projects/${currentProjectId}/members`)
+                .then(setMembersList)
+                .catch(console.error);
+        }
+    }, [activeTab, selectedNodeId, currentProjectId, isMockMode]);
+
+    const fetchComments = async () => {
+        try {
+            const res = await request(`/projects/${currentProjectId}/blocks/${selectedNodeId}/comments`);
+            setComments(res);
+        } catch (e) {
+            console.error(e);
+        }
+    };
 
     const handleNodeChange = (e) => {
         const { name, value } = e.target;
@@ -159,6 +187,78 @@ const SidebarRight = () => {
         return member ? member.nickname : "정보 없음";
     };
 
+    // --- 댓글 관련 핸들러 ---
+    const handleCommentChange = (e) => {
+        const val = e.target.value;
+        setCommentInput(val);
+
+        const cursorPosition = e.target.selectionStart;
+        const textBeforeCursor = val.slice(0, cursorPosition);
+        const match = textBeforeCursor.match(/@(\S*)$/);
+
+        if (match) {
+            setMentionQuery(match[1]);
+        } else {
+            setMentionQuery(null);
+        }
+    };
+
+    const handleMentionSelect = (nickname) => {
+        const cursorPosition = commentInputRef.current.selectionStart;
+        const textBeforeCursor = commentInput.slice(0, cursorPosition);
+        const textAfterCursor = commentInput.slice(cursorPosition);
+        const lastAtPos = textBeforeCursor.lastIndexOf('@');
+
+        const newText = textBeforeCursor.slice(0, lastAtPos) + `@${nickname} ` + textAfterCursor;
+        setCommentInput(newText);
+        setMentionQuery(null);
+        commentInputRef.current?.focus();
+    };
+
+    const handleSendComment = async () => {
+        if (!commentInput.trim() || !isEditable) return;
+        try {
+            if (editingCommentId) {
+                await request(`/projects/${currentProjectId}/blocks/${selectedNodeId}/comments/${editingCommentId}`, {
+                    method: "PUT",
+                    body: JSON.stringify({ content: commentInput })
+                });
+                setEditingCommentId(null);
+            } else {
+                await request(`/projects/${currentProjectId}/blocks/${selectedNodeId}/comments`, {
+                    method: "POST",
+                    body: JSON.stringify({ content: commentInput })
+                });
+            }
+            setCommentInput("");
+            fetchComments();
+        } catch (e) {
+            alert(e.message || "댓글 저장에 실패했습니다.");
+        }
+    };
+
+    const handleDeleteComment = async (commentId) => {
+        if (!window.confirm("댓글을 삭제하시겠습니까?")) return;
+        try {
+            await request(`/projects/${currentProjectId}/blocks/${selectedNodeId}/comments/${commentId}`, {
+                method: "DELETE"
+            });
+            fetchComments();
+        } catch (e) {
+            alert(e.message || "삭제 실패");
+        }
+    };
+
+    const renderCommentBody = (text) => {
+        const parts = text.split(/(@\S+)/g);
+        return parts.map((part, i) => {
+            if (part.startsWith('@')) {
+                return <span key={i} style={{ color: '#4953BE', fontWeight: 'bold' }}>{part}</span>;
+            }
+            return part;
+        });
+    };
+
     return (
         <aside className="sidebar-right">
             <div className="right-tabs">
@@ -173,6 +273,12 @@ const SidebarRight = () => {
                     onClick={() => setActiveTab("llm")}
                 >
                     LLM
+                </button>
+                <button
+                    className={`tab-btn ${activeTab === "comments" ? "active" : ""}`}
+                    onClick={() => setActiveTab("comments")}
+                >
+                    댓글
                 </button>
             </div>
 
@@ -320,6 +426,66 @@ const SidebarRight = () => {
                                 </svg>
                             </button>
                         </div>
+                    </div>
+                )}
+
+                {activeTab === "comments" && (
+                    <div className="comments-panel">
+                        {!selectedNodeId ? (
+                            <div className="no-selection-wrapper">
+                                <p className="no-selection">블럭을 선택해주세요.</p>
+                            </div>
+                        ) : (
+                            <>
+                                <h3 className="info-title">블럭 댓글</h3>
+                                <div className="comment-list">
+                                    {comments.length === 0 ? (
+                                        <p style={{ color: '#999', fontSize: '13px', textAlign: 'center', marginTop: '20px' }}>아직 등록된 댓글이 없습니다.</p>
+                                    ) : (
+                                        comments.map(c => (
+                                            <div key={c.id} className="comment-item">
+                                                <div className="comment-header">
+                                                    <span className="comment-author">{c.nickname}</span>
+                                                    <span className="comment-date">{new Date(c.createdAt).toLocaleString()}</span>
+                                                </div>
+                                                <div className="comment-body">{renderCommentBody(c.content)}</div>
+                                                {isEditable && c.userId === myUserId && (
+                                                    <div className="comment-actions">
+                                                        <button onClick={() => { setCommentInput(c.content); setEditingCommentId(c.id); }}>수정</button>
+                                                        <button onClick={() => handleDeleteComment(c.id)}>삭제</button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                                {/* 과거 버전이거나 권한이 없는 경우(isEditable=false) 작성/수정 UI 비노출 */}
+                                {isEditable && (
+                                    <div className="comment-input-wrapper">
+                                        {mentionQuery !== null && (
+                                            <ul className="mention-dropdown">
+                                                {membersList.filter(m => m.nickname.toLowerCase().includes(mentionQuery.toLowerCase())).map(m => (
+                                                    <li key={m.userId} onClick={() => handleMentionSelect(m.nickname)}>
+                                                        {m.nickname}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        )}
+                                        <textarea
+                                            ref={commentInputRef}
+                                            className="comment-textarea"
+                                            placeholder="댓글을 입력하세요... (@로 멤버 멘션)"
+                                            value={commentInput}
+                                            onChange={handleCommentChange}
+                                        />
+                                        <div className="comment-input-actions">
+                                            {editingCommentId && <button className="cancel-btn" onClick={() => {setEditingCommentId(null); setCommentInput("");}}>취소</button>}
+                                            <button className="save-btn" onClick={handleSendComment}>{editingCommentId ? "수정" : "등록"}</button>
+                                        </div>
+                                    </div>
+                                )}
+                            </>
+                        )}
                     </div>
                 )}
             </div>
