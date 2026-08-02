@@ -30,4 +30,9 @@ public class TranslationService {
         CanvasDtos.SyncReq syncReq = translationMapper.toCanvasSync(diagram);
         canvasService.syncLiveCanvas(projectId, syncReq);
     }
+
+    /** features 트리 → canvas flat (DB 저장 없음). Agent 제안 응답용. */
+    public CanvasDtos.SyncReq toCanvas(DiagramRes diagram) {
+        return translationMapper.toCanvasSync(diagram);
+    }
 }
