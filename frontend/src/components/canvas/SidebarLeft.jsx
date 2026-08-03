@@ -8,74 +8,69 @@ import { useCanvasStore } from '../../store/useCanvasStore';
 const SidebarLeft = () => {
     const projectName = useCanvasStore((state) => state.projectName);
     const nodes = useCanvasStore((state) => state.nodes);
-    const currentVersion = useCanvasStore((state) => state.currentVersion);
-    const userRole = useCanvasStore((state) => state.userRole);
-
+    
     const featureNodes = nodes.filter((node) => node.data.type === 'feature');
     const classNodes = nodes.filter((node) => node.data.type === 'class');
     const methodNodes = nodes.filter((node) => node.data.type === 'method');
-
-    // 읽기 전용 상태 체크
-    const isLive = currentVersion === 'live';
-    const isEditable = isLive && userRole !== 'GUEST';
-
+    
     const onDragStart = (event, nodeType) => {
-        if (!isEditable) {
-            event.preventDefault();
-            return;
-        }
         event.dataTransfer.setData('application/reactflow', nodeType);
         event.dataTransfer.effectAllowed = 'move';
     };
 
     return (
         <div className="sidebar-left">
-            {/* 상단 */}
+            {/* 상단: 프로젝트 디렉토리 영역 */}
             <div className="directory-container">
-                <h2 className="sidebar-title">
-                    프로젝트 디렉토리
-                </h2>
+                <h2 className="sidebar-title">프로젝트 디렉토리</h2>
 
                 <div className="directory-box">
                     <div className="tree-root">
                         <div className="tree-root-project">
                             <img src={homeIcon} alt="home" className="project-home-icon"/>
                             {projectName || '내 프로젝트'}
-
                         </div>
                         
                         {featureNodes.map(feature => (
-                            <div key={feature.id} className="tree-root-item"><img src={folderIcon} alt="folder" className="project-folder-icon"/>{feature.data.label}
-                            
-                            {classNodes.filter(cls => cls.parentNode === feature.id).map(cls => (
-                                 <div key={cls.id} className="tree-root-item"> <img src={documentIcon} alt="document" className="project-document-icon"/> {cls.data.label}
-                                 
-                                 {methodNodes.filter(method => method.parentNode === cls.id).map(method => (
-                                    <div key={method.id} className="tree-root-item">🔹 {method.data.label}
-                                    
-                                    </div>
-            ))}
-        </div>
-      ))}
-  </div>
-))}
+                            <div key={feature.id} style={{ width: '100%' }}> 
+                                <div className="tree-root-item">
+                                    <img src={folderIcon} alt="folder" className="project-folder-icon"/>
+                                    {feature.data.label}
+                                </div>
+                                
+                                <div className="tree-branch">
+                                    {classNodes.filter(cls => cls.parentNode === feature.id).map(cls => (
+                                        <div key={cls.id} style={{ width: '100%' }}>
+                                            <div className="tree-root-item">
+                                                <img src={documentIcon} alt="document" className="project-document-icon"/> 
+                                                {cls.data.label}
+                                            </div>
+                                            
+                                            <div className="tree-branch">
+                                                {methodNodes.filter(method => method.parentNode === cls.id).map(method => (
+                                                    <div key={method.id} className="tree-root-item">
+                                                        🔹 {method.data.label}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </div>
             </div>
 
-            {/* 하단 */}
+            {/* 하단: Blocks 영역 */}
             <div className="block-palette">
-                <div className="blocks-header">
-                    블록
-                </div>
+                <div className="blocks-header">블록</div>
 
                 <div className="block-list">
                     <div
                         className="drag-block feature"
                         draggable
-                        onDragStart={(e) =>
-                            onDragStart(e, '기능')
-                        }
+                        onDragStart={(e) => onDragStart(e, '기능')}
                     >
                         기능
                     </div>
@@ -83,9 +78,7 @@ const SidebarLeft = () => {
                     <div
                         className="drag-block class"
                         draggable
-                        onDragStart={(e) =>
-                            onDragStart(e, '클래스')
-                        }
+                        onDragStart={(e) => onDragStart(e, '클래스')}
                     >
                         클래스
                     </div>
@@ -93,9 +86,7 @@ const SidebarLeft = () => {
                     <div
                         className="drag-block method"
                         draggable
-                        onDragStart={(e) =>
-                            onDragStart(e, '메소드')
-                        }
+                        onDragStart={(e) => onDragStart(e, '메소드')}
                     >
                         메소드
                     </div>

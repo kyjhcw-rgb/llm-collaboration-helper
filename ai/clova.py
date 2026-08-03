@@ -1,3 +1,4 @@
+import os
 import sounddevice as sd
 import numpy as np
 from scipy.io.wavfile import write
@@ -8,9 +9,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# --- [1. 설정 영역: 본인의 정보를 입력하세요] ---
-INVOKE_URL = "https://clovaspeech-gw.ncloud.com/external/v1/15024/c4de3225b3ec50c9169584d70190755dfdfb078ecb26515de6fd0a2f12288d75"
-SECRET_KEY = "12eecb0127c54853aba3dfe80fb944a2".strip()
+# --- [1. 설정 영역: .env에 CLOVA_INVOKE_URL, CLOVA_SECRET_KEY 저장 필수] ---
+INVOKE_URL = os.getenv("CLOVA_INVOKE_URL")
+SECRET_KEY = (os.getenv("CLOVA_SECRET_KEY") or "").strip()
 FILENAME = "meeting_record.wav"
 FS = 44100  # 샘플링 레이트
 

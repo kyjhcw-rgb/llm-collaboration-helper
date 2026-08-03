@@ -8,22 +8,36 @@ import { request } from '../api/http';
 export default function ProjectListPage() {
     const navigate = useNavigate();
     const [projects, setProjects] = useState([]);
+    const [nickname, setNickname] = useState('사용자'); // 닉네임 상태 추가
 
     const resetProject = useCanvasStore((state) => state.resetProject);
     const loadProjectFromServer = useCanvasStore((state) => state.loadProjectFromServer);
 
-    // 백엔드에서 프로젝트 목록 불러오기
+    // 1. 백엔드에서 프로젝트 목록 및 사용자 정보를 불러오기
     useEffect(() => {
-        const fetchProjects = async () => {
+        const fetchData = async () => {
             try {
-                const data = await request('/projects');
-                setProjects(data); // 백엔드 응답(List<ProjectRes>) 세팅
+                // 프로젝트 목록 조회
+                const projectsData = await request('/projects');
+                setProjects(projectsData);
+
+                // 사용자 정보(닉네임) 조회
+                // 백엔드 API 경로가 다르다면 수정해 주세요 (예: '/members/me', '/user/profile' 등)
+                const userData = await request('/users/me'); 
+                if (userData && userData.nickname) {
+                    setNickname(userData.nickname);
+                }
             } catch (error) {
-                console.error("프로젝트 로드 실패:", error);
+                console.error("데이터 로드 실패:", error);
             }
         };
-        fetchProjects();
+        fetchData();
     }, []);
+
+    // 2. 프로필 이동 처리 
+    const handleEditProfile = () => {
+        navigate('/profile', { state: { nickname } }); 
+    };
 
     const handleLogout = () => {
         localStorage.removeItem('accessToken');
@@ -32,27 +46,24 @@ export default function ProjectListPage() {
     };
 
     // 프로젝트 이어하기
-    // [수정] 스토어 조작 없이 깔끔하게 URL로만 이동 (CanvasPage가 스스로 로딩하도록 위임)
     const handleOpenProject = (project) => {
         navigate(`/canvas/${project.id}`);
     };
 
     // 프로젝트 정보 수정 및 단건 조회 API 활용 로직
     const handleUpdateProject = async (e, project) => {
-        e.stopPropagation(); // 카드 자체의 클릭 이벤트(캔버스 진입) 전파 방지
+        e.stopPropagation();
 
         try {
-            // 수정 프롬프트를 열기 전, 단건 조회 API를 통해 백엔드의 최신 정보를 가져옴
             const latestProject = await request(`/projects/${project.id}`, { method: 'GET' });
 
             const newTitle = window.prompt("새로운 프로젝트 이름을 입력하세요:", latestProject.title);
-            if (newTitle === null) return; // 취소 버튼 선택 시 조기 종료
+            if (newTitle === null) return;
             if (!newTitle.trim()) {
                 alert("프로젝트 이름은 필수 입력 항목입니다.");
                 return;
             }
 
-            // 백엔드 프로젝트 수정 API 호출 (DTO 명세 조율)
             const updatedProject = await request(`/projects/${project.id}`, {
                 method: 'PUT',
                 body: JSON.stringify({
@@ -63,7 +74,6 @@ export default function ProjectListPage() {
                 })
             });
 
-            // 내부 상태 배열 구조 동기화 갱신
             setProjects((prev) =>
                 prev.map((p) => (p.id === project.id ? updatedProject : p))
             );
@@ -83,7 +93,6 @@ export default function ProjectListPage() {
 
         try {
             await request(`/projects/${projectId}`, { method: 'DELETE' });
-            // 성공 시 화면에서도 제거
             const updatedProjects = projects.filter((project) => project.id !== projectId);
             setProjects(updatedProjects);
         } catch (error) {
@@ -93,13 +102,24 @@ export default function ProjectListPage() {
     };
 
     return (
+        
         <main className="ProjectListPage-background">
             <header className="ProjectListPage-header">
                 <h1>Our Diagram</h1>
-                <h2>
-                    <img className="usericon" src={usericon} alt="user-icon" />
+                
+                {/* 헤더 우측 사용자 영역 */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div 
+                        onClick={handleEditProfile} 
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
+                        title="프로필 수정으로 이동"
+                    >
+                        <img className="usericon" src={usericon} alt="user-icon" />
+                        <span style={{ fontWeight: 'bold', fontSize: '1rem' }}>{nickname}님</span>
+                    </div>
+                    
                     <button type="button" onClick={handleLogout}>로그아웃</button>
-                </h2>
+                </div>
             </header>
 
             <section className="ProjectListPage-contents-top">
@@ -120,7 +140,6 @@ export default function ProjectListPage() {
                                 <h3>{project.title}</h3>
                                 <small>{project.framework}</small>
 
-                                {/* 하단 액션 버튼 배치 영역 제어 */}
                                 <div className="project-card-actions" style={{ marginTop: '15px', display: 'flex', gap: '10px' }}>
                                     <button
                                         type="button"
@@ -141,9 +160,8 @@ export default function ProjectListPage() {
                         ))}
                     </div>
                 ) : (
-                    <div style={{ textAlign: 'center', marginTop: '50px', color: '#888' }}>
-                        <p>현재 참여 중인 프로젝트가 없습니다.</p>
-                        <p>새 프로젝트를 생성하여 협업을 시작해보세요!</p>
+                    <div style={{ textAlign: 'center', marginTop: '30px', color: '#888' }}>
+                        <p>현재 참여 중인 프로젝트가 없습니다. 새 프로젝트를 생성하여 협업을 시작해보세요!</p>
                     </div>
                 )}
             </section>

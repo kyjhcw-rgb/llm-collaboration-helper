@@ -113,7 +113,7 @@ const SidebarRight = () => {
 
     const handleSaveNode = async () => {
         if (selectedNodeId && isEditable) {
-            updateNodeData(selectedNodeId, { ...info, lastUpdatedBy: myUserId });
+            updateNodeData(selectedNodeId, { ...info, lastUpdatedBy: myUserId, lastUpdatedAt: Date.now() });
             await saveProjectToServer();
             alert("블록 정보가 성공적으로 저장 및 동기화되었습니다.");
         }
@@ -121,7 +121,7 @@ const SidebarRight = () => {
 
     const handleSaveEdge = async () => {
         if (selectedEdgeId && isEditable) {
-            updateEdgeData(selectedEdgeId, { ...edgeInfo, lastUpdatedBy: myUserId });
+            updateEdgeData(selectedEdgeId, { ...edgeInfo, lastUpdatedBy: myUserId, lastUpdatedAt: Date.now() });
             await saveProjectToServer();
             alert("선 타입이 성공적으로 변경 및 동기화되었습니다.");
         }

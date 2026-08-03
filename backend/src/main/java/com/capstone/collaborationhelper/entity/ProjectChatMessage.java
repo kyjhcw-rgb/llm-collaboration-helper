@@ -33,6 +33,11 @@ public class ProjectChatMessage {
     @Column(nullable = false, length = 50)
     private String sender;
 
+    /** ASK: 질문(Q&A)만, AGENT: 다이어그램 수정 제안까지 */
+    @Column(nullable = false, length = 20)
+    @Builder.Default
+    private String mode = "ASK";
+
     @Column(nullable = false, columnDefinition = "TEXT")
     private String message;
 

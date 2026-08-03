@@ -2,6 +2,7 @@ package com.capstone.collaborationhelper.client;
 
 import com.capstone.collaborationhelper.dto.ChatDtos.LlmChatReq;
 import com.capstone.collaborationhelper.dto.ChatDtos.LlmChatRes;
+import com.capstone.collaborationhelper.dto.ChatDtos.LlmModifyRes;
 import com.capstone.collaborationhelper.dto.ProjectDtos.CreateReq;
 import com.capstone.collaborationhelper.dto.TranslationDtos.DiagramRes;
 import lombok.RequiredArgsConstructor;
@@ -45,7 +46,7 @@ public class LlmClient {
     }
 
     public String requestProjectChat(LlmChatReq req) {
-        String url = getBaseUrl() + "/chat";
+        String url = getBaseUrl() + "/project/ask";
         log.info("▶ [LlmClient] FastAPI AI 서버로 프로젝트 챗봇 요청. url={}", url);
 
         try {
@@ -57,6 +58,31 @@ public class LlmClient {
         } catch (Exception e) {
             log.error("❌ [LlmClient] 프로젝트 챗봇 통신 중 에러가 발생했습니다: ", e);
             throw new RuntimeException("AI 챗봇 서버와의 통신에 실패했습니다.", e);
+        }
+    }
+
+    // [Agent 모드] 다이어그램 수정 제안 요청 — 요청 스키마는 /project/ask와 동일(LlmChatReq)
+    public LlmModifyRes requestModifyDiagram(LlmChatReq req) {
+        String url = getBaseUrl() + "/project/agent";
+        log.info("▶ [LlmClient] FastAPI AI 서버로 다이어그램 수정 요청. url={}", url);
+
+        try {
+            LlmModifyRes response = restTemplate.postForObject(url, req, LlmModifyRes.class);
+            if (response == null || response.getReply() == null || response.getReply().isBlank()) {
+                throw new RuntimeException("AI 서버로부터 빈 응답을 받았습니다.");
+            }
+            if (response.getDiagram() == null) {
+                throw new RuntimeException("AI 서버가 수정된 다이어그램을 반환하지 않았습니다.");
+            }
+
+            log.info("✔ [LlmClient] 수정 다이어그램 수신 완료! (Features: {}개, Edges: {}개)",
+                    response.getDiagram().getFeatures() != null ? response.getDiagram().getFeatures().size() : 0,
+                    response.getDiagram().getEdges() != null ? response.getDiagram().getEdges().size() : 0);
+
+            return response;
+        } catch (Exception e) {
+            log.error("❌ [LlmClient] 다이어그램 수정 통신 중 에러가 발생했습니다: ", e);
+            throw new RuntimeException("AI 다이어그램 수정 서버와의 통신에 실패했습니다.", e);
         }
     }
 }

@@ -69,11 +69,12 @@ export default function CanvasPage() {
                     return;
                 }
 
-                // 과거 찌꺼기를 지우고 REST API로 도화지를 완전히 새로 세팅
-                await useCanvasStore.getState().loadProjectFromServer(projectId, null);
+                // 웹소켓이 최초 연결될 때 올바른 권한/유저ID를 쓰도록 REST 로드 전에 미리 세팅
+                useCanvasStore.setState({ userRole: myInfo.role, myUserId: myInfo.userId });
 
-                // 그 다음 웹소켓을 연결하여 라이브 팀원들과 합류 (Handshake)
-                useCanvasStore.getState().initWebSocket(projectId, token, myInfo.role, myInfo.userId);
+                // 과거 찌꺼기를 지우고 REST API로 도화지를 완전히 새로 세팅.
+                // 웹소켓이 아직 없으면 내부에서 자동으로 연결까지 처리함 (중복 연결 방지를 위해 별도 initWebSocket 호출 안 함)
+                await useCanvasStore.getState().loadProjectFromServer(projectId, null);
 
                 setIsLoading(false);
 

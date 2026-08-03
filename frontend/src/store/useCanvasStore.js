@@ -25,13 +25,59 @@ function injectZIndex(nodes) {
     }));
 }
 
+// 표시 전용: 엣지 연결 개수를 4분위(1~4)로 나눠 상위 블록을 강조.
+// data.connectionTier/connectionCount는 stripUIProps에서 반드시 제거해야
+// Yjs 맵에 표시 전용 값이 섞여 들어가지 않는다 (zIndex와 동일한 이유).
+function injectConnectionHighlight(nodes, edges) {
+    const degree = new Map(nodes.map(n => [n.id, 0]));
+    edges.forEach(e => {
+        if (degree.has(e.source)) degree.set(e.source, degree.get(e.source) + 1);
+        if (degree.has(e.target)) degree.set(e.target, degree.get(e.target) + 1);
+    });
+
+    const sortedCounts = Array.from(degree.values()).sort((a, b) => a - b);
+    const quantileAt = (p) => sortedCounts[Math.min(sortedCounts.length - 1, Math.floor(p * sortedCounts.length))];
+    const q1 = quantileAt(0.25), q2 = quantileAt(0.5), q3 = quantileAt(0.75);
+
+    // 연결이 거의 없는 그래프(대부분 0개)에서는 4분위 경계가 전부 0에 붙어버려
+    // 엣지 1개짜리 블록까지 "허브"로 잡히는 문제가 있어, 최소 연결 수 하한을 둔다.
+    const MIN_HUB_CONNECTIONS = 2;
+    const tierOf = (count) => {
+        if (count < MIN_HUB_CONNECTIONS) return 1;
+        if (count <= q1) return 1;
+        if (count <= q2) return 2;
+        if (count <= q3) return 3;
+        return 4;
+    };
+
+    const TIER_BOX_SHADOW = {
+        4: '0 0 0 3px #ff4d4f, 0 0 14px 4px rgba(255,77,79,0.55)',
+        3: '0 0 0 2px #f5a623',
+    };
+
+    return nodes.map(n => {
+        const connectionCount = degree.get(n.id) ?? 0;
+        const connectionTier = tierOf(connectionCount);
+        return {
+            ...n,
+            data: { ...n.data, connectionCount, connectionTier },
+            style: { ...n.style, boxShadow: TIER_BOX_SHADOW[connectionTier] },
+        };
+    });
+}
+
 // React Flow의 UI 전용 상태(선택, 드래그 상태 등)를 제거하여 Yjs 맵을 깨끗하게 유지하고 무한 통신 스팸을 방지
 function stripUIProps(node) {
     const { positionAbsolute, selected, dragging, resizing, measured, zIndex, ...cleanNode } = node;
     if (cleanNode.style) {
         const cleanStyle = { ...cleanNode.style };
         delete cleanStyle.zIndex;
+        delete cleanStyle.boxShadow;
         cleanNode.style = cleanStyle;
+    }
+    if (cleanNode.data) {
+        const { connectionCount, connectionTier, ...cleanData } = cleanNode.data;
+        cleanNode.data = cleanData;
     }
     return cleanNode;
 }
@@ -302,7 +348,8 @@ function parseCanvasData(data) {
                 parameters: block.parameters || '',
                 returnType: block.returnType || '',
                 annotations: block.annotations || '',
-                lastUpdatedBy: block.lastUpdatedBy || null
+                lastUpdatedBy: null,
+                lastUpdatedAt: null
             }
         };
     });
@@ -318,7 +365,8 @@ function parseCanvasData(data) {
         data: {
             type: edge.type || 'call',
             badgeCount: edge.badgeCount || 1,
-            lastUpdatedBy: edge.lastUpdatedBy || null
+            lastUpdatedBy: null,
+            lastUpdatedAt: null
         }
     }));
 
@@ -379,6 +427,10 @@ export const useCanvasStore = create((set, get) => ({
     myUserId: null, // 권한 변경 감지용
     projectMembers: [], // 멤버 정보 상태 추가
     availableVersions: [], // { versionNumber, commitMessage, createdAt } 객체 배열
+
+    // 6번: 마지막 커밋 이후 바뀐 블록을 표시하기 위한 체크포인트.
+    // 블록의 data.lastUpdatedAt이 이 값보다 크면 "커밋 이후 변경됨"으로 간주.
+    lastCommitAt: 0,
 
     nodes: [],
     edges: [],
@@ -446,12 +498,6 @@ export const useCanvasStore = create((set, get) => ({
             ws = null;
         }
 
-        // 기존에 등록된 update 이벤트 리스너가 있다면 제거하여 중복 증식을 막음
-        if (ydocUpdateHandler) {
-            ydoc.off('update', ydocUpdateHandler);
-            ydocUpdateHandler = null;
-        }
-
         // 💡 수정됨: 현재 도메인 환경에 맞추어 동적으로 WebSocket URL 설정
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const currentHost = window.location.host;
@@ -499,6 +545,8 @@ export const useCanvasStore = create((set, get) => ({
                     } else if (msg.type === 'VERSION_CREATED') {
                         // 방장이 버전을 생성했다는 알림을 받으면, 접속자 모두가 드롭다운 목록을 업데이트
                         get().loadVersionsFromServer(projectId);
+                        // 6번: 커밋 체크포인트 갱신 → 이 시점 이전 변경분은 "커밋 이후 변경" 표시에서 빠짐
+                        set({ lastCommitAt: Date.now() });
                     } else if (msg.type === 'ROLE_UPDATED') {
                         if (msg.userId === get().myUserId) {
                             alert(`당신의 권한이 [${msg.newRole === 'MEMBER' ? '편집자 (MEMBER)' : '조회자 (GUEST)'}] 로 변경되었습니다.`);
@@ -531,6 +579,19 @@ export const useCanvasStore = create((set, get) => ({
                 }, 3000);
             }
         };
+
+        get().bindYdocUpdateHandler();
+    },
+
+    // ydoc이 재생성될 때마다(resetYjsEnv) 반드시 다시 호출해서 로컬 편집 전송/원격 수신 반영/자동저장
+    // 파이프라인을 "현재" ydoc에 연결해야 한다. 웹소켓 연결이 이미 열려 있는 상태에서 ydoc만 새로 만들어지는
+    // 경우(예: deleteVersionFromServer 이후 라이브 재로드)를 놓치면, initWebSocket이 다시 불리지 않아서
+    // 그 세션은 이후 실시간 동기화/자동저장이 조용히 끊긴다.
+    bindYdocUpdateHandler: () => {
+        if (ydocUpdateHandler) {
+            ydoc.off('update', ydocUpdateHandler);
+            ydocUpdateHandler = null;
+        }
 
         // 💡 수정됨: Yjs 갱신 시 기존 로컬 UI 상태(selected, measured 등)를 병합하여 UI 튕김 방지
         ydocUpdateHandler = (update, origin) => {
@@ -565,7 +626,7 @@ export const useCanvasStore = create((set, get) => ({
             });
 
             set({
-                nodes: injectZIndex(computePositionAbsolute(sortNodesParentFirst(rawNodes))),
+                nodes: injectConnectionHighlight(injectZIndex(computePositionAbsolute(sortNodesParentFirst(rawNodes))), rawEdges),
                 edges: rawEdges
             });
 
@@ -717,8 +778,8 @@ export const useCanvasStore = create((set, get) => ({
             }
 
             const rawNodes = Array.from(ynodesMap.values());
-            const displayNodes = injectZIndex(computePositionAbsolute(sortNodesParentFirst(rawNodes)));
             const displayEdges = Array.from(yedgesMap.values());
+            const displayNodes = injectConnectionHighlight(injectZIndex(computePositionAbsolute(sortNodesParentFirst(rawNodes))), displayEdges);
 
             set({
                 currentProjectId: projectId,
@@ -729,11 +790,17 @@ export const useCanvasStore = create((set, get) => ({
                 edges: displayEdges
             });
 
-            // 다시 Live로 돌아왔을 때 웹소켓 재연결
-            // 초기 마운트 시 중복 호출 방지를 위해 조건 강화
-            if (!versionNumber && !ws && get().currentProjectId && get().myUserId !== null) {
-                const token = localStorage.getItem("accessToken");
-                if (token) get().initWebSocket(projectId, token, get().userRole, get().myUserId);
+            // 라이브 화면일 때만: ydoc이 새로 만들어졌으니 반드시 리스너를 다시 연결해야 함
+            if (!versionNumber && get().currentProjectId && get().myUserId !== null) {
+                if (!ws) {
+                    // 웹소켓 자체가 없는 상태(최초 마운트, 혹은 버전 조회 후 라이브 복귀) → 새로 연결
+                    const token = localStorage.getItem("accessToken");
+                    if (token) get().initWebSocket(projectId, token, get().userRole, get().myUserId);
+                } else {
+                    // 웹소켓은 이미 연결돼 있지만(예: 버전 삭제 후 재로드) ydoc만 교체된 경우.
+                    // initWebSocket을 다시 부르지 않으므로 리스너를 직접 재바인딩해줘야 계속 동기화된다.
+                    get().bindYdocUpdateHandler();
+                }
             }
 
             get().loadVersionsFromServer(projectId);
@@ -763,7 +830,7 @@ export const useCanvasStore = create((set, get) => ({
                 return { ...e, selected: ui.selected };
             });
             set({
-                nodes: injectZIndex(computePositionAbsolute(sortNodesParentFirst(rawNodes))),
+                nodes: injectConnectionHighlight(injectZIndex(computePositionAbsolute(sortNodesParentFirst(rawNodes))), rawEdges),
                 edges: rawEdges
             });
         };

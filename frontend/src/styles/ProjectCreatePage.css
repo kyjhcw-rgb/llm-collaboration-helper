@@ -20,7 +20,7 @@
 
 .create-box {
     background: white;
-    padding: 50px 60px;
+    padding: 20px 30px;
     border-radius: 20px;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
     width: 800px;
@@ -41,7 +41,7 @@
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 12px;
+    gap: 0;
     width: 100%;
 }
 
@@ -68,7 +68,8 @@
 }
 
 .guide-link {
-    font-size: 14px;
+    font-size: 15px;
+    margin-bottom: 10px;
     color: #4953BE;
     text-decoration: none;
 }
@@ -82,7 +83,6 @@
     outline: none;
     width: 100%;
     background-color: #fff;
-    /* 입력창 안쪽 글씨도 폰트를 동일하게 상속받도록 해 */
     font-family: inherit;
 }
 
@@ -103,13 +103,12 @@
 
 .button-group button {
     width: 120px;
-    padding: 12px;
+    padding: 10px;
     font-size: 18px;
-    font-weight: bold;
+    font-weight: 500;
     border-radius: 8px;
     border: none;
     cursor: pointer;
-    /* 버튼 글씨 폰트도 상속 */
     font-family: inherit;
 }
 
