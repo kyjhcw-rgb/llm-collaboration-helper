@@ -47,6 +47,9 @@ dependencies {
 
     // WebSocket (실시간 동시 편집용)
     implementation 'org.springframework.boot:spring-boot-starter-websocket'
+
+    // Java 소스 → 다이어그램 파싱
+    implementation 'com.github.javaparser:javaparser-core:3.26.3'
 }
 
 tasks.named('test') {
