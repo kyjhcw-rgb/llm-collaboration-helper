@@ -84,4 +84,22 @@ public class EmailService {
         message.setText(text);
         mailSender.send(message);
     }
+
+    // 멘션 알림 이메일 발송
+    public void sendMentionEmail(String targetEmail, String projectName, Integer projectId, String senderNickname) {
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setTo(targetEmail);
+        message.setSubject("[Our Diagram] '" + projectName + "' 프로젝트에서 멘션되었습니다.");
+
+        String text = String.format(
+                "안녕하세요!\n\n" +
+                        "[%s] 프로젝트의 다이어그램 블럭 댓글에서 [%s]님이 회원님을 멘션했습니다.\n\n" +
+                        "지금 Our Diagram에 접속해서 확인해보세요!\n" +
+                        "접속 링크: %s/canvas/%d",
+                projectName, senderNickname, frontendExternalUrl, projectId
+        );
+
+        message.setText(text);
+        mailSender.send(message);
+    }
 }

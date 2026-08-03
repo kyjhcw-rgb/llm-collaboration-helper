@@ -212,6 +212,7 @@ public class CanvasService {
         dto.setReturnType(block.getReturnType()); dto.setAnnotations(block.getAnnotations());
         dto.setPosX(block.getPosX()); dto.setPosY(block.getPosY());
         dto.setWidth(block.getWidth()); dto.setHeight(block.getHeight());
+        dto.setLastUpdatedBy(block.getLastUpdatedBy() != null ? block.getLastUpdatedBy().getId() : null);
         return dto;
     }
 
@@ -221,6 +222,7 @@ public class CanvasService {
         dto.setTargetFrontendId(edge.getTargetFrontendId()); dto.setSourceHandle(edge.getSourceHandle());
         dto.setTargetHandle(edge.getTargetHandle()); dto.setType(edge.getType());
         dto.setBadgeCount(edge.getBadgeCount());
+        dto.setLastUpdatedBy(edge.getLastUpdatedBy() != null ? edge.getLastUpdatedBy().getId() : null);
         return dto;
     }
 
@@ -231,6 +233,12 @@ public class CanvasService {
         block.setReturnType(dto.getReturnType()); block.setAnnotations(dto.getAnnotations());
         block.setPosX(dto.getPosX()); block.setPosY(dto.getPosY());
         block.setWidth(dto.getWidth()); block.setHeight(dto.getHeight());
+
+        if (dto.getLastUpdatedBy() != null) {
+            block.setLastUpdatedBy(userRepository.getReferenceById(dto.getLastUpdatedBy()));
+        } else {
+            block.setLastUpdatedBy(null);
+        }
     }
 
     private void applyEdgeDto(Edge edge, CanvasDtos.EdgeDto dto) {
@@ -238,6 +246,12 @@ public class CanvasService {
         edge.setTargetFrontendId(dto.getTargetFrontendId()); edge.setSourceHandle(dto.getSourceHandle());
         edge.setTargetHandle(dto.getTargetHandle()); edge.setType(dto.getType());
         edge.setBadgeCount(dto.getBadgeCount());
+
+        if (dto.getLastUpdatedBy() != null) {
+            edge.setLastUpdatedBy(userRepository.getReferenceById(dto.getLastUpdatedBy()));
+        } else {
+            edge.setLastUpdatedBy(null);
+        }
     }
 
     private List<CanvasDtos.BlockDto> mapBlocksToDto(List<Block> blocks) { return blocks.stream().map(this::mapBlockToDto).toList(); }
