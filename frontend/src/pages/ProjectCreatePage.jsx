@@ -1,6 +1,6 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { request } from '../api/http';
+import { request, requestUpload } from '../api/http';
 import { useCanvasStore } from '../store/useCanvasStore';
 import '../styles/ProjectCreatePage.css';
 
@@ -15,12 +15,62 @@ export default function ProjectCreatePage() {
   const [freedomLevel, setFreedomLevel] = useState(1);
   const [descriptionPrompt, setDescriptionPrompt] = useState('');
 
+  // 녹음 관련 상태 — 녹음 파일은 별도 DB/스토리지 없이 메모리(Blob)에만 보관하다가
+  // 프로젝트 생성 직후 백엔드로 바로 전송하고 버림
+  const [isRecording, setIsRecording] = useState(false);
+  const [audioBlob, setAudioBlob] = useState(null);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const streamRef = useRef(null);
+
+  useEffect(() => {
+    // 페이지를 벗어날 때 마이크가 계속 켜져 있지 않도록 정리
+    return () => {
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+    };
+  }, []);
+
   const handleResizeHeight = useCallback(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
       textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
     }
   }, []);
+
+  const handleMicClick = async () => {
+    if (isRecording) {
+      mediaRecorderRef.current?.stop();
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      audioChunksRef.current = [];
+
+      const recorder = new MediaRecorder(stream);
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+      recorder.onstop = () => {
+        setAudioBlob(new Blob(audioChunksRef.current, { type: 'audio/webm' }));
+        setIsRecording(false);
+        streamRef.current?.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      };
+
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setIsRecording(true);
+    } catch (err) {
+      console.error('마이크 접근 실패:', err);
+      alert('마이크를 사용할 수 없습니다. 브라우저 권한을 확인해주세요.');
+    }
+  };
+
+  const handleDiscardRecording = () => {
+    setAudioBlob(null);
+  };
 
   // 🌟 API 연결 부분 (절대 수정 금지)
   const handleCreate = async () => {
@@ -40,6 +90,18 @@ export default function ProjectCreatePage() {
           descriptionPrompt: descriptionPrompt
         })
       });
+
+        // 녹음된 음성이 있으면 프로젝트 생성 직후 바로 백엔드로 전송 (로컬에는 보관하지 않음)
+        if (audioBlob) {
+          try {
+            const formData = new FormData();
+            formData.append('file', audioBlob, 'recording.webm');
+            await requestUpload(`/projects/${res.id}/meeting-audio`, formData);
+          } catch (audioError) {
+            console.error("음성 파일 전송 실패:", audioError);
+            alert("프로젝트는 생성되었지만 녹음 파일 전송에는 실패했습니다.");
+          }
+        }
 
         // [수정] 새로 생성된 프로젝트 ID 기반의 URL로 이동
         navigate(`/canvas/${res.id}`);
@@ -118,14 +180,32 @@ export default function ProjectCreatePage() {
               }}
             ></textarea>
             
-            {/* 음성 인식 버튼: 추후 로직 연결 시 onClick에 함수만 넣으면 됩니다 */}
-            <button type="button" className="voice-mic-btn" title="음성으로 입력하기">
+            <button
+              type="button"
+              className={`voice-mic-btn ${isRecording ? 'recording' : ''}`}
+              title={isRecording ? '녹음 종료' : '음성으로 녹음하기'}
+              onClick={handleMicClick}
+            >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" fill="currentColor"/>
                 <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" fill="currentColor"/>
               </svg>
             </button>
           </div>
+
+          {isRecording && (
+            <div className="recording-status recording-active">
+              🔴 녹음 중입니다... 마이크 버튼을 다시 누르면 종료됩니다.
+            </div>
+          )}
+          {!isRecording && audioBlob && (
+            <div className="recording-status">
+              🎙️ 녹음이 완료되었습니다. 프로젝트 생성 시 함께 전송됩니다.
+              <button type="button" className="recording-discard-btn" onClick={handleDiscardRecording}>
+                삭제
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="button-group">

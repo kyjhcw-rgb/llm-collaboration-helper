@@ -33,3 +33,29 @@ export async function request(url, options = {}) {
     const text = await response.text();
     return text ? JSON.parse(text) : {};
 }
+
+// FormData(파일 업로드) 전용 — Content-Type을 직접 지정하지 않아야 브라우저가
+// multipart 경계(boundary)를 알아서 채워줌. request()와 달리 JSON 헤더를 강제하지 않는다.
+export async function requestUpload(url, formData) {
+    const token = localStorage.getItem("accessToken");
+    const headers = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const response = await fetch(`${BASE_URL}${url}`, {
+        method: "POST",
+        headers,
+        body: formData,
+    });
+
+    if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+            localStorage.removeItem("accessToken");
+            window.location.href = "/login";
+            throw new Error(`Auth Error: ${response.status}`);
+        }
+        throw new Error(`API Error: ${response.status}`);
+    }
+
+    const text = await response.text();
+    return text ? JSON.parse(text) : {};
+}
