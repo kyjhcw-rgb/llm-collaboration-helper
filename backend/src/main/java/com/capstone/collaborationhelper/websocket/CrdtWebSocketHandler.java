@@ -94,9 +94,16 @@ public class CrdtWebSocketHandler extends AbstractWebSocketHandler {
         session.getAttributes().put("username", username);
         session.getAttributes().put("userId", party.getUser().getId());
         session.getAttributes().put("role", party.getRole());
+        session.getAttributes().put("nickname", user.getNickname());
+        if (user.getProfileImageUrl() != null) {
+            session.getAttributes().put("profileImageUrl", user.getProfileImageUrl());
+        }
 
         projectSessions.computeIfAbsent(projectId, k -> new CopyOnWriteArrayList<>()).add(session);
         log.info("웹소켓 연결 성공: 프로젝트 ID = {}, 유저 이메일 = {}", projectId, username);
+
+        // 누군가 접속하면 온라인 유저 목록 브로드캐스트
+        broadcastOnlineUsers(projectId);
     }
 
     // Yjs 바이너리 데이터 수신 시 (실시간 동시 편집)
@@ -162,8 +169,17 @@ public class CrdtWebSocketHandler extends AbstractWebSocketHandler {
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
         Integer projectId = extractProjectId(session);
         if (projectSessions.containsKey(projectId)) {
-            projectSessions.get(projectId).remove(session);
-            if (projectSessions.get(projectId).isEmpty()) projectSessions.remove(projectId);
+            CopyOnWriteArrayList<WebSocketSession> sessions = projectSessions.get(projectId);
+
+            // 단순 객체 비교(remove) 대신 세션 ID로 확실하게 찾아 제거
+            sessions.removeIf(s -> s.getId().equals(session.getId()));
+
+            if (sessions.isEmpty()) {
+                projectSessions.remove(projectId);
+            } else {
+                // 누군가 퇴장하면 남은 사람들에게 갱신된 온라인 유저 목록 브로드캐스트
+                broadcastOnlineUsers(projectId);
+            }
         }
     }
 
@@ -242,6 +258,46 @@ public class CrdtWebSocketHandler extends AbstractWebSocketHandler {
                     }
                 }
             }
+        }
+    }
+
+    private void broadcastOnlineUsers(Integer projectId) {
+        CopyOnWriteArrayList<WebSocketSession> sessions = projectSessions.get(projectId);
+        if (sessions == null) return;
+
+        // 중복 접속자(같은 유저가 여러 탭 띄운 경우) 방지를 위한 Set
+        java.util.Set<Integer> onlineUserIds = new java.util.HashSet<>();
+        java.util.List<java.util.Map<String, Object>> onlineUsers = new java.util.ArrayList<>();
+
+        for (WebSocketSession s : sessions) {
+            if (s.isOpen()) {
+                Integer userId = (Integer) s.getAttributes().get("userId");
+                if (userId != null && !onlineUserIds.contains(userId)) {
+                    onlineUserIds.add(userId);
+                    java.util.Map<String, Object> userMap = new java.util.HashMap<>();
+                    userMap.put("userId", userId);
+                    userMap.put("nickname", s.getAttributes().get("nickname"));
+                    userMap.put("profileImageUrl", s.getAttributes().get("profileImageUrl"));
+                    onlineUsers.add(userMap);
+                }
+            }
+        }
+
+        try {
+            java.util.Map<String, Object> message = new java.util.HashMap<>();
+            message.put("type", "ONLINE_USERS");
+            message.put("users", onlineUsers);
+            TextMessage textMsg = new TextMessage(objectMapper.writeValueAsString(message));
+
+            for (WebSocketSession s : sessions) {
+                if (s.isOpen()) {
+                    synchronized (s) {
+                        try { s.sendMessage(textMsg); } catch (Exception e) {}
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("온라인 유저 브로드캐스트 실패", e);
         }
     }
 }
