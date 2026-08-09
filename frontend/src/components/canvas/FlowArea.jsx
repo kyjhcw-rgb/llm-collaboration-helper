@@ -128,27 +128,30 @@ const FlowContents = () => {
     const connectingHandleRef = useRef(null);
     const [hoveredEdgeId, setHoveredEdgeId] = useState(null);
 
-    // ─── [기능만 보기 필터링 로직] ────────────────────────────────────────────────
-    const visibleNodes = useMemo(() => {
-        if (!showOnlyFeatures) return nodes;
+// 기능만 볼 때 적용할 기능 블록의 컴팩트한 기본 크기 정의
+const FEATURE_ONLY_SIZE = {
+    width: 220,
+    height: 100,
+};
 
-        // 1. feature 타입인 노드 선택
-        const featureNodes = nodes.filter(n => n.data?.type === 'feature');
-        const featureNodeIds = new Set(featureNodes.map(n => n.id));
-
-        // 2. feature를 부모(또는 상위 부모)로 두고 있는 자식 노드들도 포함
-        const isChildOfFeature = (node) => {
-            let currentParentId = node.parentNode;
-            while (currentParentId) {
-                if (featureNodeIds.has(currentParentId)) return true;
-                const parentNode = nodes.find(n => n.id === currentParentId);
-                currentParentId = parentNode ? parentNode.parentNode : null;
-            }
-            return false;
-        };
-
-        return nodes.filter(n => n.data?.type === 'feature' || isChildOfFeature(n));
-    }, [nodes, showOnlyFeatures]);
+// 기능만 보기 필터링 및 크기 조절
+const visibleNodes = useMemo(() => {
+    if (!showOnlyFeatures) return nodes;
+    return nodes
+        .filter(n => n.data?.type === 'feature')
+        .map(n => {
+            return {
+                ...n,
+                width: FEATURE_ONLY_SIZE.width,
+                height: FEATURE_ONLY_SIZE.height,
+                style: {
+                    ...n.style,
+                    width: FEATURE_ONLY_SIZE.width,
+                    height: FEATURE_ONLY_SIZE.height,
+                }
+            };
+        });
+}, [nodes, showOnlyFeatures]);
 
     // 표시할 노드 ID 집합
     const visibleNodeIds = useMemo(() => new Set(visibleNodes.map(n => n.id)), [visibleNodes]);
@@ -160,7 +163,7 @@ const FlowContents = () => {
             .map(e => ({ ...e, zIndex: e.id === hoveredEdgeId ? 10 : 0 }));
     }, [edges, visibleNodeIds, hoveredEdgeId]);
 
-    // ─── handleNodesChange ───────────────────────────────────────────────────
+    // handleNodesChange 
     const handleNodesChange = useCallback((changes) => {
         if (!isEditable) return;
         const state = useCanvasStore.getState();
@@ -197,7 +200,7 @@ const FlowContents = () => {
         if (edgesChanged) state.setEdges(nextEdges);
     }, [isEditable, myUserId]);
 
-    // ─── handleNodeDragStop ──────────────────────────────────────────────────
+    // handleNodeDragStop 
     const handleNodeDragStop = useCallback((event, draggedNode) => {
         if (!isEditable) return;
         const state = useCanvasStore.getState();
@@ -582,7 +585,7 @@ const FlowContents = () => {
                 nodesConnectable={isEditable}
                 nodesDraggable={isEditable}
                 elementsSelectable={true}
-
+                onlyRenderVisibleElements={true}
                 onNodesChange={handleNodesChange}
                 onEdgesChange={handleEdgesChange}
                 onConnect={handleConnect}
