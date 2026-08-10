@@ -17,7 +17,8 @@ const CanvasHeader = () => {
         loadProjectFromServer,
         loadVersionsFromServer,
         deleteVersionFromServer,
-        restoreProjectFromServer
+        restoreProjectFromServer,
+        onlineUsers
     } = useCanvasStore();
 
     // 모달 및 멤버 관리 상태
@@ -25,11 +26,6 @@ const CanvasHeader = () => {
     const [projectMembers, setProjectMembers] = useState([]);
     const [inviteEmail, setInviteEmail] = useState('');
     const [inviteRole, setInviteRole] = useState('MEMBER');
-
-    // 접속 중인 유저 더미 데이터 (추후 Yjs Awareness 연동 가능)
-    const onlineUsers = [
-        { id: 1, name: '접속자', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Hong' }
-    ];
 
     useEffect(() => {
         if (currentProjectId) {
@@ -186,11 +182,13 @@ const CanvasHeader = () => {
                 </button>
 
                 <div className="online-members">
+                    {/* 스토어에서 받아온 onlineUsers 배열을 매핑 */}
                     {onlineUsers.map(user => (
-                        <div key={user.id} className="member-avatar">
-                            <img src={user.avatar} alt="프로필" />
+                        <div key={user.userId} className="member-avatar">
+                            {/* 프로필 이미지가 없으면 닉네임을 시드로 사용하여 아바타 자동 생성 */}
+                            <img src={user.profileImageUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.nickname}`} alt="프로필" />
                             <div className="online-dot"></div>
-                            <span className="tooltip">{user.name}</span>
+                            <span className="tooltip">{user.nickname}</span>
                         </div>
                     ))}
                 </div>
