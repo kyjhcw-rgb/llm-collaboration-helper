@@ -3,10 +3,6 @@ package com.capstone.collaborationhelper.client;
 import com.capstone.collaborationhelper.dto.ChatDtos.LlmChatReq;
 import com.capstone.collaborationhelper.dto.ChatDtos.LlmChatRes;
 import com.capstone.collaborationhelper.dto.ChatDtos.LlmModifyRes;
-import com.capstone.collaborationhelper.dto.CodeDtos.FileStructureResponse;
-import com.capstone.collaborationhelper.dto.CodeDtos.FileTreeRequest;
-import com.capstone.collaborationhelper.dto.CodeDtos.SingleCodeGenerationRequest;
-import com.capstone.collaborationhelper.dto.CodeDtos.SingleCodeGenerationResponse;
 import com.capstone.collaborationhelper.dto.ProjectDtos.CreateReq;
 import com.capstone.collaborationhelper.dto.TranslationDtos.DiagramRes;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -133,28 +129,6 @@ public class LlmClient {
         } catch (Exception e) {
             log.error("❌ [LlmClient] 회의 음성 처리 통신 에러: ", e);
             throw new RuntimeException("AI 회의 음성 처리 서버와의 통신에 실패했습니다.", e);
-        }
-    }
-
-    // [기능 5-1] 파일 트리 생성 요청 (/projects/generate-file-tree)
-    public FileStructureResponse generateFileTree(FileTreeRequest req) {
-        String url = getBaseUrl() + "/projects/generate-file-tree";
-        try {
-            return restTemplate.postForObject(url, req, FileStructureResponse.class);
-        } catch (Exception e) {
-            log.error("❌ [LlmClient] 파일 트리 생성 통신 에러: ", e);
-            throw new RuntimeException("AI 파일 트리 생성 서버와의 통신에 실패했습니다.", e);
-        }
-    }
-
-    // [기능 5-2] 단일 소스 코드 생성 요청 (/projects/generate-single-code)
-    public SingleCodeGenerationResponse generateSingleCode(SingleCodeGenerationRequest req) {
-        String url = getBaseUrl() + "/projects/generate-single-code";
-        try {
-            return restTemplate.postForObject(url, req, SingleCodeGenerationResponse.class);
-        } catch (Exception e) {
-            log.error("❌ [LlmClient] 단일 코드 생성 통신 에러: ", e);
-            throw new RuntimeException("AI 단일 코드 생성 서버와의 통신에 실패했습니다.", e);
         }
     }
 }
