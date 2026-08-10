@@ -39,7 +39,7 @@ public class LlmClient {
     // [기능 1] 프로젝트 챗봇 요청 (/project/ask)
     public String requestProjectChat(LlmChatReq req) {
         String url = getBaseUrl() + "/project/ask";
-        log.info("▶ [LlmClient] FastAPI AI 서버로 프로젝트 챗봇 요청. url={}", url);
+        log.info("▶ [LlmClient] AI 서버로 프로젝트 챗봇 요청. url={}", url);
 
         try {
             LlmChatRes response = restTemplate.postForObject(url, req, LlmChatRes.class);
@@ -48,7 +48,7 @@ public class LlmClient {
             }
             return response.getReply();
         } catch (Exception e) {
-            log.error("❌ [LlmClient] 프로젝트 챗봇 통신 중 에러가 발생했습니다: ", e);
+            log.error("❌ [LlmClient] 프로젝트 챗봇 통신 중 에러: ", e);
             throw new RuntimeException("AI 챗봇 서버와의 통신에 실패했습니다.", e);
         }
     }
@@ -56,20 +56,21 @@ public class LlmClient {
     // [기능 2] 초기 다이어그램 생성 요청 (/projects/initial-diagram)
     public DiagramRes requestInitialDiagram(CreateReq req) {
         String url = getBaseUrl() + "/projects/initial-diagram";
-        log.info("▶ [LlmClient] FastAPI AI 서버로 다이어그램 생성 요청. url={}, title={}", url, req.getTitle());
+        log.info("▶ [LlmClient] AI 서버로 초기 다이어그램 생성 요청. url={}, title={}", url, req.getTitle());
 
         try {
+            // FastAPI Pydantic 모델(DiagramRes)과 1:1 대응되는 TranslationDtos.DiagramRes로 수신
             DiagramRes response = restTemplate.postForObject(url, req, DiagramRes.class);
 
             if (response != null) {
-                log.info("✔ [LlmClient] AI 서버로부터 다이어그램 구조 수신 완료! (Features: {}개, Edges: {}개)",
+                log.info("✔ [LlmClient] 다이어그램 구조 수신 완료 (Features: {}개, Edges: {}개)",
                         response.getFeatures() != null ? response.getFeatures().size() : 0,
                         response.getEdges() != null ? response.getEdges().size() : 0);
             }
 
             return response;
         } catch (Exception e) {
-            log.error("❌ [LlmClient] FastAPI 서버와 통신 중 에러가 발생했습니다: ", e);
+            log.error("❌ [LlmClient] 다이어그램 생성 통신 에러: ", e);
             throw new RuntimeException("AI 다이어그램 생성 서버와의 통신에 실패했습니다.", e);
         }
     }
@@ -77,7 +78,7 @@ public class LlmClient {
     // [기능 3] 다이어그램 수정 요청 (/project/agent)
     public LlmModifyRes requestModifyDiagram(LlmChatReq req) {
         String url = getBaseUrl() + "/project/agent";
-        log.info("▶ [LlmClient] FastAPI AI 서버로 다이어그램 수정 요청. url={}", url);
+        log.info("▶ [LlmClient] AI 서버로 다이어그램 수정 요청. url={}", url);
 
         try {
             LlmModifyRes response = restTemplate.postForObject(url, req, LlmModifyRes.class);
@@ -85,16 +86,16 @@ public class LlmClient {
                 throw new RuntimeException("AI 서버로부터 빈 응답을 받았습니다.");
             }
             if (response.getDiagram() == null) {
-                throw new RuntimeException("AI 서버가 수정된 다이어그램을 반환하지 않았습니 다.");
+                throw new RuntimeException("AI 서버가 수정된 다이어그램을 반환하지 않았습니다.");
             }
 
-            log.info("✔ [LlmClient] 수정 다이어그램 수신 완료! (Features: {}개, Edges: {}개)",
+            log.info("✔ [LlmClient] 수정 다이어그램 수신 완료 (Features: {}개, Edges: {}개)",
                     response.getDiagram().getFeatures() != null ? response.getDiagram().getFeatures().size() : 0,
                     response.getDiagram().getEdges() != null ? response.getDiagram().getEdges().size() : 0);
 
             return response;
         } catch (Exception e) {
-            log.error("❌ [LlmClient] 다이어그램 수정 통신 중 에러가 발생했습니다: ", e);
+            log.error("❌ [LlmClient] 다이어그램 수정 통신 에러: ", e);
             throw new RuntimeException("AI 다이어그램 수정 서버와의 통신에 실패했습니다.", e);
         }
     }
@@ -102,7 +103,7 @@ public class LlmClient {
     // [신규 기능] 회의 음성 처리 및 다이어그램 수정 반영 (/projects/process-meeting-audio)
     public LlmModifyRes processMeetingAudio(MultipartFile file, DiagramRes currentDiagram, String projectContext, String sessionId) {
         String url = getBaseUrl() + "/projects/process-meeting-audio";
-        log.info("▶ [LlmClient] FastAPI AI 서버로 음성 파일 전송 요청. url={}, fileName={}", url, file.getOriginalFilename());
+        log.info("▶ [LlmClient] AI 서버로 회의 음성 처리 요청. url={}, fileName={}", url, file.getOriginalFilename());
 
         try {
             HttpHeaders headers = new HttpHeaders();
@@ -110,34 +111,27 @@ public class LlmClient {
 
             MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
 
-            // 1. Multipart 파일 설정
             ByteArrayResource fileResource = new ByteArrayResource(file.getBytes()) {
                 @Override
                 public String getFilename() {
-                    return file.getOriginalFilename() != null ? file.getOriginalFilename() : "audio.webm";
+                    return file.getOriginalFilename() != null ? file.getOriginalFilename() : "meeting_audio.webm";
                 }
             };
             body.add("file", fileResource);
 
-            // 2. DiagramRes 객체를 JSON String으로 변환 후 전달
+            // TranslationDtos.DiagramRes 객체를 JSON 직렬화하여 전달
             String diagramJson = objectMapper.writeValueAsString(currentDiagram);
             body.add("currentDiagram", diagramJson);
 
-            // 3. Optional Params
             if (projectContext != null) body.add("projectContext", projectContext);
             if (sessionId != null) body.add("sessionId", sessionId);
 
             HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
 
-            LlmModifyRes response = restTemplate.postForObject(url, requestEntity, LlmModifyRes.class);
-            if (response == null || response.getDiagram() == null) {
-                throw new RuntimeException("AI 음성 처리 서버로부터 올바른 다이어그램 응답을 받지 못했습니다.");
-            }
-
-            return response;
+            return restTemplate.postForObject(url, requestEntity, LlmModifyRes.class);
 
         } catch (Exception e) {
-            log.error("❌ [LlmClient] 회의 음성 처리 통신 중 에러 발생: ", e);
+            log.error("❌ [LlmClient] 회의 음성 처리 통신 에러: ", e);
             throw new RuntimeException("AI 회의 음성 처리 서버와의 통신에 실패했습니다.", e);
         }
     }
