@@ -1,5 +1,6 @@
 package com.capstone.collaborationhelper.service;
 
+import com.capstone.collaborationhelper.dto.CanvasDtos;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -20,27 +21,26 @@ public class MeetingService {
 
     private final RestTemplate restTemplate = new RestTemplate();
     private final ObjectMapper objectMapper;
-    private final CrdtService crdtService; // 기존 DB / CRDT 상태 관리 서비스
+    private final CanvasService canvasService; // CrdtService 대신 CanvasService 주입
 
     @Value("${ai.fastapi.url:http://localhost:1234}")
     private String fastapiBaseUrl;
 
     public JsonNode processAudioAndUpdateDiagram(Integer projectId, MultipartFile file) {
         try {
-            // 1. 백엔드 DB/CRDT에서 현재 최신 다이어그램 스냅샷 조회
-            Object currentDiagramObj = crdtService.getCurrentDiagram(projectId);
-            String currentDiagramJson = objectMapper.writeValueAsString(currentDiagramObj);
+            // 1. CrdtService 대신 CanvasService에서 라이브 다이어그램 데이터(SyncRes) 조회
+            CanvasDtos.SyncRes currentCanvas = canvasService.loadLiveCanvas(projectId);
+            String currentDiagramJson = objectMapper.writeValueAsString(currentCanvas);
 
-            // 2. FastAPI로 전달할 Multipart 요청 헤더 설정
+            // 2. FastAPI 전달용 Multipart 요청 헤더 설정
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.MULTIPART_FORM_DATA);
 
-            // 3. Multipart Body 구성 (FastAPI main.py Form 파라미터명과 매칭)
+            // 3. Multipart Body 구성
             MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
             body.add("sessionId", "session_project_" + projectId);
             body.add("currentDiagram", currentDiagramJson);
 
-            // RestTemplate에서 파일명이 손실되지 않도록 ByteArrayResource 재정의
             ByteArrayResource fileResource = new ByteArrayResource(file.getBytes()) {
                 @Override
                 public String getFilename() {
@@ -53,31 +53,34 @@ public class MeetingService {
 
             // 4. FastAPI AI 서버 호출 (/projects/process-meeting-audio)
             String targetUrl = fastapiBaseUrl + "/projects/process-meeting-audio";
-            log.info("FastAPI AI 서버 호출 시작: {}", targetUrl);
+            log.info("FastAPI AI 서버 호출: {}", targetUrl);
 
             ResponseEntity<JsonNode> response = restTemplate.postForEntity(targetUrl, requestEntity, JsonNode.class);
 
             if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
                 JsonNode responseBody = response.getBody();
-                
-                // FastAPI 응답 구조: { "reply": "변경 요약문...", "diagram": { ... } }
-                JsonNode updatedDiagram = responseBody.get("diagram");
 
-                if (updatedDiagram != null && !updatedDiagram.isNull()) {
-                    // 5. AI가 수정한 다이어그램을 DB 및 CRDT 스냅샷으로 최신화 저장
-                    crdtService.saveDiagramSnapshot(projectId, updatedDiagram);
-                    log.info("프로젝트 [{}] 최신 다이어그램 DB/CRDT 저장 성공", projectId);
+                // FastAPI 응답 구조: { "reply": "...", "diagram": { "blocks": [...], "edges": [...] } }
+                JsonNode updatedDiagramNode = responseBody.get("diagram");
+
+                if (updatedDiagramNode != null && !updatedDiagramNode.isNull()) {
+                    // 5. FastAPI가 응답한 updatedDiagram을 CanvasDtos.SyncReq 객체로 변환
+                    CanvasDtos.SyncReq syncReq = objectMapper.treeToValue(updatedDiagramNode, CanvasDtos.SyncReq.class);
+
+                    // 6. CanvasService.syncLiveCanvas를 호출하여 DB 및 Canvas 상태 동기화
+                    canvasService.syncLiveCanvas(projectId, syncReq);
+                    log.info("프로젝트 [{}] Canvas 다이어그램 반영 완료", projectId);
                 } else {
-                    log.warn("FastAPI 응답 내 'diagram' 필드가 존재하지 않거나 빈 값입니다.");
+                    log.warn("FastAPI 응답 내 'diagram' 필드가 null입니다.");
                 }
 
                 return responseBody;
             } else {
-                throw new RuntimeException("FastAPI AI 서버 응답 에러 Status: " + response.getStatusCode());
+                throw new RuntimeException("FastAPI 서버 응답 실패 Status: " + response.getStatusCode());
             }
 
         } catch (Exception e) {
-            log.error("회의 음성 처리 및 AI 연동 중 오류 발생 (ProjectId: {})", projectId, e);
+            log.error("회의 음성 처리 및 다이어그램 연동 오류 (ProjectId: {})", projectId, e);
             throw new RuntimeException("회의 음성 분석 처리 실패: " + e.getMessage(), e);
         }
     }
