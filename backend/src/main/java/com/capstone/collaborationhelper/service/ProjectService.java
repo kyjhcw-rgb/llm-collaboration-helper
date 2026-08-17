@@ -1,6 +1,7 @@
 package com.capstone.collaborationhelper.service;
 
 import com.capstone.collaborationhelper.client.LlmClient;
+import com.capstone.collaborationhelper.code2diagram.CodeToDiagramService;
 import com.capstone.collaborationhelper.dto.ProjectDtos.CreateReq;
 import com.capstone.collaborationhelper.dto.ProjectDtos.Res;
 import com.capstone.collaborationhelper.dto.TranslationDtos.DiagramRes;
@@ -37,6 +38,7 @@ public class ProjectService {
     private final CanvasService canvasService;
     private final TranslationService translationService;
     private final LlmClient llmClient;
+    private final CodeToDiagramService codeToDiagramService;
 
     // 추가: DB 제약조건 오류를 우회하여 초고속 벌크 삭제를 수행하기 위한 의존성 주입
     private final EntityManager entityManager;
@@ -91,21 +93,49 @@ public class ProjectService {
                 .build());
 
         try {
-            log.info("▶ [ProjectService] LlmClient를 통해 AI 다이어그램 생성을 요청합니다.");
-            DiagramRes diagram = llmClient.requestInitialDiagram(req);
-
-            if (diagram != null) {
-                translationService.importToDb(project.getId(), diagram);
-                canvasService.commitVersion(project.getId(), "초기 AI 다이어그램 생성");
-
-                log.info("✔ [ProjectService] AI 다이어그램이 포함된 프로젝트 생성이 최종 완료되었습니다. 프로젝트 ID: {}", project.getId());
+            InitialDiagram initial = resolveInitialDiagram(req);
+            if (initial == null) {
+                log.info("✔ [ProjectService] 초기 다이어그램 없이 빈 프로젝트를 생성합니다. 프로젝트 ID: {}", project.getId());
+                return Res.from(project, ROLE_OWNER);
             }
+
+            translationService.importToDb(project.getId(), initial.diagram());
+            canvasService.commitVersion(project.getId(), initial.commitMessage());
+            log.info("✔ [ProjectService] 초기 다이어그램이 포함된 프로젝트 생성 완료. 프로젝트 ID: {}, source={}",
+                    project.getId(), initial.source());
         } catch (Exception e) {
-            log.error("❌ [ProjectService] AI 초기 다이어그램 생성 및 연동 실패: ", e);
+            log.error("❌ [ProjectService] 초기 다이어그램 생성 및 연동 실패: ", e);
             throw new RuntimeException("초기 아키텍처 다이어그램 생성에 실패하여 프로젝트 생성이 취소되었습니다.", e);
         }
 
         return Res.from(project, ROLE_OWNER);
+    }
+
+    /**
+     * 우선순위: repoUrl(코드) &gt; descriptionPrompt(LLM) &gt; 없음(빈 프로젝트).
+     */
+    private InitialDiagram resolveInitialDiagram(CreateReq req) throws Exception {
+        String repoUrl = req.getRepoUrl();
+        if (repoUrl != null && !repoUrl.isBlank()) {
+            log.info("▶ [ProjectService] GitHub 레포에서 초기 다이어그램을 생성합니다.");
+            DiagramRes diagram = codeToDiagramService.fromGitHubUrl(repoUrl.trim());
+            return new InitialDiagram(diagram, "code", "초기 코드 다이어그램 생성");
+        }
+
+        String prompt = req.getDescriptionPrompt();
+        if (prompt != null && !prompt.isBlank()) {
+            log.info("▶ [ProjectService] LlmClient를 통해 AI 다이어그램 생성을 요청합니다.");
+            DiagramRes diagram = llmClient.requestInitialDiagram(req);
+            if (diagram == null) {
+                return null;
+            }
+            return new InitialDiagram(diagram, "llm", "초기 AI 다이어그램 생성");
+        }
+
+        return null;
+    }
+
+    private record InitialDiagram(DiagramRes diagram, String source, String commitMessage) {
     }
 
     @Transactional

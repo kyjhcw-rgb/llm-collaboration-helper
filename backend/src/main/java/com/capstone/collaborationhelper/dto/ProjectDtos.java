@@ -14,6 +14,8 @@ public class ProjectDtos {
         private String framework;
         private Integer freedomLevel;
         private String descriptionPrompt;
+        /** 공개 GitHub 레포 URL. 있으면 코드→다이어그램 경로 (descriptionPrompt보다 우선). */
+        private String repoUrl;
     }
 
     @Data
