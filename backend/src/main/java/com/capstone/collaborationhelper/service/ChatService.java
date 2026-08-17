@@ -18,8 +18,10 @@ import com.capstone.collaborationhelper.repository.PartyRepository;
 import com.capstone.collaborationhelper.repository.ProjectChatMessageRepository;
 import com.capstone.collaborationhelper.repository.ProjectRepository;
 import com.capstone.collaborationhelper.repository.UserRepository;
+import com.capstone.collaborationhelper.websocket.CrdtWebSocketHandler;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,6 +48,8 @@ public class ChatService {
     private final PartyRepository partyRepository;
     private final UserRepository userRepository;
     private final TransactionTemplate transactionTemplate;
+
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional(readOnly = true)
     public List<MessageRes> getMessages(Integer projectId) {
@@ -110,6 +114,7 @@ public class ChatService {
         }
 
         canvasService.syncLiveCanvas(projectId, req);
+        eventPublisher.publishEvent(new CrdtWebSocketHandler.DiagramUpdatedEvent(projectId, user.getId()));
         log.info("▶ [ChatService] 프로젝트(ID: {}) Agent 제안 적용 완료. userId={}, blocks={}, edges={}",
                 projectId,
                 user.getId(),
