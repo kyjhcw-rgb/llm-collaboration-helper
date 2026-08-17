@@ -44,6 +44,9 @@ public class CrdtWebSocketHandler extends AbstractWebSocketHandler {
     public record VersionCreatedEvent(Integer projectId) {}
     public record MentionEvent(Integer projectId, Integer targetUserId, String senderNickname) {}
 
+    // 다이어그램 업데이트 이벤트 (수정 제안 수락 등)
+    public record DiagramUpdatedEvent(Integer projectId, Integer senderId) {}
+
     // --- 웹소켓 생명주기 및 CRDT 브로드캐스트 로직 ---
 
     private Integer extractProjectId(WebSocketSession session) {
@@ -224,6 +227,23 @@ public class CrdtWebSocketHandler extends AbstractWebSocketHandler {
             for (WebSocketSession s : sessions) {
                 if (s.isOpen()) {
                     synchronized (s) { try { s.sendMessage(textMsg); } catch (Exception e) {} }
+                }
+            }
+        }
+    }
+
+    // 다이어그램 업데이트 이벤트 (제안 수락 시 발행되어 다른 클라이언트들을 갱신시킴)
+    @EventListener
+    public void handleDiagramUpdatedEvent(DiagramUpdatedEvent event) {
+        CopyOnWriteArrayList<WebSocketSession> sessions = projectSessions.get(event.projectId());
+        if (sessions != null) {
+            TextMessage textMsg = new TextMessage("{\"type\": \"DIAGRAM_UPDATED\"}");
+            for (WebSocketSession s : sessions) {
+                if (s.isOpen()) {
+                    // 수락(적용)한 발신자 본인은 제외합니다 (본인 화면은 이미 갱신 절차를 수행 중)
+                    if (!event.senderId().equals(s.getAttributes().get("userId"))) {
+                        synchronized (s) { try { s.sendMessage(textMsg); } catch (Exception e) {} }
+                    }
                 }
             }
         }
