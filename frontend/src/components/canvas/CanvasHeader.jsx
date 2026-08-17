@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import usericon from '../../images/usericon.png';
 import './CanvasHeader.css';
 import { useCanvasStore } from '../../store/useCanvasStore';
 import { request } from '../../api/http';
@@ -17,8 +18,7 @@ const CanvasHeader = () => {
         loadProjectFromServer,
         loadVersionsFromServer,
         deleteVersionFromServer,
-        restoreProjectFromServer,
-        onlineUsers
+        restoreProjectFromServer
     } = useCanvasStore();
 
     // 모달 및 멤버 관리 상태
@@ -27,11 +27,23 @@ const CanvasHeader = () => {
     const [inviteEmail, setInviteEmail] = useState('');
     const [inviteRole, setInviteRole] = useState('MEMBER');
 
+    // 접속 중인 유저 더미 데이터 
+    const onlineUsers = [
+        { id: 1, name: '접속자', avatar: usericon }
+    ];
+
+    // 유저 ID 기반 배경색 생성 함수
+    const getRandomColor = (id) => {
+        const colors = ['#FF6B6B', '#8e31cc', '#3697d3', '#ec58d6', '#98D8C8'];
+        const index = typeof id === 'number' ? id : String(id).charCodeAt(0);
+        return colors[index % colors.length];
+    };
+
     useEffect(() => {
         if (currentProjectId) {
             loadVersionsFromServer(currentProjectId);
         }
-    }, [currentProjectId, currentVersion, loadVersionsFromServer]);
+    }, [currentProjectId]); // 무한 루프 방지를 위해 currentVersion, loadVersionsFromServer 제거 권장
 
     // 모달을 열 때 프로젝트 멤버 목록 조회
     const openMemberModal = async () => {
@@ -52,7 +64,6 @@ const CanvasHeader = () => {
                 method: 'PATCH',
                 body: JSON.stringify({ role: newRole })
             });
-            // 로컬 상태 즉시 갱신
             setProjectMembers(prev => prev.map(m => m.userId === userId ? { ...m, role: newRole } : m));
             alert("권한이 성공적으로 변경되었습니다.");
         } catch (error) {
@@ -97,7 +108,6 @@ const CanvasHeader = () => {
             alert(`${inviteEmail} 님을 초대했습니다!`);
             setInviteEmail('');
             setInviteRole('MEMBER');
-            // 초대 후 목록 새로고침
             const members = await request(`/projects/${currentProjectId}/members`, { method: 'GET' });
             setProjectMembers(members);
         } catch (error) {
@@ -144,7 +154,6 @@ const CanvasHeader = () => {
                         ))}
                     </select>
 
-                    {/* 과거 버전 확인 중 방장만 사용 가능한 복원 버튼 */}
                     {currentVersion !== 'live' && userRole === 'OWNER' && (
                         <button className="commit-btn" style={{ marginLeft: '10px', backgroundColor: '#e67e22' }} onClick={() => {
                             if (window.confirm(`이 버전(v${currentVersion})으로 현재 프로젝트를 완전히 덮어쓰시겠습니까?`)) {
@@ -164,43 +173,51 @@ const CanvasHeader = () => {
 
                 <div className="action-buttons" style={{ display: 'flex', gap: '8px', marginLeft: '15px' }}>
                     {userRole === 'OWNER' && (
-                        <>
-                            <button className="commit-btn" onClick={handleCommit}>버전 저장 (Commit)</button>
-                        </>
+                        <button className="commit-btn" onClick={handleCommit}>버전 저장 (Commit)</button>
                     )}
                 </div>
             </div>
 
             <div className="header-right" style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-
-                {/* 방장뿐만 아니라 누구나 멤버 관리를 볼 수 있음 (권한 제어는 모달 내부에서) */}
                 <button
                     onClick={openMemberModal}
-                    style={{ padding: '6px 16px', backgroundColor: '#4953BE', color: 'white', border: 'none', borderRadius: '20px', cursor: 'pointer', fontWeight: 'bold' }}
+                    style={{ padding: '5px 10px', backgroundColor: '#fff', color: 'black', border: 'none', borderRadius: '50px', cursor: 'pointer', fontWeight: 'bold' }}
                 >
-                    멤버 관리
+                    ⚙️ 멤버 관리
                 </button>
 
-                <div className="online-members">
-                    {/* 스토어에서 받아온 onlineUsers 배열을 매핑 */}
-                    {onlineUsers.map(user => (
-                        <div key={user.userId} className="member-avatar">
-                            {/* 프로필 이미지가 없으면 닉네임을 시드로 사용하여 아바타 자동 생성 */}
-                            <img src={user.profileImageUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.nickname}`} alt="프로필" />
-                            <div className="online-dot"></div>
-                            <span className="tooltip">{user.nickname}</span>
-                        </div>
-                    ))}
-                </div>
+                <div className="online-members" style={{ display: 'flex', gap: '8px' }}>
+    {onlineUsers.map(user => (
+        <div 
+            key={user.id} 
+            className="member-avatar" 
+            style={{ position: 'relative' }} 
+        >
+            <img 
+                className="usericon" 
+                src={user.avatar} 
+                alt="user-icon" 
+                style={{
+                    width: '35px',
+                    height: '35px',
+                    borderRadius: '50%',
+                    backgroundColor: user.color || getRandomColor(user.id),
+                    boxSizing: 'border-box',
+                    display: 'block'
+                }}
+            />
+            <div className="online-dot"></div>
+            <span className="tooltip">{user.name}</span>
+        </div>
+    ))}
+</div>
 
                 <button className="logout-btn" onClick={handleLogout}>로그아웃</button>
             </div>
 
-            {/* 종합 멤버 관리 및 초대 모달 */}
             {isMemberModalOpen && (
                 <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(2px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999 }}>
                     <div style={{ backgroundColor: 'white', padding: '30px 40px', borderRadius: '12px', width: '600px', maxWidth: '90vw', display: 'flex', flexDirection: 'column', gap: '24px', boxShadow: '0 10px 25px rgba(0,0,0,0.15)', boxSizing: 'border-box' }}>
-
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <h2 style={{ margin: 0, fontSize: '20px', color: '#111' }}>프로젝트 멤버 관리</h2>
                             <button onClick={() => setIsMemberModalOpen(false)} style={{ background: 'none', border: 'none', fontSize: '26px', cursor: 'pointer', color: '#888', padding: 0, lineHeight: 1 }}>&times;</button>
@@ -211,7 +228,6 @@ const CanvasHeader = () => {
                             <div style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '0 10px' }}>
                                 {projectMembers.map((member, index) => (
                                     <div key={member.userId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 5px', borderBottom: index !== projectMembers.length - 1 ? '1px solid #f1f5f9' : 'none', gap: '10px' }}>
-
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
                                             <div style={{ minWidth: '36px', minHeight: '36px', borderRadius: '50%', backgroundColor: '#f1f5f9', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '16px', fontWeight: 'bold', color: '#64748b', flexShrink: 0 }}>
                                                 {member.nickname.charAt(0).toUpperCase()}
@@ -223,7 +239,6 @@ const CanvasHeader = () => {
                                         </div>
 
                                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
-                                            {/* 방장이 다른 팀원 권한 수정 시 보이는 선택지 (멤버 / 게스트) */}
                                             {userRole === 'OWNER' && member.role !== 'OWNER' ? (
                                                 <select
                                                     value={member.role}
@@ -239,7 +254,6 @@ const CanvasHeader = () => {
                                                     backgroundColor: member.role === 'OWNER' ? '#fef08a' : member.role === 'MEMBER' ? '#dbeafe' : '#f1f5f9',
                                                     color: member.role === 'OWNER' ? '#a16207' : member.role === 'MEMBER' ? '#1d4ed8' : '#475569'
                                                 }}>
-                                                    {/* 역할 뱃지에 표기되는 텍스트 (방장 / 멤버 / 게스트) */}
                                                     {member.role === 'OWNER' ? '방장' : member.role === 'MEMBER' ? '멤버' : '게스트'}
                                                 </span>
                                             )}
@@ -255,7 +269,6 @@ const CanvasHeader = () => {
                             </div>
                         </div>
 
-                        {/* 새 팀원 초대 영역 */}
                         {userRole === 'OWNER' && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
                                 <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#64748b' }}>새 팀원 초대</span>
@@ -267,7 +280,6 @@ const CanvasHeader = () => {
                                         onChange={(e) => setInviteEmail(e.target.value)}
                                         style={{ flex: 1, minWidth: 0, height: '44px', padding: '0 16px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
                                     />
-                                    {/*초대 시 권한 선택 박스*/}
                                     <select
                                         value={inviteRole}
                                         onChange={(e) => setInviteRole(e.target.value)}
