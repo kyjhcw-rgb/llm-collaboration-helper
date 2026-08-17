@@ -23,6 +23,12 @@ export default function ProjectCreatePage() {
   const audioChunksRef = useRef([]);
   const streamRef = useRef(null);
 
+  // 녹음 중에 "생성하기"를 눌렀을 때, 녹음 정지(비동기)가 끝나고 audioBlob이
+  // 채워진 뒤에 생성 요청이 이어지도록 하기 위한 대기 상태
+  const [pendingSubmit, setPendingSubmit] = useState(false);
+  const pendingSubmitRef = useRef(false); // 연타 시 두 번째 클릭을 동기적으로 즉시 차단하기 위한 ref (state는 반영 시차가 있음)
+  const handleCreateRef = useRef(null);
+
   useEffect(() => {
     // 페이지를 벗어날 때 마이크가 계속 켜져 있지 않도록 정리
     return () => {
@@ -110,6 +116,36 @@ export default function ProjectCreatePage() {
       alert("프로젝트 생성에 실패했습니다.");
       setIsLoading(false);
     }
+  };
+
+  // handleCreate의 최신 버전을 항상 ref에 보관 (매 렌더마다 최신 audioBlob을 closure로 가짐)
+  useEffect(() => {
+    handleCreateRef.current = handleCreate;
+  });
+
+  // 녹음 정지가 완료(isRecording=false)되면, 대기 중이던 제출을 이어서 실행
+  useEffect(() => {
+    if (pendingSubmit && !isRecording) {
+      pendingSubmitRef.current = false;
+      setPendingSubmit(false);
+      handleCreateRef.current?.();
+    }
+  }, [pendingSubmit, isRecording]);
+
+  // "생성하기" 버튼의 진입점. 녹음 중이면 정지부터 시키고, 정지가 끝난 뒤(위 useEffect가
+  // 감지해서) handleCreate를 이어서 실행한다 — handleCreate 본체는 건드리지 않음.
+  const handleSubmit = () => {
+    if (pendingSubmitRef.current) return; // 연타 방지: state 갱신을 기다리지 않고 즉시 차단
+
+    const recorder = mediaRecorderRef.current;
+    if (isRecording && recorder && recorder.state === 'recording') {
+      pendingSubmitRef.current = true;
+      setPendingSubmit(true);
+      recorder.stop();
+      return;
+    }
+
+    handleCreateRef.current?.();
   };
 
   if (isLoading) {
@@ -209,7 +245,7 @@ export default function ProjectCreatePage() {
         </div>
 
         <div className="button-group">
-          <button className="submit-btn" onClick={handleCreate}>생성하기</button>
+          <button className="submit-btn" onClick={handleSubmit} disabled={pendingSubmit}>생성하기</button>
           <button className="cancel-btn" onClick={() => navigate(-1)}>취소</button>
         </div>
       </div>
