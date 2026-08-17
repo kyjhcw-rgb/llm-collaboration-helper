@@ -16,6 +16,19 @@ public class UserController {
 
     private final AuthService authService;
 
+    // 내 정보 조회 API
+    @GetMapping("/me")
+    public ResponseEntity<?> getMyInfo(Principal principal) {
+        if (principal == null) {
+            return ResponseEntity.status(401).body(Map.of("error", "인증되지 않은 사용자입니다."));
+        }
+        try {
+            return ResponseEntity.ok(authService.getMyInfo(principal.getName()));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(Map.of("error", "정보를 불러오는데 실패했습니다."));
+        }
+    }
+
     // 내 계정 정보 수정 API
     @PutMapping("/me")
     public ResponseEntity<?> updateMyInfo(Principal principal, @RequestBody UserUpdateReq req) {

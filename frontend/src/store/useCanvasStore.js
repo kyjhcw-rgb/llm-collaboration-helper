@@ -426,6 +426,7 @@ export const useCanvasStore = create((set, get) => ({
     userRole: 'GUEST',
     myUserId: null, // 권한 변경 감지용
     projectMembers: [], // 멤버 정보 상태 추가
+    onlineUsers: [],
     availableVersions: [], // { versionNumber, commitMessage, createdAt } 객체 배열
 
     // 6번: 마지막 커밋 이후 바뀐 블록을 표시하기 위한 체크포인트.
@@ -538,6 +539,9 @@ export const useCanvasStore = create((set, get) => ({
                             });
                         }
                         console.log('서버로부터 Yjs 통합 상태 동기화 완료!');
+                    } else if (msg.type === 'ONLINE_USERS') {
+                        // 온라인 유저 목록 수신 시 상태 업데이트
+                        set({ onlineUsers: msg.users });
                     } else if (msg.type === 'FORCE_RELOAD') {
                         // 과거 버전 복원 시 (방장을 포함한 모두에게 적용)
                         alert("방장이 다이어그램을 이전 버전으로 복원했습니다. Live 캔버스로 동기화합니다.");
@@ -556,6 +560,8 @@ export const useCanvasStore = create((set, get) => ({
                         alert("프로젝트에서 추방되었습니다.");
                         get().disconnectWebSocket();
                         window.location.href = '/projects';
+                    } else if (msg.type === 'MENTIONED') {
+                        alert(`🔔 ${msg.senderNickname}님이 댓글에서 회원님을 멘션했습니다!`);
                     }
                 } catch(e) {}
                 return;
@@ -639,7 +645,11 @@ export const useCanvasStore = create((set, get) => ({
     },
 
     disconnectWebSocket: () => {
-        if (ws) { ws.close(); ws = null; }
+        if (ws) {
+            ws.onclose = null; // 의도적인 종료 시 자동 재연결 이벤트 방지
+            ws.close();
+            ws = null;
+        }
         if (ydocUpdateHandler) { ydoc.off('update', ydocUpdateHandler); ydocUpdateHandler = null; }
         clearTimeout(syncDebounceTimer);
     },
@@ -657,6 +667,7 @@ export const useCanvasStore = create((set, get) => ({
             edges: [],
             selectedNodeId: null,
             selectedEdgeId: null,
+            onlineUsers: [],
         });
     },
 
@@ -873,7 +884,8 @@ export const useCanvasStore = create((set, get) => ({
             posX: parseFloat(node.position.x || 0),
             posY: parseFloat(node.position.y || 0),
             width: parseFloat(node.width || node.style?.width || DEFAULT_SIZES[node.data?.type]?.w || 150),
-            height: parseFloat(node.height || node.style?.height || DEFAULT_SIZES[node.data?.type]?.h || 50)
+            height: parseFloat(node.height || node.style?.height || DEFAULT_SIZES[node.data?.type]?.h || 50),
+            lastUpdatedBy: node.data?.lastUpdatedBy || null
         }));
 
         const edges = state.edges.map(edge => ({
@@ -884,6 +896,7 @@ export const useCanvasStore = create((set, get) => ({
             targetHandle: edge.targetHandle || null,
             type: edge.data?.type || 'call',
             badgeCount: edge.data?.badgeCount || 1,
+            lastUpdatedBy: edge.data?.lastUpdatedBy || null
         }));
 
         // 현재 Yjs 전체 상태를 바이너리로 추출하여 Base64 인코딩

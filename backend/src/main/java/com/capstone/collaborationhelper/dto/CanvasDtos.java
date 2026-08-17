@@ -47,6 +47,7 @@ public class CanvasDtos {
         private Double posY;
         private Double width;
         private Double height;
+        private Integer lastUpdatedBy;
     }
 
     @Data
@@ -58,5 +59,6 @@ public class CanvasDtos {
         private String targetHandle;
         private String type;
         private Integer badgeCount;
+        private Integer lastUpdatedBy;
     }
 }

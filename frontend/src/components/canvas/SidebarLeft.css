@@ -1,3 +1,4 @@
+/* 사이드바 기본 레이아웃 */
 .sidebar-left {
     width: 280px;
     flex-shrink: 0;
@@ -20,19 +21,13 @@
     align-items: flex-start;
     width: 100%;
 }
+
 .project-home-icon, .project-folder-icon, .project-document-icon {
     width: 18px;
     height: 20px;
     object-fit: contain;
 }
-.tree-root {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 15px;
-}
-.tree-root-project{font-weight: bold; gap: 10px;}
-.tree-root-item {gap: 10px;}
+
 .sidebar-title {
     padding: 10px;
     font-size: 18px;
@@ -64,50 +59,84 @@
 .tree-root {
     display: flex;
     flex-direction: column;
-    gap: 5px;
+    gap: 8px;
     width: 100%;
     align-items: flex-start;
     padding: 0;
     margin: 0;
 }
 
-.tree-item {
-    font-size: 14px;
-    padding: 10px;
-    border-radius: 6px;
-    cursor: pointer;
-    width: 100%;
-    box-sizing: border-box;
-    text-align: center;
+.tree-root-project {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: bold;
+    font-size: 15px;
+    color: #222;
+    padding: 4px 0;
 }
 
-.tree-item:hover {
+/* 🌟 트리 루트 및 개별 항목 세로 배치 설정 */
+.tree-root-item, .tree-node-group {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    width: 100%;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* 🌟 아이콘과 타이틀 글자 세로/가로 배치용 클래스 */
+.tree-item-title {
+    display: flex;
+    justify-content: flex-start;
+    text-align: left;
+    flex-direction: row;
+    align-items: center;
+    gap: 6px; /* 화살표, 아이콘, 텍스트 간격 */
+    width: 100%;
+    font-size: 15px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    box-sizing: border-box;
+    cursor: pointer;
+    user-select: none;
+}
+
+.tree-item-title:hover {
     background-color: #f0f2fb;
     color: #4953BE;
 }
 
-/* 프로젝트 디렉토리명 왼쪽 밀착 */
-.tree-item.project {
-    font-weight: bold;
-    font-size: 15px;
-    color: #222;
-    padding-left: 5px;
+/* 🌟 디렉토리 화살표 전용 스타일 */
+.tree-arrow {
+    font-size: 13px;
+    border-radius: 10px;
+    color: #666;
+    width: 15px;
+    display: inline-block;
+    text-align: center;
+    flex-shrink: 0;
+    transition: transform 0.15s ease;
 }
 
-/* 하위 파일들의 왼쪽 들여쓰기 간격 축소 */
+.tree-bullet {
+    font-size: 10px;
+    margin-left: 2px;
+}
+
 .tree-branch {
+    display: flex;
+    flex-direction: column;
     list-style: none;
-    padding-left: 0;
-    margin: 5px 0 0 5px;
-    border-left: 2px solid #e0e0e0;
     padding-left: 10px;
-    width: 100%;
+    margin-left: 10px;
+    border-left: 1px dashed #d0d0d0; /* 하위 항목 구분 점선 */
+    width: calc(100% - 16px);
     box-sizing: border-box;
+    gap: 5px;
 }
-
-/* --------------------------------------
-   하단: Blocks 영역
---------------------------------------- */
 .block-palette {
     display: flex;
     flex-direction: column;

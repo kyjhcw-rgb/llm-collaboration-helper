@@ -17,7 +17,7 @@
 
 .ProjectListPage-header h1 {
     display: flex; align-items: center;
-    font-size: 25px;
+    font-size: 23px;
 }
 
 .ProjectListPage-header h2 {
@@ -25,7 +25,7 @@
     gap: 10px;
 }
 .usericon {
-    width: 30px;
+    width: 28px;
     cursor: pointer;
 }
 .ProjectListPage-header button {
@@ -45,7 +45,7 @@
     border-bottom: 3px solid #4953BE;
 }
 .ProjectListPage-contents-top h1{
-    font-size: 23px;
+    font-size: 20px;
 }
 
 .ProjectListPage-contents-top button {
@@ -114,11 +114,12 @@
 }
 
 .delete-btn,.edit-btn  {
-    padding: 10px;
+    color: #fff;
+    padding: 5px;
     border: none;
     border-radius: 5px;
     font-size: 10px;
-    font-weight: bold;
+    font-weight: 500;
     cursor: pointer;
     transition: 0.2s;
 }

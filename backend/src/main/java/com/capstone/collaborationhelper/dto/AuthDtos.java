@@ -1,5 +1,7 @@
 package com.capstone.collaborationhelper.dto;
 
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -52,5 +54,19 @@ public class AuthDtos {
         private String profileImageUrl;
         private String currentPassword; // 기존 비밀번호
         private String newPassword;     // 새 비밀번호
+    }
+
+    // 사용자 정보 응답용 DTO
+    @Getter
+    @Setter
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class UserRes {
+        private Integer id;
+        private String username;
+        private String email;
+        private String nickname;
+        private String profileImageUrl;
     }
 }

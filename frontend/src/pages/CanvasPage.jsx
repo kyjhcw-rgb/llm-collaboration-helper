@@ -88,7 +88,10 @@ export default function CanvasPage() {
         setupProjectWorkspace();
 
         return () => {
-            if (!isMockMode) useCanvasStore.getState().disconnectWebSocket();
+            if (!isMockMode) {
+                // disconnectWebSocket() 대신 resetProject()를 호출하여 상태를 완전히 비웁니다.
+                useCanvasStore.getState().resetProject();
+            }
         };
     }, [projectId, navigate, isMockMode]);
 

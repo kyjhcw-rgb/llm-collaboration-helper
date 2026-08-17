@@ -72,6 +72,20 @@ public class AuthService {
         }
     }
 
+    @Transactional(readOnly = true)
+    public UserRes getMyInfo(String username) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
+
+        return UserRes.builder()
+                .id(user.getId())
+                .username(user.getUsername())
+                .email(user.getEmail())
+                .nickname(user.getNickname())
+                .profileImageUrl(user.getProfileImageUrl())
+                .build();
+    }
+
     // 아이디 사용 가능 여부 (true면 중복 아님, 가입 가능)
     @Transactional(readOnly = true)
     public boolean isUsernameAvailable(String username) {

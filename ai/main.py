@@ -1,8 +1,9 @@
 import os
 import json
 import logging
+import requests
 from typing import Dict, List, Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Form, File, UploadFile
 from pydantic import BaseModel, Field
 from google import genai
 from google.genai import types, errors
@@ -18,7 +19,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# 1. 환경 변수 로드 (.env 파일에 GEMINI_API_KEY 저장 필수)
+# 1. 환경 변수 로드 (.env 파일 필수)
 load_dotenv()
 
 app = FastAPI(title="Our Diagram AI Agent")
@@ -26,6 +27,11 @@ app = FastAPI(title="Our Diagram AI Agent")
 # 2. Gemini 클라이언트 초기화 (최신 SDK)
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 MODEL_ID = "gemini-2.5-flash" 
+
+# 3. Clova Speech API 설정
+CLOVA_INVOKE_URL = os.getenv("CLOVA_INVOKE_URL", "https://clovaspeech-gw.ncloud.com/external/v1/15024/c4de3225b3ec50c9169584d70190755dfdfb078ecb26515de6fd0a2f12288d75")
+CLOVA_SECRET_KEY = os.getenv("CLOVA_SECRET_KEY")
+
 
 # =====================================================================
 # 상태 관리를 위한 모의 DB 저장소 (프로덕션에서는 DB 전환 권장)
@@ -123,6 +129,44 @@ def _freedom_level_hint(level: int) -> str:
     if level <= 1: return "feature와 class 위주로 설계하고, method는 핵심만 최소한으로 포함해."
     if level == 2: return "주요 class와 핵심 method를 포함하고, edges로 주요 의존 관계를 표현해."
     return "class와 method를 세분화하고, edges도 풍부하게 포함해."
+
+def request_clova_stt(file_bytes: bytes, filename: str, content_type: str = "audio/webm") -> str:
+    """Clova Speech API를 호출하여 음성 바이너리를 화자 분리(Diarization) 텍스트로 변환합니다."""
+    if not CLOVA_SECRET_KEY:
+        logger.error("CLOVA_SECRET_KEY 환경 변수가 설정되지 않았습니다.")
+        raise HTTPException(status_code=500, detail="Clova STT API 키 설정이 누락되었습니다.")
+
+    request_url = f"{CLOVA_INVOKE_URL.rstrip('/')}/recognizer/upload"
+    params = {
+        "language": "ko-KR", 
+        "completion": "sync", 
+        "diarization": {"enable": True}
+    }
+    headers = {'X-CLOVASPEECH-API-KEY': CLOVA_SECRET_KEY}
+    
+    files = {
+        'media': (filename or 'meeting_audio.webm', file_bytes, content_type or 'audio/webm'),
+        'params': (None, json.dumps(params), 'application/json')
+    }
+
+    try:
+        response = requests.post(request_url, headers=headers, files=files)
+        if response.status_code != 200:
+            logger.error(f"Clova STT API Error: {response.status_code} - {response.text}")
+            raise HTTPException(status_code=502, detail=f"Clova STT 변환 실패 (상태 코드: {response.status_code})")
+
+        res = response.json()
+        segments = res.get('segments', [])
+        if segments:
+            formatted_text = [
+                f"[{seg.get('speaker', {}).get('name', '참여자')}]: {seg.get('text', '')}" 
+                for seg in segments
+            ]
+            return "\n".join(formatted_text)
+        return res.get('text', '')
+    except requests.RequestException as e:
+        logger.error(f"Clova STT 통신 실패: {str(e)}")
+        raise HTTPException(status_code=502, detail="Clova STT 서버와의 통신 중 오류가 발생했습니다.")
 
 
 # =====================================================================
@@ -245,7 +289,6 @@ async def generate_initial_diagram(request: DiagramGenerationRequest):
 
 # =====================================================================
 # [기능 3] 다이어그램 수정 API (stateless — Spring Agent 연동)
-# 요청 스키마는 /project/ask와 동일(ChatRequest). 응답은 reply + diagram.
 # =====================================================================
 @app.post("/project/agent", response_model=ModifyResponse)
 async def modify_diagram(request: ChatRequest):
@@ -306,6 +349,71 @@ async def modify_diagram(request: ChatRequest):
         raise
     except Exception as e:
         handle_genai_error(e, "다이어그램 수정")
+
+
+# =====================================================================
+# [NEW 기능] 회의 음성 파일 수신 -> Clova STT 변환 -> Gemini 다이어그램 수정
+# =====================================================================
+@app.post("/projects/process-meeting-audio", response_model=ModifyResponse)
+async def process_meeting_audio(
+    sessionId: Optional[str] = Form(None),
+    currentDiagram: str = Form(...),  # Spring Boot에서 JSON 문자열로 전송
+    projectContext: Optional[str] = Form(None),
+    file: UploadFile = File(...)
+):
+    """
+    Spring Boot로부터 녹음된 음성 파일과 현재 다이어그램 JSON을 전달받아,
+    1) Clova Speech API로 STT 변환 수행
+    2) 변환된 회의록 텍스트 기반으로 Gemini AI가 다이어그램 수정
+    3) 수정 요약(reply)과 최신 다이어그램(diagram)을 반환합니다.
+    """
+    try:
+        # 1. 파일 바이너리 읽기
+        audio_bytes = await file.read()
+        if not audio_bytes:
+            raise HTTPException(status_code=400, detail="업로드된 음성 파일이 비어있습니다.")
+
+        # 2. Clova STT 호출
+        meeting_text = request_clova_stt(
+            file_bytes=audio_bytes, 
+            filename=file.filename, 
+            content_type=file.content_type
+        )
+        
+        if not meeting_text.strip():
+            raise HTTPException(status_code=400, detail="음성에서 인식된 회의 내용 텍스트가 없습니다.")
+        
+        logger.info(f"Session [{sessionId}] - STT 변환 완료:\n{meeting_text}")
+
+        # 3. currentDiagram JSON 파싱
+        try:
+            diagram_dict = json.loads(currentDiagram)
+            diagram_obj = DiagramRes(**diagram_dict)
+        except Exception as parse_err:
+            logger.error(f"다이어그램 JSON 파싱 에러: {parse_err}")
+            raise HTTPException(status_code=400, detail="전달받은 currentDiagram JSON 형식이 올바르지 않습니다.")
+
+        # 4. 기존 modify_diagram API로 보낼 요청 객체 구성 및 수정 실행
+        instruction_message = (
+            f"다음은 진행된 개발 회의 녹음 내용의 STT 변환 텍스트입니다. "
+            f"회의 내용을 상세히 분석하여 다이어그램에 반영해 주세요.\n\n"
+            f"[회의록 텍스트]\n{meeting_text}"
+        )
+
+        chat_request = ChatRequest(
+            message=instruction_message,
+            diagram=diagram_obj,
+            history=[],
+            projectContext=projectContext
+        )
+
+        # 5. Gemini 다이어그램 수정 로직 재활용
+        return await modify_diagram(chat_request)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        handle_genai_error(e, "회의 음성 처리 및 다이어그램 반영")
 
 
 # =====================================================================
@@ -383,7 +491,7 @@ async def generate_single_code(request: SingleCodeGenerationRequest):
     )
     
     user_message = (
-        f"[전체 다이어그램 구조]\\n{json.dumps(request.diagram.model_dump(), ensure_ascii=False)}\n\n"
+        f"[전체 다이어그램 구조]\n{json.dumps(request.diagram.model_dump(), ensure_ascii=False)}\n\n"
         f"[생성할 대상 파일 경로]\n{request.targetFilePath}\n\n"
         f"위 파일 경로에 들어갈 [{request.targetFramework}] 보일러플레이트 코드를 짜줘."
     )

@@ -5,17 +5,18 @@ import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.OnDelete;
 import org.hibernate.annotations.OnDeleteAction;
+import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.OffsetDateTime;
 
 @Entity
-@Table(name = "project_chat_message")
+@Table(name = "block_comment")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class ProjectChatMessage {
+public class BlockComment {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -26,22 +27,22 @@ public class ProjectChatMessage {
     @OnDelete(action = OnDeleteAction.CASCADE)
     private Project project;
 
+    @Column(name = "block_frontend_id", nullable = false)
+    private String blockFrontendId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
+    @OnDelete(action = OnDeleteAction.CASCADE)
     private User user;
 
-    @Column(nullable = false, length = 50)
-    private String sender;
-
-    /** ASK: 질문(Q&A)만, AGENT: 다이어그램 수정 제안까지 */
-    @Column(nullable = false, length = 20)
-    @Builder.Default
-    private String mode = "ASK";
-
     @Column(nullable = false, columnDefinition = "TEXT")
-    private String message;
+    private String content;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private OffsetDateTime createdAt;
+
+    @UpdateTimestamp
+    @Column(name = "updated_at")
+    private OffsetDateTime updatedAt;
 }

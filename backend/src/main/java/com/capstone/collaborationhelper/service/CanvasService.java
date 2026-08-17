@@ -73,6 +73,9 @@ public class CanvasService {
         // 프론트엔드가 보낸 Yjs Binary를 디코딩하여 DB에 저장
         if (req.getYjsData() != null && !req.getYjsData().isBlank()) {
             project.setCrdtSnapshot(java.util.Base64.getDecoder().decode(req.getYjsData()));
+        } else {
+            // yjsData가 오지 않은 경우(수정 제안 수락 등), 스냅샷을 초기화하여 새로운 블록/엣지 데이터를 우선하도록 함
+            project.setCrdtSnapshot(null);
         }
 
         projectRepository.save(project);
@@ -212,6 +215,7 @@ public class CanvasService {
         dto.setReturnType(block.getReturnType()); dto.setAnnotations(block.getAnnotations());
         dto.setPosX(block.getPosX()); dto.setPosY(block.getPosY());
         dto.setWidth(block.getWidth()); dto.setHeight(block.getHeight());
+        dto.setLastUpdatedBy(block.getLastUpdatedBy() != null ? block.getLastUpdatedBy().getId() : null);
         return dto;
     }
 
@@ -221,6 +225,7 @@ public class CanvasService {
         dto.setTargetFrontendId(edge.getTargetFrontendId()); dto.setSourceHandle(edge.getSourceHandle());
         dto.setTargetHandle(edge.getTargetHandle()); dto.setType(edge.getType());
         dto.setBadgeCount(edge.getBadgeCount());
+        dto.setLastUpdatedBy(edge.getLastUpdatedBy() != null ? edge.getLastUpdatedBy().getId() : null);
         return dto;
     }
 
@@ -231,6 +236,12 @@ public class CanvasService {
         block.setReturnType(dto.getReturnType()); block.setAnnotations(dto.getAnnotations());
         block.setPosX(dto.getPosX()); block.setPosY(dto.getPosY());
         block.setWidth(dto.getWidth()); block.setHeight(dto.getHeight());
+
+        if (dto.getLastUpdatedBy() != null) {
+            block.setLastUpdatedBy(userRepository.getReferenceById(dto.getLastUpdatedBy()));
+        } else {
+            block.setLastUpdatedBy(null);
+        }
     }
 
     private void applyEdgeDto(Edge edge, CanvasDtos.EdgeDto dto) {
@@ -238,6 +249,12 @@ public class CanvasService {
         edge.setTargetFrontendId(dto.getTargetFrontendId()); edge.setSourceHandle(dto.getSourceHandle());
         edge.setTargetHandle(dto.getTargetHandle()); edge.setType(dto.getType());
         edge.setBadgeCount(dto.getBadgeCount());
+
+        if (dto.getLastUpdatedBy() != null) {
+            edge.setLastUpdatedBy(userRepository.getReferenceById(dto.getLastUpdatedBy()));
+        } else {
+            edge.setLastUpdatedBy(null);
+        }
     }
 
     private List<CanvasDtos.BlockDto> mapBlocksToDto(List<Block> blocks) { return blocks.stream().map(this::mapBlockToDto).toList(); }
