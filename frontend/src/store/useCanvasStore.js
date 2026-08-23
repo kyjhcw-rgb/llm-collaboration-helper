@@ -543,8 +543,9 @@ export const useCanvasStore = create((set, get) => ({
                         // 온라인 유저 목록 수신 시 상태 업데이트
                         set({ onlineUsers: msg.users });
                     } else if (msg.type === 'FORCE_RELOAD') {
-                        // 과거 버전 복원 시 (방장을 포함한 모두에게 적용)
-                        alert("방장이 다이어그램을 이전 버전으로 복원했습니다. Live 캔버스로 동기화합니다.");
+                        // 버전 복원, 회의 녹음 반영 등 방장의 여러 액션에서 공통으로 쏘는 이벤트라
+                        // 특정 원인을 단정하지 않는 문구를 사용 (실제 원인 구분은 백엔드가 reason을 안 보내줘서 불가)
+                        alert("캔버스가 갱신되었습니다. 최신 상태로 동기화합니다.");
                         window.location.reload();
                     } else if (msg.type === 'VERSION_CREATED') {
                         // 방장이 버전을 생성했다는 알림을 받으면, 접속자 모두가 드롭다운 목록을 업데이트

@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { request, requestUpload } from '../api/http';
 import { useCanvasStore } from '../store/useCanvasStore';
+import { useAudioRecorder } from '../hooks/useAudioRecorder';
 import '../styles/ProjectCreatePage.css';
 
 export default function ProjectCreatePage() {
@@ -15,13 +16,12 @@ export default function ProjectCreatePage() {
   const [freedomLevel, setFreedomLevel] = useState(1);
   const [descriptionPrompt, setDescriptionPrompt] = useState('');
 
-  // 녹음 관련 상태 — 녹음 파일은 별도 DB/스토리지 없이 메모리(Blob)에만 보관하다가
+  // 녹음 파일은 별도 DB/스토리지 없이 메모리(Blob)에만 보관하다가
   // 프로젝트 생성 직후 백엔드로 바로 전송하고 버림
-  const [isRecording, setIsRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState(null);
-  const mediaRecorderRef = useRef(null);
-  const audioChunksRef = useRef([]);
-  const streamRef = useRef(null);
+  const { isRecording, mediaRecorderRef, toggleRecording } = useAudioRecorder({
+    onStop: (blob) => setAudioBlob(blob),
+  });
 
   // 녹음 중에 "생성하기"를 눌렀을 때, 녹음 정지(비동기)가 끝나고 audioBlob이
   // 채워진 뒤에 생성 요청이 이어지도록 하기 위한 대기 상태
@@ -29,50 +29,12 @@ export default function ProjectCreatePage() {
   const pendingSubmitRef = useRef(false); // 연타 시 두 번째 클릭을 동기적으로 즉시 차단하기 위한 ref (state는 반영 시차가 있음)
   const handleCreateRef = useRef(null);
 
-  useEffect(() => {
-    // 페이지를 벗어날 때 마이크가 계속 켜져 있지 않도록 정리
-    return () => {
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-    };
-  }, []);
-
   const handleResizeHeight = useCallback(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
       textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
     }
   }, []);
-
-  const handleMicClick = async () => {
-    if (isRecording) {
-      mediaRecorderRef.current?.stop();
-      return;
-    }
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      audioChunksRef.current = [];
-
-      const recorder = new MediaRecorder(stream);
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunksRef.current.push(e.data);
-      };
-      recorder.onstop = () => {
-        setAudioBlob(new Blob(audioChunksRef.current, { type: 'audio/webm' }));
-        setIsRecording(false);
-        streamRef.current?.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
-      };
-
-      recorder.start();
-      mediaRecorderRef.current = recorder;
-      setIsRecording(true);
-    } catch (err) {
-      console.error('마이크 접근 실패:', err);
-      alert('마이크를 사용할 수 없습니다. 브라우저 권한을 확인해주세요.');
-    }
-  };
 
   const handleDiscardRecording = () => {
     setAudioBlob(null);
@@ -220,7 +182,7 @@ export default function ProjectCreatePage() {
               type="button"
               className={`voice-mic-btn ${isRecording ? 'recording' : ''}`}
               title={isRecording ? '녹음 종료' : '음성으로 녹음하기'}
-              onClick={handleMicClick}
+              onClick={toggleRecording}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" fill="currentColor"/>
