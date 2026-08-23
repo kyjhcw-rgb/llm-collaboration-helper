@@ -2,92 +2,92 @@ import { useState, useEffect } from 'react';
 import '../styles/EditProfileModal.css';
 
 export default function EditProfileModal({ isOpen, onClose, currentUser, onSave }) {
-  const [nickname, setNickname] = useState('');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+    const [nickname, setNickname] = useState('');
+    const [username, setUsername] = useState('');
+    const [currentPassword, setCurrentPassword] = useState('');
+    const [password, setPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [backupData, setBackupData] = useState({});
 
-  const [editingFields, setEditingFields] = useState({
-    nickname: false,
-    username: false,
-    password: false,
-  });
-
-  const [backupData, setBackupData] = useState({
-    nickname: '',
-    username: '',
-  });
-
-  useEffect(() => {
-    if (isOpen && currentUser) {
-      const initNickname = currentUser.nickname || '';
-      const initUsername = currentUser.username || '';
-      setNickname(initNickname);
-      setUsername(initUsername);
-      setPassword('');
-      setConfirmPassword('');
-      setEditingFields({ nickname: false, username: false, password: false });
-      setBackupData({ nickname: initNickname, username: initUsername });
-    }
-  }, [isOpen, currentUser]);
-
-  if (!isOpen) return null;
-
-  const handleEditStart = (field) => {
-    setEditingFields((prev) => ({ ...prev, [field]: true }));
-    if (field === 'nickname') setBackupData((prev) => ({ ...prev, nickname }));
-    if (field === 'username') setBackupData((prev) => ({ ...prev, username }));
-  };
-
-  const handleCancel = (field) => {
-    setEditingFields((prev) => ({ ...prev, [field]: false }));
-    
-    if (field === 'nickname') setNickname(backupData.nickname);
-    if (field === 'username') setUsername(backupData.username);
-    if (field === 'password') {
-      setPassword('');
-      setConfirmPassword('');
-    }
-  };
-
-  const handleSave = (field) => {
-    if (field === 'nickname' && !nickname.trim()) {
-      alert('닉네임을 입력해주세요.');
-      return;
-    }
-    if (field === 'username' && !username.trim()) {
-      alert('아이디를 입력해주세요.');
-      return;
-    }
-    if (field === 'password') {
-      if (!password) {
-        alert('변경할 비밀번호를 입력해주세요.');
-        return;
-      }
-      if (password !== confirmPassword) {
-        alert('비밀번호가 일치하지 않습니다.');
-        return;
-      }
-    }
-
-    onSave({
-      nickname: field === 'nickname' ? nickname : currentUser.nickname,
-      username: field === 'username' ? username : currentUser.username,
-      password: field === 'password' ? password : '', 
+    const [editingFields, setEditingFields] = useState({
+        nickname: false,
+        password: false,
     });
 
-    setEditingFields((prev) => ({ ...prev, [field]: false }));
-    if (field === 'nickname') setBackupData((prev) => ({ ...prev, nickname }));
-    if (field === 'username') setBackupData((prev) => ({ ...prev, username }));
-    if (field === 'password') {
-      setPassword('');
-      setConfirmPassword('');
-    }
-    
-    alert('수정이 완료되었습니다.');
-  };
+    useEffect(() => {
+        if (isOpen && currentUser) {
+            setNickname(currentUser.nickname || '');
+            setUsername(currentUser.username || '');
+            setCurrentPassword('');
+            setPassword('');
+            setConfirmPassword('');
+            setEditingFields({ nickname: false, password: false });
+            setBackupData({ nickname: currentUser.nickname || '' });
+        }
+    }, [isOpen, currentUser]);
 
-  const isAnyEditing = editingFields.nickname || editingFields.username || editingFields.password;
+    if (!isOpen) return null;
+
+    const handleEditStart = (field) => {
+        setEditingFields((prev) => ({ ...prev, [field]: true }));
+        if (field === 'nickname') setBackupData({ nickname });
+    };
+
+    const handleCancel = (field) => {
+        setEditingFields((prev) => ({ ...prev, [field]: false }));
+
+        if (field === 'nickname') setNickname(backupData.nickname);
+        if (field === 'password') {
+            setCurrentPassword('');
+            setPassword('');
+            setConfirmPassword('');
+        }
+    };
+
+    const handleSave = async (field) => {
+        if (field === 'nickname' && !nickname.trim()) {
+            alert('닉네임을 입력하세요.');
+            return;
+        }
+
+        if (field === 'password') {
+            if (!currentPassword) {
+                alert('현재 비밀번호를 입력해주세요.');
+                return;
+            }
+            if (!password) {
+                alert('새 비밀번호를 입력해주세요.');
+                return;
+            }
+            if (password !== confirmPassword) {
+                alert('새 비밀번호가 일치하지 않습니다.');
+                return;
+            }
+        }
+
+        // 백엔드 UserUpdateReq 스펙에 맞춘 페이로드
+        const payload = {};
+        if (field === 'nickname') payload.nickname = nickname;
+        if (field === 'password') {
+            payload.currentPassword = currentPassword;
+            payload.newPassword = password;
+        }
+
+        try {
+            await onSave(payload, field); // 비동기 API 통신 대기
+
+            setEditingFields((prev) => ({ ...prev, [field]: false }));
+            if (field === 'nickname') setBackupData((prev) => ({ ...prev, nickname }));
+            if (field === 'password') {
+                setCurrentPassword('');
+                setPassword('');
+                setConfirmPassword('');
+            }
+            alert('수정되었습니다.');
+        } catch (error) {
+            // ProfilePage 측에서 alert을 띄우므로 여기선 모달만 유지시킴
+        }
+    };
 
   return (
     <div className="modal-overlay">
@@ -101,11 +101,11 @@ export default function EditProfileModal({ isOpen, onClose, currentUser, onSave 
         <div className="input-row">
           <div className="input-group">
             <label>닉네임</label>
-            <input 
-              type="text" 
-              value={nickname} 
-              onChange={(e) => setNickname(e.target.value)} 
-              disabled={!editingFields.nickname} 
+            <input
+              type="text"
+              value={nickname}
+              onChange={(e) => setNickname(e.target.value)}
+              disabled={!editingFields.nickname}
             />
           </div>
           {!editingFields.nickname && (
@@ -119,64 +119,69 @@ export default function EditProfileModal({ isOpen, onClose, currentUser, onSave 
           </div>
         )}
 
-        {/* 아이디 필드 */}
+        {/* 아이디 필드 - 백엔드 정책 상 수정 불가 */}
         <div className="input-row">
           <div className="input-group">
             <label>아이디</label>
-            <input 
-              type="text" 
-              value={username} 
-              onChange={(e) => setUsername(e.target.value)} 
-              disabled={!editingFields.username} 
+            <input
+              type="text"
+              value={username}
+              disabled={true}
             />
           </div>
-          {!editingFields.username && (
-            <button className="row-edit-button" onClick={() => handleEditStart('username')}>수정</button>
-          )}
         </div>
-        {editingFields.username && (
-          <div className="row-action-buttons">
-            <button className="cancel-button" onClick={() => handleCancel('username')}>취소</button>
-            <button className="save-button" onClick={() => handleSave('username')}>저장</button>
-          </div>
-        )}
 
         {/* 비밀번호 필드 */}
         <div className="input-row">
           <div className="input-group">
             <label>비밀번호</label>
-            <input 
-              type="password" 
-              value={password} 
-              onChange={(e) => setPassword(e.target.value)} 
-              disabled={!editingFields.password} 
-              placeholder={editingFields.password ? "새 비밀번호 입력" : "********"}
-            />
+
+            {/* 수정 모드가 아닐 때: 숨김 처리된 기본 칸 표시 */}
+            {!editingFields.password ? (
+              <input
+                type="password"
+                value="********"
+                disabled={true}
+              />
+            ) : (
+              /* 수정 모드일 때: 3개의 칸(현재, 새 비밀번호, 확인)을 명확하게 표시 */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder="현재 비밀번호 입력"
+                  autoFocus
+                />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="새 비밀번호 입력"
+                />
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="새 비밀번호 확인"
+                />
+              </div>
+            )}
           </div>
+
           {!editingFields.password && (
             <button className="row-edit-button" onClick={() => handleEditStart('password')}>수정</button>
           )}
         </div>
 
-        {/* 비밀번호 수정 모드일 때만 비밀번호 재확인 및 하단 버튼 렌더링 */}
+        {/* 비밀번호 취소/저장 버튼 */}
         {editingFields.password && (
-          <>
-            <div className="input-group password-confirm-group">
-              <label>비밀번호 확인</label>
-              <input 
-                type="password" 
-                value={confirmPassword} 
-                onChange={(e) => setConfirmPassword(e.target.value)} 
-                placeholder="비밀번호 재입력"
-              />
-            </div>
-            <div className="row-action-buttons">
-              <button className="cancel-button" onClick={() => handleCancel('password')}>취소</button>
-              <button className="save-button" onClick={() => handleSave('password')}>저장</button>
-            </div>
-          </>
+          <div className="row-action-buttons" style={{ marginTop: '10px' }}>
+            <button className="cancel-button" onClick={() => handleCancel('password')}>취소</button>
+            <button className="save-button" onClick={() => handleSave('password')}>저장</button>
+          </div>
         )}
-        
+
       </div>
     </div>
   );
