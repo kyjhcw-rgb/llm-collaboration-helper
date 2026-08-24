@@ -28,12 +28,12 @@ public class EmailService {
         String code = String.format("%06d", new Random().nextInt(1000000));
 
         // 2. 기존 인증 정보가 있으면 덮어쓰고, 없으면 새로 생성
-        EmailVerification verification = emailVerificationRepository.findByEmail(email)
+        EmailVerification verification = emailVerificationRepository.findTopByEmailOrderByCreatedAtDesc(email)
                 .orElse(EmailVerification.builder().email(email).build());
 
         verification.setVerificationCode(code);
         verification.setVerified(false);
-        verification.setExpiresAt(LocalDateTime.now().plusMinutes(5)); // 5분 뒤 만료
+        verification.setExpiresAt(LocalDateTime.now().plusMinutes(5)); // 5분 만료
 
         emailVerificationRepository.save(verification);
 
@@ -47,12 +47,12 @@ public class EmailService {
 
     @Transactional
     public void verifyCode(String email, String code) {
-        EmailVerification verification = emailVerificationRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("인증 요청된 이메일이 아닙니다."));
+        EmailVerification verification = emailVerificationRepository.findTopByEmailOrderByCreatedAtDesc(email)
+                .orElseThrow(() -> new RuntimeException("인증 요청을 찾을 수 없습니다."));
 
         // 만료 시간 체크
         if (verification.getExpiresAt().isBefore(LocalDateTime.now())) {
-            throw new RuntimeException("인증 시간이 초과되었습니다. 다시 요청해주세요.");
+            throw new RuntimeException("인증 시간이 만료되었습니다. 다시 요청해주세요.");
         }
 
         // 인증 번호 일치 체크

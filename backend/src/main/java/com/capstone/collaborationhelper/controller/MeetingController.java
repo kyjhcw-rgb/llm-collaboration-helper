@@ -20,10 +20,8 @@ public class MeetingController {
     private final MeetingService meetingService;
     private final ApplicationEventPublisher eventPublisher;
 
-    /**
-     * 회의 음성 업로드 및 AI 다이어그램 자동 수정 API
-     * POST /api/projects/{projectId}/meeting-audio
-     */
+    //회의 음성 업로드 및 AI 다이어그램 자동 수정 API
+    //POST /api/projects/{projectId}/meeting-audio
     @PostMapping(value = "/{projectId}/meeting-audio", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<JsonNode> processMeetingAudio(
             @PathVariable Integer projectId,
@@ -42,3 +40,4 @@ public class MeetingController {
         return ResponseEntity.ok(result);
     }
 }
+

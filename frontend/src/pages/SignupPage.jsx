@@ -11,6 +11,8 @@ export default function SignupPage() {
     const [isEmailSent, setIsEmailSent] = useState(false);
     const [isEmailVerified, setIsEmailVerified] = useState(false);
 
+    const [isSending, setIsSending] = useState(false);
+
     const [formData, setFormData] = useState({ username: "", password: "", nickname: "" });
 
     const handleChange = (e) => {
@@ -21,11 +23,14 @@ export default function SignupPage() {
     // 1. 인증 메일 발송 (발송 전 이메일 중복 체크 포함)
     const handleSendEmail = async () => {
         if (!email) return alert("이메일을 입력해주세요.");
+        if (isSending) return;
 
+        setIsSending(true);
         try {
             // 메일 발송 전 이메일 가입 여부 확인
             const checkRes = await request(`/auth/check-email?email=${email}`, { method: "GET" });
             if (!checkRes.available) {
+                setIsSending(false);
                 return alert("이미 가입된 이메일입니다. 다른 이메일을 사용해주세요.");
             }
 
@@ -37,6 +42,8 @@ export default function SignupPage() {
             alert("인증 메일이 발송되었습니다. 메일함을 확인해주세요.");
         } catch (error) {
             alert(error.message);
+        } finally {
+            setIsSending(false);
         }
     };
 
@@ -95,8 +102,8 @@ export default function SignupPage() {
                         <div className="Signup1">
                             <label>이메일</label>
                             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={isEmailVerified} />
-                            <button className="Signupsubbutton" type="button" onClick={handleSendEmail} disabled={isEmailVerified}>
-                                {isEmailSent ? "재전송" : "인증번호 받기"}
+                            <button className="Signupsubbutton" type="button" onClick={handleSendEmail} disabled={isEmailVerified || isSending}>
+                                {isSending ? "발송 중..." : (isEmailSent ? "재전송" : "인증번호 발송")}
                             </button>
                         </div>
 
