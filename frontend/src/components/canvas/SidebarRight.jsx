@@ -539,18 +539,15 @@ const SidebarRight = () => {
                             </div>
                         ) : (
                             <>
-                                <h3 className="info-title">블럭 댓글</h3>
                                 <div className="comment-list">
                                     {comments.length === 0 ? (
                                         <p style={{ color: '#999', fontSize: '13px', textAlign: 'center', marginTop: '20px' }}>아직 등록된 댓글이 없습니다.</p>
                                     ) : (
                                         comments.map(c => (
                                             <div key={c.id} className="comment-item">
-                                                <div className="comment-header">
-                                                    <span className="comment-author">{c.nickname}</span>
-                                                    <span className="comment-date">{new Date(c.createdAt).toLocaleString()}</span>
-                                                </div>
+                                                <span className="comment-author">{c.nickname}</span>
                                                 <div className="comment-body">{renderCommentBody(c.content)}</div>
+                                                <span className="comment-date">{new Date(c.createdAt).toLocaleString()}</span>
                                                 {isEditable && c.userId === myUserId && (
                                                     <div className="comment-actions">
                                                         <button onClick={() => { setCommentInput(c.content); setEditingCommentId(c.id); }}>수정</button>
