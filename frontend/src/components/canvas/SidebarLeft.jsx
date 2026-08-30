@@ -8,6 +8,10 @@ import { useCanvasStore } from '../../store/useCanvasStore';
 const SidebarLeft = () => {
     const projectName = useCanvasStore((state) => state.projectName);
     const nodes = useCanvasStore((state) => state.nodes);
+    const userRole = useCanvasStore((state) => state.userRole);
+    const isLive = useCanvasStore((state) => state.currentVersion === 'live');
+    // 파일 드래그는 공유 캔버스 데이터(위치/표시 여부)를 바꾸는 편집 행위라 GUEST(읽기 전용)는 금지
+    const canDragFiles = isLive && userRole !== 'GUEST';
 
     // 🌟 디렉토리 트리 항목 열림/닫힘 상태 관리 ({ [nodeId]: boolean })
     const [openNodes, setOpenNodes] = useState({});
@@ -26,6 +30,14 @@ const SidebarLeft = () => {
 
     const onDragStart = (event, nodeType) => {
         event.dataTransfer.setData('application/reactflow', nodeType);
+        event.dataTransfer.effectAllowed = 'move';
+    };
+
+    // 디렉토리 트리의 파일(기능) 항목을 캔버스로 드래그 — 새 블록을 만드는 게 아니라
+    // 이미 존재하는 그 파일의 블록들을 캔버스에 "표시"하기 위한 용도라 위 onDragStart와는
+    // 별개의 dataTransfer 키를 사용한다 (FlowArea의 onDrop에서 이 키 유무로 분기)
+    const onFileDragStart = (event, fileId) => {
+        event.dataTransfer.setData('application/canvas-file-id', fileId);
         event.dataTransfer.effectAllowed = 'move';
     };
 
@@ -48,8 +60,14 @@ const SidebarLeft = () => {
 
                             return (
                                 <div key={feature.id} className="tree-root-item">
-                                    {/* 기능(Feature) 타이틀 & 화살표 */}
-                                    <div className="tree-item-title" onClick={() => toggleNode(feature.id)}>
+                                    {/* 파일 타이틀 & 화살표 — 캔버스로 드래그하면 이 파일의 블록들이 표시됨 */}
+                                    <div
+                                        className="tree-item-title"
+                                        draggable={canDragFiles}
+                                        onDragStart={canDragFiles ? (e) => onFileDragStart(e, feature.id) : undefined}
+                                        onClick={() => toggleNode(feature.id)}
+                                        title={canDragFiles ? "캔버스로 드래그하면 이 파일의 블록이 표시됩니다" : undefined}
+                                    >
                                         <span className="tree-arrow">
                                             {isFeatureExpanded ? '▼' : '▶'}
                                         </span>
@@ -57,9 +75,17 @@ const SidebarLeft = () => {
                                         <span>{feature.data.label}</span>
                                     </div>
 
-                                    {/* 하위 클래스(Class) 목록 */}
+                                    {/* 하위 클래스(Class) 목록 + 클래스 없이 파일에 바로 붙은 메소드 */}
                                     {isFeatureExpanded && (
                                         <div className="tree-branch">
+                                            {methodNodes
+                                                .filter((method) => method.parentNode === feature.id)
+                                                .map((method) => (
+                                                    <div key={method.id} className="tree-item-title method-item">
+                                                        <span className="tree-bullet">🔹</span>
+                                                        <span>{method.data.label}</span>
+                                                    </div>
+                                                ))}
                                             {classNodes
                                                 .filter((cls) => cls.parentNode === feature.id)
                                                 .map((cls) => {
@@ -106,13 +132,6 @@ const SidebarLeft = () => {
                 <div className="blocks-header">블록</div>
 
                 <div className="block-list">
-                    <div
-                        className="drag-block feature"
-                        draggable
-                        onDragStart={(e) => onDragStart(e, '기능')}
-                    >
-                        기능
-                    </div>
                     <div
                         className="drag-block class"
                         draggable

@@ -9,6 +9,91 @@
     overflow: hidden;
 }
 
+/* 상단 탭 바 — VSCode 스타일로 현재 열려있는(캔버스에 표시 중인) 파일 목록 */
+.open-files-tabbar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    display: flex;
+    justify-content: flex-start;
+    gap: 2px;
+    padding: 6px 8px 0;
+    background-color: #f4f4f9;
+    border-bottom: 1px solid #ddd;
+    overflow-x: auto;
+}
+
+.open-file-tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background-color: #fff;
+    border: 1px solid #ddd;
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    font-size: 12px;
+    color: #333;
+    /* 탭이 늘어나면 160px 기준으로 같이 줄어들다가(브라우저 탭처럼) 60px 아래로는
+       더 줄어들지 않고 탭 바 자체가 가로 스크롤로 전환된다 */
+    flex: 0 1 160px;
+    min-width: 60px;
+}
+
+.open-file-tab-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.open-file-tab-close {
+    background: none;
+    border: none;
+    color: #999;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 2px;
+}
+
+.open-file-tab-close:hover {
+    color: #e74c3c;
+}
+
+/* 파일 블록 우클릭 시 뜨는 작은 컨텍스트 메뉴 */
+.canvas-context-menu {
+    position: fixed;
+    z-index: 1000;
+    background-color: #fff;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    padding: 4px;
+    min-width: 120px;
+}
+
+.canvas-context-menu button {
+    display: block;
+    width: 100%;
+    padding: 8px 12px;
+    background: none;
+    border: none;
+    text-align: left;
+    font-size: 13px;
+    color: #333;
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+.canvas-context-menu button:hover {
+    background-color: #f0f2fb;
+    color: #4953BE;
+}
+
 /* ★ 핵심 버그 수정: .react-flow__nodes 컨테이너가 display:flex + align-items:center이어서
    position:absolute 자식의 top:auto가 (container_h - node_h)/2 (centering 값)으로 계산됨.
    top:0 left:0 강제로 flex static position centering을 완전히 차단한다.
