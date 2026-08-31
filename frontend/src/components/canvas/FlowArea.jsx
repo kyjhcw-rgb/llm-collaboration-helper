@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState, useMemo } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import ReactFlow, { Background, Controls, applyNodeChanges, applyEdgeChanges, useReactFlow, ReactFlowProvider, ConnectionMode, getSmoothStepPath } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useCanvasStore, recalculateContainerSizes, LAYOUT } from '../../store/useCanvasStore';
@@ -18,6 +18,16 @@ function getAbsolutePosition(nodeId, nodesMap) {
     if (!node.parentNode) return { x: node.position.x, y: node.position.y };
     const parentAbs = getAbsolutePosition(node.parentNode, nodesMap);
     return { x: parentAbs.x + node.position.x, y: parentAbs.y + node.position.y };
+}
+
+// 숨겨진(닫힌) 파일은 화면에 안 보이지만 좌표는 그대로 갖고 있어서, 부모 후보 판단 시
+// 제외하지 않으면 안 보이는 화면에 드롭해도 숨겨진 파일의 자식으로 들어가버려 같이 숨겨진다.
+// revealedNodes(컴포넌트의 표시 필터)와 동일한 기준으로 "지금 화면에 보이는지"를 판단한다.
+function isNodeRevealed(nodeId, nodesMap) {
+    let current = nodesMap.get(nodeId);
+    while (current?.parentNode) current = nodesMap.get(current.parentNode);
+    if (!current || current.data?.type !== 'feature') return true;
+    return current.data?.hidden === false;
 }
 
 function findBestParent(draggedNode, allNodes, validParentTypes, nodesMap) {
@@ -113,9 +123,6 @@ const FlowContents = () => {
     const { setSelectedNodeId, setSelectedEdgeId } = useCanvasStore();
     const { screenToFlowPosition } = useReactFlow();
 
-    // '기능만 보기' 토글 상태 추가
-    const [showOnlyFeatures, setShowOnlyFeatures] = useState(false);
-
     // Read-Only 판단
     const isLive = useCanvasStore(state => state.currentVersion === 'live');
     const userRole = useCanvasStore(state => state.userRole);
@@ -127,34 +134,67 @@ const FlowContents = () => {
 
     const connectingHandleRef = useRef(null);
     const [hoveredEdgeId, setHoveredEdgeId] = useState(null);
+    const [contextMenu, setContextMenu] = useState(null); // { x, y, fileId } — 파일 블록 우클릭 시 "닫기" 메뉴
 
-// 기능만 볼 때 적용할 기능 블록의 컴팩트한 기본 크기 정의
-const FEATURE_ONLY_SIZE = {
-    width: 220,
-    height: 100,
-};
-
-// 기능만 보기 필터링 및 크기 조절
-const visibleNodes = useMemo(() => {
-    if (!showOnlyFeatures) return nodes;
-    return nodes
-        .filter(n => n.data?.type === 'feature')
-        .map(n => {
-            return {
-                ...n,
-                width: FEATURE_ONLY_SIZE.width,
-                height: FEATURE_ONLY_SIZE.height,
-                style: {
-                    ...n.style,
-                    width: FEATURE_ONLY_SIZE.width,
-                    height: FEATURE_ONLY_SIZE.height,
-                }
-            };
+    // 파일을 다시 숨김 처리 — 탭의 X 버튼과 우클릭 "파일 닫기" 메뉴가 공유하는 동작.
+    // hidden 역시 다른 편집과 동일하게 공유 데이터로 기록되어 팀원 전체 화면에 반영됨.
+    const closeFile = useCallback((fileId) => {
+        if (!isEditable) return;
+        const state = useCanvasStore.getState();
+        const nextNodes = state.nodes.map(n => n.id !== fileId ? n : {
+            ...n,
+            data: { ...n.data, hidden: true, lastUpdatedBy: myUserId, lastUpdatedAt: Date.now() },
         });
-}, [nodes, showOnlyFeatures]);
+        state.setNodes(nextNodes);
+    }, [isEditable, myUserId]);
+
+    const onNodeContextMenu = useCallback((event, node) => {
+        event.preventDefault();
+        if (!isEditable || node.data?.type !== 'feature') { setContextMenu(null); return; }
+        setContextMenu({ x: event.clientX, y: event.clientY, fileId: node.id });
+    }, [isEditable]);
+
+    // 컨텍스트 메뉴가 떠 있을 때 캔버스 바깥(사이드바 등)을 클릭해도 닫히도록
+    useEffect(() => {
+        if (!contextMenu) return;
+        const close = () => setContextMenu(null);
+        document.addEventListener('click', close);
+        return () => document.removeEventListener('click', close);
+    }, [contextMenu]);
+
+// 노드의 최상위 조상(파일/기능 블록)을 찾는다 — 어떤 노드든 그 노드가 속한 파일이
+// 표시 중인지(data.hidden)는 최상위 조상의 값으로 판단해야 함
+const nodesMap = useMemo(() => new Map(nodes.map(n => [n.id, n])), [nodes]);
+const getRoot = useCallback((nodeId) => {
+    let current = nodesMap.get(nodeId);
+    while (current?.parentNode) {
+        current = nodesMap.get(current.parentNode);
+    }
+    return current;
+}, [nodesMap]);
+
+// 캔버스 기본 화면은 흰 화면 — 파일(기능) 블록은 data.hidden이 명시적으로 false일 때만 표시.
+// hidden 필드가 아예 없는(기존/신규 생성) 블록도 기본적으로 숨김 처리됨.
+// hidden은 다른 노드 데이터와 동일하게 Yjs로 동기화되어 팀원 전체에게 동일하게 적용됨.
+const revealedNodes = useMemo(
+    () => nodes.filter(n => {
+        const root = getRoot(n.id);
+        // "숨김"은 파일(기능) 단위 개념이라, 파일에 속하지 않은 고아 클래스/메소드(부모 없이
+        // 만들어진 경우)까지 이 규칙을 적용하면 hidden 필드가 아예 없다는 이유로 잘못 숨겨짐
+        if (!root || root.data?.type !== 'feature') return true;
+        return root.data?.hidden === false;
+    }),
+    [nodes, getRoot]
+);
+
+// 상단 탭 바에 보여줄 "현재 열려있는 파일" 목록
+const openFiles = useMemo(
+    () => nodes.filter(n => n.data?.type === 'feature' && n.data?.hidden === false),
+    [nodes]
+);
 
     // 표시할 노드 ID 집합
-    const visibleNodeIds = useMemo(() => new Set(visibleNodes.map(n => n.id)), [visibleNodes]);
+    const visibleNodeIds = useMemo(() => new Set(revealedNodes.map(n => n.id)), [revealedNodes]);
 
     // 표시 가능한 노드 간에 연결된 Edge만 필터링
     const displayEdges = useMemo(() => {
@@ -251,7 +291,7 @@ const visibleNodes = useMemo(() => {
                 }
 
                 const nodesMapCurrent = new Map(nextNodes.map(n => [n.id, n]));
-                const otherNodes = nextNodes.filter(n => n.id !== currentParentId);
+                const otherNodes = nextNodes.filter(n => n.id !== currentParentId && isNodeRevealed(n.id, nodesMapCurrent));
                 const bestParent = findBestParent(node, otherNodes, validParentTypes, nodesMapCurrent);
 
                 if (bestParent) {
@@ -278,7 +318,8 @@ const visibleNodes = useMemo(() => {
             }
 
             const nodesMapFresh = new Map(nextNodes.map(n => [n.id, n]));
-            const bestParent = findBestParent(node, nextNodes, validParentTypes, nodesMapFresh);
+            const visibleCandidates = nextNodes.filter(n => isNodeRevealed(n.id, nodesMapFresh));
+            const bestParent = findBestParent(node, visibleCandidates, validParentTypes, nodesMapFresh);
             if (bestParent) {
                 const newParentAbs = getAbsolutePosition(bestParent.id, nodesMapFresh);
                 const relX = Math.max(LAYOUT.PADDING, absPos.x - newParentAbs.x);
@@ -428,6 +469,30 @@ const visibleNodes = useMemo(() => {
 
     const onDrop = useCallback((event) => {
         event.preventDefault();
+
+        // 사이드바 디렉토리 트리에서 파일을 드래그해온 경우 — 이미 존재하는 그 파일의 블록들을
+        // 드롭한 위치에 "보이게" 전환한다. hidden/position 모두 다른 편집과 동일하게 공유
+        // 데이터로 기록되어 팀원 전체 화면에 반영되므로, 읽기 전용일 때는 막는다.
+        const fileId = event.dataTransfer.getData('application/canvas-file-id');
+        if (fileId) {
+            if (!isEditable) { alert("읽기 전용 상태입니다."); return; }
+            const state = useCanvasStore.getState();
+            const targetNode = state.nodes.find(n => n.id === fileId);
+            if (!targetNode) return;
+
+            const projectedPosition = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+            const w = targetNode.width || targetNode.style?.width || 400;
+            const h = targetNode.height || targetNode.style?.height || 300;
+
+            const nextNodes = state.nodes.map(n => n.id !== fileId ? n : {
+                ...n,
+                position: { x: projectedPosition.x - w / 2, y: projectedPosition.y - h / 2 },
+                data: { ...n.data, hidden: false, lastUpdatedBy: myUserId, lastUpdatedAt: Date.now() },
+            });
+            state.setNodes(recalculateContainerSizes(nextNodes));
+            return;
+        }
+
         if (!isEditable) { alert("읽기 전용 상태입니다."); return; }
         const state = useCanvasStore.getState();
         const type = event.dataTransfer.getData('application/reactflow');
@@ -439,13 +504,7 @@ const visibleNodes = useMemo(() => {
         let zIndex = 30;
         let domainType = 'method';
 
-        if (type === '기능') {
-            nodeClass = 'canvas-node feature-node';
-            initialWidth = 400;
-            initialHeight = 300;
-            zIndex = 10;
-            domainType = 'feature';
-        } else if (type === '클래스') {
+        if (type === '클래스') {
             nodeClass = 'canvas-node class-node';
             initialWidth = 250;
             initialHeight = 150;
@@ -472,7 +531,8 @@ const visibleNodes = useMemo(() => {
 
         let finalNode = newNode;
         if (validParentTypes.length > 0) {
-            const bestParent = findBestParent(newNode, state.nodes, validParentTypes, nodesMap);
+            const visibleCandidates = state.nodes.filter(n => isNodeRevealed(n.id, nodesMap));
+            const bestParent = findBestParent(newNode, visibleCandidates, validParentTypes, nodesMap);
             if (bestParent) {
                 const siblings = state.nodes.filter(n => n.parentNode === bestParent.id);
                 const newY = siblings.length > 0
@@ -488,7 +548,7 @@ const visibleNodes = useMemo(() => {
         }
 
         state.setNodes(recalculateContainerSizes([...state.nodes, finalNode]));
-    }, [screenToFlowPosition, isEditable]);
+    }, [screenToFlowPosition, isEditable, myUserId]);
 
     return (
         <div
@@ -500,65 +560,36 @@ const visibleNodes = useMemo(() => {
             }}
             style={{ flex: 1, width: '100%', height: '100%', position: 'relative' }}
         >
-            <div
-                style={{
-                    position: 'absolute',
-                    top: '15px',
-                    right: '15px',
-                    zIndex: 100,
-                    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                    padding: '8px 14px',
-                    borderRadius: '20px',
-                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    backdropFilter: 'blur(4px)',
-                    userSelect: 'none',
-                }}
-            >
-                <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#333' }}>
-                    기능만 보기
-                </span>
-                <label
-                    style={{
-                        position: 'relative',
-                        display: 'inline-block',
-                        width: '40px',
-                        height: '22px',
-                        cursor: 'pointer',
-                    }}
+            {/* 상단 탭 바 — 현재 캔버스에 열려있는(hidden:false) 파일 목록. VSCode처럼 X로 닫기 */}
+            {openFiles.length > 0 && (
+                <div className="open-files-tabbar">
+                    {openFiles.map(file => (
+                        <div key={file.id} className="open-file-tab">
+                            <span className="open-file-tab-label">{file.data?.label || file.data?.name}</span>
+                            {isEditable && (
+                                <button
+                                    className="open-file-tab-close"
+                                    title="파일 닫기"
+                                    onClick={() => closeFile(file.id)}
+                                >
+                                    ×
+                                </button>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {contextMenu && (
+                <div
+                    className="canvas-context-menu"
+                    style={{ top: contextMenu.y, left: contextMenu.x }}
                 >
-                    <input
-                        type="checkbox"
-                        checked={showOnlyFeatures}
-                        onChange={(e) => setShowOnlyFeatures(e.target.checked)}
-                        style={{ opacity: 0, width: 0, height: 0 }}
-                    />
-                    <span
-                        style={{
-                            position: 'absolute',
-                            top: 0, left: 0, right: 0, bottom: 0,
-                            backgroundColor: showOnlyFeatures ? '#4953BE' : '#ccc',
-                            transition: '0.3s',
-                            borderRadius: '22px',
-                        }}
-                    />
-                    <span
-                        style={{
-                            position: 'absolute',
-                            content: '""',
-                            height: '16px',
-                            width: '16px',
-                            left: showOnlyFeatures ? '21px' : '3px',
-                            bottom: '3px',
-                            backgroundColor: 'white',
-                            transition: '0.3s',
-                            borderRadius: '50%',
-                        }}
-                    />
-                </label>
-            </div>
+                    <button onClick={() => { closeFile(contextMenu.fileId); setContextMenu(null); }}>
+                        파일 닫기
+                    </button>
+                </div>
+            )}
 
             <svg style={{ position: 'absolute', width: 0, height: 0 }}>
                 <defs>
@@ -575,7 +606,7 @@ const visibleNodes = useMemo(() => {
             </svg>
 
             <ReactFlow
-                nodes={visibleNodes}
+                nodes={revealedNodes}
                 edges={displayEdges}
                 nodeTypes={nodeTypes}
                 edgeTypes={edgeTypes}
@@ -593,13 +624,16 @@ const visibleNodes = useMemo(() => {
                 onConnectEnd={onConnectEnd}
                 onNodeDragStop={handleNodeDragStop}
                 onNodeClick={(_, node) => setSelectedNodeId(node.id)}
+                onNodeContextMenu={onNodeContextMenu}
                 onEdgeClick={(_, edge) => setSelectedEdgeId(edge.id)}
                 onEdgeMouseEnter={(_, edge) => setHoveredEdgeId(edge.id)}
                 onEdgeMouseLeave={() => setHoveredEdgeId(null)}
                 onPaneClick={() => {
                     setSelectedNodeId(null);
                     setSelectedEdgeId(null);
+                    setContextMenu(null);
                 }}
+                onMoveStart={() => setContextMenu(null)}
                 minZoom={0.05}
                 maxZoom={2}
                 fitView

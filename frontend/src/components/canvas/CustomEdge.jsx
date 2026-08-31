@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath } from 'reactflow';
-import { useCanvasStore } from '../../store/useCanvasStore';
 
 export default function CustomEdge({
     id,
@@ -14,24 +13,11 @@ export default function CustomEdge({
     selected
 }) {
     const [hovered, setHovered] = useState(false);
-    const selectedNodeId = useCanvasStore((s) => s.selectedNodeId);
 
-    const hasFocus = selectedNodeId !== null;
-    const isConnected = hasFocus && (source === selectedNodeId || target === selectedNodeId);
-
-    // 우선순위: hover/selected > 연결된 focus > 비연결 focus(완전히 숨김) > 기본(완전히 숨김)
-    // 블록을 클릭했을 때만 그 블록과 연결된 엣지가 나타나도록, 그 외에는 아예 안 보이게 처리
-    let opacity, strokeWidthValue;
-    if (hovered || selected) {
-        opacity = 1;
-        strokeWidthValue = 4;
-    } else if (hasFocus) {
-        opacity = isConnected ? 1 : 0;
-        strokeWidthValue = isConnected ? 3 : 2;
-    } else {
-        opacity = 0;
-        strokeWidthValue = 2;
-    }
+    // 파일 단위로 필요한 블록만 꺼내서 보는 방식으로 바뀌면서, 보이는 블록 간의 연결선은
+    // 클릭 여부와 상관없이 항상 표시하고 hover/selected 시에만 강조한다.
+    const opacity = 1;
+    const strokeWidthValue = (hovered || selected) ? 4 : 2;
 
     const [edgePath, labelX, labelY] = getSmoothStepPath({
         sourceX, sourceY, sourcePosition,
