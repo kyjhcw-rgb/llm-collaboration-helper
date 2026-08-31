@@ -37,7 +37,8 @@ public class TranslationMapper {
                     feature.getId(), null, "feature",
                     feature.getName(), feature.getDescription(),
                     null, null, null,
-                    featureX, featureY
+                    featureX, featureY,
+                    false
             ));
 
             List<ClassNode> classes = feature.getClasses() != null ? feature.getClasses() : List.of();
@@ -94,7 +95,8 @@ public class TranslationMapper {
                     classNode.getId(), featureId, "class",
                     classNode.getName(), classNode.getDescription(),
                     null, null, classNode.getAnnotations(),
-                    classX, classY
+                    classX, classY,
+                    false
             ));
             appendMethods(blocks, classNode.getId(), classNode.getMethods());
         }
@@ -119,7 +121,8 @@ public class TranslationMapper {
                     method.getId(), parentId, "method",
                     method.getName(), method.getDescription(),
                     method.getParameters(), method.getReturnType(), null,
-                    methodX, methodY
+                    methodX, methodY,
+                    false
             ));
         }
     }
@@ -208,7 +211,8 @@ public class TranslationMapper {
             String id, String parentId, String type,
             String name, String description,
             String parameters, String returnType, String annotations,
-            double posX, double posY
+            double posX, double posY,
+            Boolean isOnCanvas
     ) {
         BlockDto dto = new BlockDto();
         dto.setFrontendId(id);
@@ -221,6 +225,7 @@ public class TranslationMapper {
         dto.setAnnotations(annotations);
         dto.setPosX(posX);
         dto.setPosY(posY);
+        dto.setIsOnCanvas(isOnCanvas);
         return dto;
     }
 

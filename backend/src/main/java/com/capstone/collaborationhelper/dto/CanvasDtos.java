@@ -48,6 +48,7 @@ public class CanvasDtos {
         private Double width;
         private Double height;
         private Integer lastUpdatedBy;
+        private Boolean isOnCanvas;
     }
 
     @Data
