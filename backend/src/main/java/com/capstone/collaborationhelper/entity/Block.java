@@ -51,5 +51,9 @@ public class Block {
     @JoinColumn(name = "last_updated_by")
     private User lastUpdatedBy;
 
+    // 캔버스에 배치되어 있는지 여부 (false면 사이드바 탐색기에만 존재)
+    @Builder.Default
+    @Column(name = "is_on_canvas", nullable = false)
+    private boolean isOnCanvas = false;
 
 }

@@ -216,6 +216,8 @@ public class CanvasService {
         dto.setPosX(block.getPosX()); dto.setPosY(block.getPosY());
         dto.setWidth(block.getWidth()); dto.setHeight(block.getHeight());
         dto.setLastUpdatedBy(block.getLastUpdatedBy() != null ? block.getLastUpdatedBy().getId() : null);
+
+        dto.setIsOnCanvas(block.isOnCanvas());
         return dto;
     }
 
@@ -236,6 +238,7 @@ public class CanvasService {
         block.setReturnType(dto.getReturnType()); block.setAnnotations(dto.getAnnotations());
         block.setPosX(dto.getPosX()); block.setPosY(dto.getPosY());
         block.setWidth(dto.getWidth()); block.setHeight(dto.getHeight());
+        block.setOnCanvas(dto.getIsOnCanvas() != null ? dto.getIsOnCanvas() : false);
 
         if (dto.getLastUpdatedBy() != null) {
             block.setLastUpdatedBy(userRepository.getReferenceById(dto.getLastUpdatedBy()));
