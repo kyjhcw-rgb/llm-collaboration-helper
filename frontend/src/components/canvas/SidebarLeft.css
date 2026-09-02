@@ -187,3 +187,16 @@
 .drag-block.feature { background-color: #DAE8FC; color: #3b5b95; border: 1px solid #7ea6e0; }
 .drag-block.class { background-color: #D5E8D4; color: #4e614c; border: 1px solid #97d077; }
 .drag-block.method { background-color: #F8CECC; color: #b85450; border: 1px solid #b85450; }
+.tree-item-title.highlight-blue {
+    background-color: #e6f0ff !important;
+    color: #0056b3 !important;
+    font-weight: bold;
+    border-radius: 4px;
+}
+
+.tree-item-title.highlight-yellow {
+    background-color: #fff3cd !important;
+    color: #856404 !important;
+    font-weight: bold;
+    border-radius: 4px;
+}
