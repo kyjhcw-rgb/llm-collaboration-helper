@@ -20,9 +20,6 @@ function getAbsolutePosition(nodeId, nodesMap) {
     return { x: parentAbs.x + node.position.x, y: parentAbs.y + node.position.y };
 }
 
-// 숨겨진(닫힌) 파일은 화면에 안 보이지만 좌표는 그대로 갖고 있어서, 부모 후보 판단 시
-// 제외하지 않으면 안 보이는 화면에 드롭해도 숨겨진 파일의 자식으로 들어가버려 같이 숨겨진다.
-// revealedNodes(컴포넌트의 표시 필터)와 동일한 기준으로 "지금 화면에 보이는지"를 판단한다.
 function isNodeRevealed(nodeId, nodesMap) {
     let current = nodesMap.get(nodeId);
     while (current?.parentNode) current = nodesMap.get(current.parentNode);
@@ -120,10 +117,9 @@ const FlowContents = () => {
     const nodeTypes = useMemo(() => ({ custom: CustomNode }), []);
     const edgeTypes = useMemo(() => ({ custom: CustomEdge }), []);
 
-    const { setSelectedNodeId, setSelectedEdgeId } = useCanvasStore();
+    const { selectedNodeId, setSelectedNodeId, setSelectedEdgeId } = useCanvasStore();
     const { screenToFlowPosition } = useReactFlow();
 
-    // Read-Only 판단
     const isLive = useCanvasStore(state => state.currentVersion === 'live');
     const userRole = useCanvasStore(state => state.userRole);
     const isEditable = isLive && userRole !== 'GUEST';
@@ -134,10 +130,8 @@ const FlowContents = () => {
 
     const connectingHandleRef = useRef(null);
     const [hoveredEdgeId, setHoveredEdgeId] = useState(null);
-    const [contextMenu, setContextMenu] = useState(null); // { x, y, fileId } — 파일 블록 우클릭 시 "닫기" 메뉴
+    const [contextMenu, setContextMenu] = useState(null);
 
-    // 파일을 다시 숨김 처리 — 탭의 X 버튼과 우클릭 "파일 닫기" 메뉴가 공유하는 동작.
-    // hidden 역시 다른 편집과 동일하게 공유 데이터로 기록되어 팀원 전체 화면에 반영됨.
     const closeFile = useCallback((fileId) => {
         if (!isEditable) return;
         const state = useCanvasStore.getState();
@@ -154,7 +148,6 @@ const FlowContents = () => {
         setContextMenu({ x: event.clientX, y: event.clientY, fileId: node.id });
     }, [isEditable]);
 
-    // 컨텍스트 메뉴가 떠 있을 때 캔버스 바깥(사이드바 등)을 클릭해도 닫히도록
     useEffect(() => {
         if (!contextMenu) return;
         const close = () => setContextMenu(null);
@@ -162,48 +155,56 @@ const FlowContents = () => {
         return () => document.removeEventListener('click', close);
     }, [contextMenu]);
 
-// 노드의 최상위 조상(파일/기능 블록)을 찾는다 — 어떤 노드든 그 노드가 속한 파일이
-// 표시 중인지(data.hidden)는 최상위 조상의 값으로 판단해야 함
-const nodesMap = useMemo(() => new Map(nodes.map(n => [n.id, n])), [nodes]);
-const getRoot = useCallback((nodeId) => {
-    let current = nodesMap.get(nodeId);
-    while (current?.parentNode) {
-        current = nodesMap.get(current.parentNode);
-    }
-    return current;
-}, [nodesMap]);
+    const nodesMap = useMemo(() => new Map(nodes.map(n => [n.id, n])), [nodes]);
+    const getRoot = useCallback((nodeId) => {
+        let current = nodesMap.get(nodeId);
+        while (current?.parentNode) {
+            current = nodesMap.get(current.parentNode);
+        }
+        return current;
+    }, [nodesMap]);
 
-// 캔버스 기본 화면은 흰 화면 — 파일(기능) 블록은 data.hidden이 명시적으로 false일 때만 표시.
-// hidden 필드가 아예 없는(기존/신규 생성) 블록도 기본적으로 숨김 처리됨.
-// hidden은 다른 노드 데이터와 동일하게 Yjs로 동기화되어 팀원 전체에게 동일하게 적용됨.
-const revealedNodes = useMemo(
-    () => nodes.filter(n => {
-        const root = getRoot(n.id);
-        // "숨김"은 파일(기능) 단위 개념이라, 파일에 속하지 않은 고아 클래스/메소드(부모 없이
-        // 만들어진 경우)까지 이 규칙을 적용하면 hidden 필드가 아예 없다는 이유로 잘못 숨겨짐
-        if (!root || root.data?.type !== 'feature') return true;
-        return root.data?.hidden === false;
-    }),
-    [nodes, getRoot]
-);
+    const revealedNodes = useMemo(
+        () => nodes.filter(n => {
+            const root = getRoot(n.id);
+            if (!root || root.data?.type !== 'feature') return true;
+            return root.data?.hidden === false;
+        }),
+        [nodes, getRoot]
+    );
 
-// 상단 탭 바에 보여줄 "현재 열려있는 파일" 목록
-const openFiles = useMemo(
-    () => nodes.filter(n => n.data?.type === 'feature' && n.data?.hidden === false),
-    [nodes]
-);
+    const openFiles = useMemo(
+        () => nodes.filter(n => n.data?.type === 'feature' && n.data?.hidden === false),
+        [nodes]
+    );
 
-    // 표시할 노드 ID 집합
     const visibleNodeIds = useMemo(() => new Set(revealedNodes.map(n => n.id)), [revealedNodes]);
 
-    // 표시 가능한 노드 간에 연결된 Edge만 필터링
     const displayEdges = useMemo(() => {
         return edges
             .filter(e => visibleNodeIds.has(e.source) && visibleNodeIds.has(e.target))
             .map(e => ({ ...e, zIndex: e.id === hoveredEdgeId ? 10 : 0 }));
     }, [edges, visibleNodeIds, hoveredEdgeId]);
 
-    // handleNodesChange 
+    const relatedCallMethods = useMemo(() => {
+        if (!selectedNodeId) return [];
+        const selectedNode = nodesMap.get(selectedNodeId);
+        if (!selectedNode || selectedNode.data?.type !== 'method') return [];
+
+        const relatedIds = new Set();
+        edges.forEach(edge => {
+            if (edge.source === selectedNodeId) {
+                relatedIds.add(edge.target);
+            } else if (edge.target === selectedNodeId) {
+                relatedIds.add(edge.source);
+            }
+        });
+
+        return Array.from(relatedIds)
+            .map(id => nodesMap.get(id))
+            .filter(n => n && n.data?.type === 'method');
+    }, [selectedNodeId, nodesMap, edges]);
+
     const handleNodesChange = useCallback((changes) => {
         if (!isEditable) return;
         const state = useCanvasStore.getState();
@@ -240,7 +241,6 @@ const openFiles = useMemo(
         if (edgesChanged) state.setEdges(nextEdges);
     }, [isEditable, myUserId]);
 
-    // handleNodeDragStop 
     const handleNodeDragStop = useCallback((event, draggedNode) => {
         if (!isEditable) return;
         const state = useCanvasStore.getState();
@@ -470,9 +470,6 @@ const openFiles = useMemo(
     const onDrop = useCallback((event) => {
         event.preventDefault();
 
-        // 사이드바 디렉토리 트리에서 파일을 드래그해온 경우 — 이미 존재하는 그 파일의 블록들을
-        // 드롭한 위치에 "보이게" 전환한다. hidden/position 모두 다른 편집과 동일하게 공유
-        // 데이터로 기록되어 팀원 전체 화면에 반영되므로, 읽기 전용일 때는 막는다.
         const fileId = event.dataTransfer.getData('application/canvas-file-id');
         if (fileId) {
             if (!isEditable) { alert("읽기 전용 상태입니다."); return; }
@@ -550,6 +547,8 @@ const openFiles = useMemo(
         state.setNodes(recalculateContainerSizes([...state.nodes, finalNode]));
     }, [screenToFlowPosition, isEditable, myUserId]);
 
+    const selectedNode = useMemo(() => nodesMap.get(selectedNodeId), [nodesMap, selectedNodeId]);
+
     return (
         <div
             className="canvas-main"
@@ -560,25 +559,39 @@ const openFiles = useMemo(
             }}
             style={{ flex: 1, width: '100%', height: '100%', position: 'relative' }}
         >
-            {/* 상단 탭 바 — 현재 캔버스에 열려있는(hidden:false) 파일 목록. VSCode처럼 X로 닫기 */}
-            {openFiles.length > 0 && (
-                <div className="open-files-tabbar">
-                    {openFiles.map(file => (
-                        <div key={file.id} className="open-file-tab">
-                            <span className="open-file-tab-label">{file.data?.label || file.data?.name}</span>
-                            {isEditable && (
-                                <button
-                                    className="open-file-tab-close"
-                                    title="파일 닫기"
-                                    onClick={() => closeFile(file.id)}
-                                >
-                                    ×
-                                </button>
-                            )}
-                        </div>
-                    ))}
-                </div>
-            )}
+            {/* 상단 중앙 플로팅 탭 바 — 현재 열려있는(hidden:false) 기능/파일 목록 */}
+{openFiles.length > 0 && (
+    <div className="canvas-top-tabbar-container">
+        <div className="open-files-tabbar">
+            {openFiles.map(file => {
+                const isSelected = file.id === selectedNodeId;
+                return (
+                    <div 
+                        key={file.id} 
+                        className={`open-file-tab ${isSelected ? 'active' : ''}`}
+                        onClick={() => setSelectedNodeId(file.id)}
+                    >
+                        <span className="open-file-tab-label">
+                            {file.data?.label || file.data?.name || '기능'}
+                        </span>
+                        {isEditable && (
+                            <button
+                                className="open-file-tab-close"
+                                title="닫기"
+                                onClick={(e) => {
+                                    e.stopPropagation(); // 탭 클릭 이벤트와 겹쳐서 선택되는 것 방지
+                                    closeFile(file.id);
+                                }}
+                            >
+                                ✕
+                            </button>
+                        )}
+                    </div>
+                );
+            })}
+        </div>
+    </div>
+)}
 
             {contextMenu && (
                 <div
@@ -641,6 +654,43 @@ const openFiles = useMemo(
                 <Background color="#aaa" gap={20} variant="dots" />
                 <Controls />
             </ReactFlow>
+
+            {selectedNode && selectedNode.data?.type === 'method' && (
+                <div className="call-relation-panel" style={{
+                    position: 'absolute',
+                    bottom: 20,
+                    left: 20,
+                    right: 20,
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #ccc',
+                    borderRadius: '10px',
+                    padding: '15px',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                    zIndex: 100
+                }}>
+                    <div style={{ fontSize: '20px',fontWeight: 'bold', marginBottom: '0px', color: '#333' }}>
+                        호출 관계 목록 <span style={{ color: '#0056b3' }}>{selectedNode.data?.label}</span>
+                    </div>
+                    {relatedCallMethods.length > 0 ? (
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            {relatedCallMethods.map(m => (
+                                <span key={m.id} style={{
+                                    backgroundColor: '#fff3cd',
+                                    border: '1px solid #ffeba2',
+                                    color: '#856404',
+                                    padding: '5px 10px',
+                                    borderRadius: '5px',
+                                    fontSize: '20px'
+                                }}>
+                                    🔹 {m.data?.label}
+                                </span>
+                            ))}
+                        </div>
+                    ) : (
+                        <div style={{ fontSize: '20px', padding: '6px 10px',color: '#777' }}>연관된 호출 메서드가 없습니다.</div>
+                    )}
+                </div>
+            )}
         </div>
     );
 };
