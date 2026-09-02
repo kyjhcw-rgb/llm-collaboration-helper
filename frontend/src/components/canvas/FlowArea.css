@@ -9,91 +9,6 @@
     overflow: hidden;
 }
 
-/* 상단 탭 바 — VSCode 스타일로 현재 열려있는(캔버스에 표시 중인) 파일 목록 */
-.open-files-tabbar {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 100;
-    display: flex;
-    justify-content: flex-start;
-    gap: 2px;
-    padding: 6px 8px 0;
-    background-color: #f4f4f9;
-    border-bottom: 1px solid #ddd;
-    overflow-x: auto;
-}
-
-.open-file-tab {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 10px;
-    background-color: #fff;
-    border: 1px solid #ddd;
-    border-bottom: none;
-    border-radius: 6px 6px 0 0;
-    font-size: 12px;
-    color: #333;
-    /* 탭이 늘어나면 160px 기준으로 같이 줄어들다가(브라우저 탭처럼) 60px 아래로는
-       더 줄어들지 않고 탭 바 자체가 가로 스크롤로 전환된다 */
-    flex: 0 1 160px;
-    min-width: 60px;
-}
-
-.open-file-tab-label {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-}
-
-.open-file-tab-close {
-    background: none;
-    border: none;
-    color: #999;
-    font-size: 14px;
-    line-height: 1;
-    cursor: pointer;
-    padding: 0 2px;
-}
-
-.open-file-tab-close:hover {
-    color: #e74c3c;
-}
-
-/* 파일 블록 우클릭 시 뜨는 작은 컨텍스트 메뉴 */
-.canvas-context-menu {
-    position: fixed;
-    z-index: 1000;
-    background-color: #fff;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    padding: 4px;
-    min-width: 120px;
-}
-
-.canvas-context-menu button {
-    display: block;
-    width: 100%;
-    padding: 8px 12px;
-    background: none;
-    border: none;
-    text-align: left;
-    font-size: 13px;
-    color: #333;
-    cursor: pointer;
-    border-radius: 4px;
-}
-
-.canvas-context-menu button:hover {
-    background-color: #f0f2fb;
-    color: #4953BE;
-}
-
 /* ★ 핵심 버그 수정: .react-flow__nodes 컨테이너가 display:flex + align-items:center이어서
    position:absolute 자식의 top:auto가 (container_h - node_h)/2 (centering 값)으로 계산됨.
    top:0 left:0 강제로 flex static position centering을 완전히 차단한다.
@@ -154,7 +69,6 @@
     border: 3px solid #ffffff;
     box-shadow: 0 0 5px rgba(0,0,0,0.2);
     opacity: 0;
-    /* 🔥 transform을 쓰면 선이 날아가는 버그가 생기므로 width/height로 애니메이션 처리 */
     transition: opacity 0.2s ease, width 0.2s ease, height 0.2s ease, background-color 0.2s ease;
 }
 
@@ -163,7 +77,6 @@
     opacity: 1;
 }
 
-/* 🔥 2. 핵심: 선을 긋고 있을 때(connecting) 도착할 블럭에 마우스를 올리면 점이 나타남! */
 .react-flow--connecting .react-flow__node:hover .react-flow__handle {
     opacity: 1;
 }
@@ -173,4 +86,97 @@
     width: 20px !important;
     height: 20px !important;
     background-color: #ff4d4f;
+}
+/* 캔버스 상단 중앙 플로팅 컨테이너 */
+.canvas-top-tabbar-container {
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 50;
+    pointer-events: none; /* 컨테이너 자체는 캔버스 클릭 이벤트를 방해하지 않음 */
+}
+
+/* 탭 바 패널 스타일 */
+.open-files-tabbar {
+    pointer-events: auto; /* 탭 버튼 영역은 클릭 가능하도록 설정 */
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 10px;
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(8px); /* 모던한 글래스모피즘 효과 */
+    border: 1px solid rgba(226, 232, 240, 0.8);
+    border-radius: 50px;
+    box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.08), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
+    max-width: 80vw;
+    overflow-x: auto;
+}
+
+/* 스크롤바 숨기기 (필요 시) */
+.open-files-tabbar::-webkit-scrollbar {
+    display: none;
+}
+
+/* 각 탭 아이템 */
+.open-file-tab {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 15px;
+    background-color: #f1f5f9;
+    color: #475569;
+    font-size: 18px;
+    font-weight: 500;
+    border-radius: 50px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+    border: 1px solid transparent;
+}
+
+/* 탭 호버 스타일 */
+.open-file-tab:hover {
+    background-color: #e2e8f0;
+    color: #1e293b;
+}
+
+/* 선택된(Active) 탭 스타일 */
+.open-file-tab.active {
+    background-color: #3b82f6;
+    color: #ffffff;
+    font-weight: 500;
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.25);
+}
+
+.open-file-tab-label {
+    white-space: nowrap;
+}
+
+/* 닫기 (X) 버튼 스타일 */
+.open-file-tab-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border: none;
+    background: transparent;
+    color: currentColor;
+    opacity: 0.6;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 11px;
+    line-height: 1;
+    padding: 0;
+    transition: all 0.15s ease;
+}
+
+.open-file-tab-close:hover {
+    opacity: 1;
+    background-color: rgba(0, 0, 0, 0.12);
+}
+
+.open-file-tab.active .open-file-tab-close:hover {
+    background-color: rgba(255, 255, 255, 0.25);
 }
