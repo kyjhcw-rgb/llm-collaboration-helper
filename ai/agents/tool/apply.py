@@ -7,7 +7,7 @@ from pydantic import ValidationError
 from agents.tool.models import (
     AddClassArgs,
     AddEdgeArgs,
-    AddFeatureArgs,
+    AddFolderArgs,
     AddMethodArgs,
     MoveArgs,
     RemoveArgs,
@@ -17,7 +17,7 @@ from agents.tool.models import (
 
 ALLOWED_EDGE_KINDS = {"CALL", "INHERIT", "IMPLEMENT"}
 UPDATE_FIELDS = {
-    "feature": {"name", "description"},
+    "folder": {"name", "description"},
     "class": {"name", "description", "annotations"},
     "method": {"name", "description", "parameters", "returnType"},
 }
@@ -33,12 +33,12 @@ def _slug(value: str) -> str:
 
 
 def _index(diagram: dict) -> dict:
-    """id -> (kind, node, siblings, parent). parent는 class면 feature, method면 class."""
+    """id -> (kind, node, siblings, parent). parent는 class면 folder, method면 class."""
     found = {}
-    for feature in diagram.setdefault("features", []):
-        found[feature["id"]] = ("feature", feature, diagram["features"], None)
-        for cls in feature.setdefault("classes", []):
-            found[cls["id"]] = ("class", cls, feature["classes"], feature)
+    for folder in diagram.setdefault("folders", []):
+        found[folder["id"]] = ("folder", folder, diagram["folders"], None)
+        for cls in folder.setdefault("classes", []):
+            found[cls["id"]] = ("class", cls, folder["classes"], folder)
             for method in cls.setdefault("methods", []):
                 found[method["id"]] = ("method", method, cls["methods"], cls)
     return found
@@ -81,21 +81,21 @@ def _subtree(kind: str, node: dict) -> set:
     return ids
 
 
-def add_feature(diagram: dict, args: AddFeatureArgs) -> dict:
-    node_id = _new_id(args.id, "feat_", args.name, _all_ids(diagram))
-    diagram.setdefault("features", []).append({
+def add_folder(diagram: dict, args: AddFolderArgs) -> dict:
+    node_id = _new_id(args.id, "folder_", args.name, _all_ids(diagram))
+    diagram.setdefault("folders", []).append({
         "id": node_id,
         "name": args.name,
         "description": args.description or "",
         "classes": [],
     })
-    return {"ok": True, "id": node_id, "message": f"feature 추가: {node_id}"}
+    return {"ok": True, "id": node_id, "message": f"folder 추가: {node_id}"}
 
 
 def add_class(diagram: dict, args: AddClassArgs) -> dict:
     loc = _index(diagram).get(args.parentId)
-    if not loc or loc[0] != "feature":
-        raise ApplyError(f"feature가 없습니다: {args.parentId}")
+    if not loc or loc[0] != "folder":
+        raise ApplyError(f"folder가 없습니다: {args.parentId}")
     node_id = _new_id(args.id, "cls_", args.name, _all_ids(diagram))
     loc[1].setdefault("classes", []).append({
         "id": node_id,
@@ -154,7 +154,7 @@ def move(diagram: dict, args: MoveArgs) -> dict:
     dest = _index(diagram).get(args.parentId)
     if not loc or loc[0] not in {"class", "method"}:
         raise ApplyError(f"옮길 class/method가 없습니다: {args.id}")
-    need = "feature" if loc[0] == "class" else "class"
+    need = "folder" if loc[0] == "class" else "class"
     if not dest or dest[0] != need:
         raise ApplyError(f"{need}가 없습니다: {args.parentId}")
     _kind, node, siblings, parent = loc
@@ -192,7 +192,7 @@ def remove_edge(diagram: dict, args: RemoveEdgeArgs) -> dict:
 
 
 _HANDLERS = {
-    "add_feature": (AddFeatureArgs, add_feature),
+    "add_folder": (AddFolderArgs, add_folder),
     "add_class": (AddClassArgs, add_class),
     "add_method": (AddMethodArgs, add_method),
     "remove": (RemoveArgs, remove),

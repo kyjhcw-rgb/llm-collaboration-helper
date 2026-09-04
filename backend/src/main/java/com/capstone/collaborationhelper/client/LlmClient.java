@@ -59,8 +59,8 @@ public class LlmClient {
             DiagramRes response = restTemplate.postForObject(url, req, DiagramRes.class);
 
             if (response != null) {
-                log.info("✔ [LlmClient] 다이어그램 구조 수신 완료 (Features: {}개, Edges: {}개)",
-                        response.getFeatures() != null ? response.getFeatures().size() : 0,
+                log.info("✔ [LlmClient] 다이어그램 구조 수신 완료 (Folders: {}개, Edges: {}개)",
+                        response.getFolders() != null ? response.getFolders().size() : 0,
                         response.getEdges() != null ? response.getEdges().size() : 0);
             }
 
@@ -85,8 +85,8 @@ public class LlmClient {
                 throw new RuntimeException("AI 서버가 수정된 다이어그램을 반환하지 않았습니다.");
             }
 
-            log.info("✔ [LlmClient] 수정 다이어그램 수신 완료 (Features: {}개, Edges: {}개)",
-                    response.getDiagram().getFeatures() != null ? response.getDiagram().getFeatures().size() : 0,
+            log.info("✔ [LlmClient] 수정 다이어그램 수신 완료 (Folders: {}개, Edges: {}개)",
+                    response.getDiagram().getFolders() != null ? response.getDiagram().getFolders().size() : 0,
                     response.getDiagram().getEdges() != null ? response.getDiagram().getEdges().size() : 0);
 
             return response;

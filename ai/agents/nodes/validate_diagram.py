@@ -14,11 +14,11 @@ ALLOWED_EDGE_KINDS = {"CALL", "INHERIT", "IMPLEMENT"}
 def _valid_node_ids(diagram: dict) -> set:
     valid_ids = set()
 
-    for feature in diagram.get("features", []):
-        if feature.get("id"):
-            valid_ids.add(feature["id"])
+    for folder in diagram.get("folders", []):
+        if folder.get("id"):
+            valid_ids.add(folder["id"])
 
-        for cls in feature.get("classes", []):
+        for cls in folder.get("classes", []):
             if cls.get("id"):
                 valid_ids.add(cls["id"])
 
@@ -51,12 +51,12 @@ def _fill_missing_node_ids(diagram: dict) -> dict:
     """id가 없는 블록에만 고유 키를 부여한다. 기존 id는 건드리지 않는다."""
     used = _valid_node_ids(diagram)
 
-    for feature in diagram.get("features", []):
-        if not feature.get("id"):
-            feature["id"] = _unique_id("feat_", feature.get("name") or "", used)
-            logger.warning(f"feature에 id가 없어 부여했습니다: {feature['id']}")
+    for folder in diagram.get("folders", []):
+        if not folder.get("id"):
+            folder["id"] = _unique_id("folder_", folder.get("name") or "", used)
+            logger.warning(f"folder에 id가 없어 부여했습니다: {folder['id']}")
 
-        for cls in feature.get("classes", []):
+        for cls in folder.get("classes", []):
             if not cls.get("id"):
                 cls["id"] = _unique_id("cls_", cls.get("name") or "", used)
                 logger.warning(f"class에 id가 없어 부여했습니다: {cls['id']}")
@@ -139,11 +139,11 @@ def _structural_errors(diagram: dict) -> List[str]:
     """자동 수리 뒤에 남는 문제(id 중복)만 수집한다."""
     ids = []
 
-    for feature in diagram.get("features", []):
-        if feature.get("id"):
-            ids.append(feature["id"])
+    for folder in diagram.get("folders", []):
+        if folder.get("id"):
+            ids.append(folder["id"])
 
-        for cls in feature.get("classes", []):
+        for cls in folder.get("classes", []):
             if cls.get("id"):
                 ids.append(cls["id"])
 

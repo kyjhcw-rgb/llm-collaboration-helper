@@ -18,7 +18,7 @@ public class TranslationController {
 
     private final TranslationService translationService;
 
-    @Operation(summary = "translation JSON보내기", description = "DB flat을 features ⊃ classes ⊃ methods + edges JSON으로 변환합니다.")
+    @Operation(summary = "translation JSON보내기", description = "DB flat을 folders ⊃ classes ⊃ methods + edges JSON으로 변환합니다.")
     @GetMapping
     public ResponseEntity<DiagramRes> export(
             @PathVariable Integer projectId,

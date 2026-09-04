@@ -28,10 +28,10 @@ class ClassNode(BaseModel):
     methods: List[MethodNode] = Field(default_factory=list)
 
 
-class FeatureNode(BaseModel):
-    id: str = Field(description="고유 ID (예: feat_auth)")
-    name: str = Field(description="도메인·기능 단위 이름")
-    description: str = Field(default="", description="기능 설명")
+class FolderNode(BaseModel):
+    id: str = Field(description="고유 ID (예: folder_auth)")
+    name: str = Field(description="소스 폴더명 (예: auth, member)")
+    description: str = Field(default="", description="이 폴더의 역할")
     classes: List[ClassNode] = Field(default_factory=list)
 
 
@@ -43,5 +43,5 @@ class RelationEdge(BaseModel):
 
 
 class DiagramRes(BaseModel):
-    features: List[FeatureNode]
+    folders: List[FolderNode]
     edges: List[RelationEdge] = Field(default_factory=list)

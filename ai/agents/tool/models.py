@@ -3,14 +3,14 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 
-class AddFeatureArgs(BaseModel):
-    id: Optional[str] = Field(default=None, description="예: feat_auth. 생략 가능")
-    name: str = Field(description="기능 이름")
-    description: str = Field(default="", description="기능 설명")
+class AddFolderArgs(BaseModel):
+    id: Optional[str] = Field(default=None, description="예: folder_auth. 생략 가능")
+    name: str = Field(description="폴더 이름 (예: auth)")
+    description: str = Field(default="", description="폴더 역할")
 
 
 class AddClassArgs(BaseModel):
-    parentId: str = Field(description="넣을 feature id")
+    parentId: str = Field(description="넣을 folder id")
     id: Optional[str] = Field(default=None, description="예: cls_auth_service. 생략 가능")
     name: str = Field(description="클래스·인터페이스 이름")
     description: str = Field(default="", description="클래스 역할 설명")
@@ -36,7 +36,7 @@ class AddMethodArgs(BaseModel):
 
 
 class RemoveArgs(BaseModel):
-    id: str = Field(description="지울 feature / class / method id")
+    id: str = Field(description="지울 folder / class / method id")
 
 
 class UpdateArgs(BaseModel):
@@ -59,7 +59,7 @@ class UpdateArgs(BaseModel):
 
 class MoveArgs(BaseModel):
     id: str = Field(description="옮길 class 또는 method id")
-    parentId: str = Field(description="새 부모 feature 또는 class id")
+    parentId: str = Field(description="새 부모 folder 또는 class id")
 
 
 class AddEdgeArgs(BaseModel):

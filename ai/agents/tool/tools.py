@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from agents.tool.models import (
     AddClassArgs,
     AddEdgeArgs,
-    AddFeatureArgs,
+    AddFolderArgs,
     AddMethodArgs,
     MoveArgs,
     RemoveArgs,
@@ -34,13 +34,13 @@ def _declaration(
 
 DIAGRAM_FUNCTION_DECLARATIONS: List[types.FunctionDeclaration] = [
     _declaration(
-        "add_feature",
-        "루트에 feature를 하나 추가한다. 자식 class는 넣지 말고 add_class로 이어라.",
-        AddFeatureArgs,
+        "add_folder",
+        "루트에 folder를 하나 추가한다. 자식 class는 넣지 말고 add_class로 이어라.",
+        AddFolderArgs,
     ),
     _declaration(
         "add_class",
-        "있는 feature(parentId) 아래에 class를 하나 추가한다. 자식 method는 add_method로 이어라.",
+        "있는 folder(parentId) 아래에 class를 하나 추가한다. 자식 method는 add_method로 이어라.",
         AddClassArgs,
     ),
     _declaration(
@@ -50,7 +50,7 @@ DIAGRAM_FUNCTION_DECLARATIONS: List[types.FunctionDeclaration] = [
     ),
     _declaration(
         "remove",
-        "feature / class / method를 id로 삭제한다. 자식도 함께 사라진다.",
+        "folder / class / method를 id로 삭제한다. 자식도 함께 사라진다.",
         RemoveArgs,
     ),
     _declaration(
