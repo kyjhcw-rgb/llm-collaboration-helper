@@ -2,6 +2,7 @@ package com.capstone.collaborationhelper.code2diagram.ingest;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -44,6 +45,7 @@ public class GitHubRepoFetcher {
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
 
+    @Autowired
     public GitHubRepoFetcher(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
         this.httpClient = HttpClient.newBuilder()
@@ -52,7 +54,7 @@ public class GitHubRepoFetcher {
                 .build();
     }
 
-    /** 테스트용 */
+    /** 테스트에서 HttpClient를 직접 넣기 위한 생성자. Spring 빈 생성에는 쓰이지 않는다. */
     GitHubRepoFetcher(ObjectMapper objectMapper, HttpClient httpClient) {
         this.objectMapper = objectMapper;
         this.httpClient = httpClient;
