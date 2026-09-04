@@ -65,7 +65,7 @@ def modify_diagram(request: ChatRequest) -> ModifyResponse:
         "generated_diagram": copy.deepcopy(snapshot),
         "original_diagram": copy.deepcopy(snapshot),
         "generated_reply": None,
-        "plan": None,
+        "plan_steps": None,
         "step_index": 0,
         "project_context": request.projectContext,
     }

@@ -11,7 +11,7 @@ def route_after_plan(state: DiagramAgentState) -> str:
         if state["retry_count"] < MAX_DIAGRAM_RETRIES:
             return "plan"
         return "end"
-    if state.get("plan"):
+    if state.get("plan_steps"):
         return "act"
     return "validate"
 
@@ -21,8 +21,8 @@ def route_after_act(state: DiagramAgentState) -> str:
         if state["retry_count"] < MAX_DIAGRAM_RETRIES:
             return "plan"
         return "end"
-    plan = state.get("plan") or []
-    if (state.get("step_index") or 0) < len(plan):
+    plan_steps = state.get("plan_steps") or []
+    if (state.get("step_index") or 0) < len(plan_steps):
         return "act"
     return "validate"
 

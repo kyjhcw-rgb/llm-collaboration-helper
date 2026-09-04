@@ -34,7 +34,7 @@ def generate_initial_diagram(request: DiagramGenerationRequest) -> DiagramRes:
         "generated_diagram": None,
         "original_diagram": None,
         "generated_reply": None,
-        "plan": None,
+        "plan_steps": None,
         "step_index": 0,
         "project_context": None,
     }

@@ -22,22 +22,22 @@ def _call_args(function_call) -> dict:
 
 
 def act_diagram(state: DiagramAgentState) -> DiagramAgentState:
-    """현재 plan 스텝 하나만 툴로 실행한다."""
+    """현재 plan_steps 중 한 스텝만 툴로 실행한다."""
 
-    plan = state.get("plan") or []
+    plan_steps = state.get("plan_steps") or []
     idx = state.get("step_index") or 0
     diagram = state.get("generated_diagram")
 
-    if idx >= len(plan) or not diagram:
+    if idx >= len(plan_steps) or not diagram:
         return state
 
-    step = plan[idx]
+    step = plan_steps[idx]
     contents = list(state["user_contents"])
     contents.append({
         "role": "user",
         "parts": [{
             "text": (
-                f"[현재 스텝 {idx + 1}/{len(plan)}]\n{step}\n"
+                f"[현재 스텝 {idx + 1}/{len(plan_steps)}]\n{step}\n"
                 "이 스텝만 처리하고, 끝나면 툴 없이 한 줄로 확인하라."
             )
         }],
@@ -107,8 +107,8 @@ def act_diagram(state: DiagramAgentState) -> DiagramAgentState:
     state["step_index"] = idx + 1
     state["validation_error"] = None
 
-    if state["step_index"] >= len(plan) and not notes:
-        notes.append("다음 변경을 반영했습니다. " + "; ".join(plan))
+    if state["step_index"] >= len(plan_steps) and not notes:
+        notes.append("다음 변경을 반영했습니다. " + "; ".join(plan_steps))
 
     state["generated_reply"] = "\n".join(notes).strip() or None
     return state

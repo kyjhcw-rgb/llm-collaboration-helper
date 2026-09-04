@@ -43,21 +43,21 @@ def plan_diagram(state: DiagramAgentState) -> DiagramAgentState:
         payload = json.loads(response.text)
         steps = payload.get("steps") or []
 
-        state["plan"] = [str(step).strip() for step in steps if str(step).strip()]
+        state["plan_steps"] = [str(step).strip() for step in steps if str(step).strip()]
         state["step_index"] = 0
         state["validation_error"] = None
         state["generated_reply"] = None
 
-        if not state["plan"]:
+        if not state["plan_steps"]:
             state["generated_reply"] = (
                 "다이어그램에 반영할 변경이 없습니다."
             )
 
-        logger.info(f"수정 계획 {len(state['plan'])}스텝: {state['plan']}")
+        logger.info(f"수정 계획 {len(state['plan_steps'])}스텝: {state['plan_steps']}")
 
     except Exception as e:
         logger.error(f"plan 노드 에러: {str(e)}", exc_info=True)
-        state["plan"] = None
+        state["plan_steps"] = None
         if state["retry_count"] < MAX_DIAGRAM_RETRIES:
             state["retry_count"] += 1
         state["validation_error"] = (

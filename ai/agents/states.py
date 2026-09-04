@@ -13,7 +13,7 @@ class DiagramAgentState(TypedDict):
     generated_diagram: Optional[dict]
     original_diagram: Optional[dict]
     generated_reply: Optional[str]
-    plan: Optional[List[str]]
+    plan_steps: Optional[List[str]]
     step_index: int
     project_context: Optional[str]
 
