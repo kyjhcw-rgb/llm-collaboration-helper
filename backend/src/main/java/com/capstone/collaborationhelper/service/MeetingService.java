@@ -21,7 +21,7 @@ public class MeetingService {
 
     public JsonNode processAudioAndUpdateDiagram(Integer projectId, MultipartFile file) {
         try {
-            // LLM 계약은 features 트리(DiagramRes). Canvas flat이 아님.
+            // LLM 계약은 folders 트리(DiagramRes). Canvas flat이 아님.
             DiagramRes currentDiagram = translationService.exportFromDb(projectId, null);
 
             LlmModifyRes result = llmClient.processMeetingAudio(

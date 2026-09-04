@@ -41,7 +41,7 @@ public class ChatController {
     @Operation(
             summary = "Agent 모드",
             description = "수정 제안을 생성합니다. reply와 canvas 형태(blocks/edges)를 반환하며 DB에는 반영하지 않습니다. "
-                    + "features 트리는 translation mapper로 변환됩니다. 적용은 POST /agent/agree. GUEST는 사용할 수 없습니다.")
+                    + "folders 트리는 translation mapper로 변환됩니다. 적용은 POST /agent/agree. GUEST는 사용할 수 없습니다.")
     @PostMapping("/agent")
     public ResponseEntity<AgentRes> agent(
             @PathVariable Integer projectId,

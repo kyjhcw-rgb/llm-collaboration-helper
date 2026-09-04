@@ -79,7 +79,7 @@ public class ChatService {
 
     /**
      * Agent 모드 — 다이어그램 수정 제안만 반환. 캔버스 DB는 반영하지 않음.
-     * FastAPI features 트리를 translation(mapper)으로 blocks/edges로 바꿔 프론트에 반환.
+     * FastAPI folders 트리를 translation(mapper)으로 blocks/edges로 바꿔 프론트에 반환.
      */
     public AgentRes agent(Integer projectId, ChatReq req) {
         User user = currentUser();

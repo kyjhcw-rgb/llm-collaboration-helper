@@ -4,7 +4,7 @@ import com.capstone.collaborationhelper.code2diagram.model.ParsedMethod;
 import com.capstone.collaborationhelper.code2diagram.model.ParsedType;
 import com.capstone.collaborationhelper.dto.TranslationDtos.ClassNode;
 import com.capstone.collaborationhelper.dto.TranslationDtos.DiagramRes;
-import com.capstone.collaborationhelper.dto.TranslationDtos.FeatureNode;
+import com.capstone.collaborationhelper.dto.TranslationDtos.FolderNode;
 import com.capstone.collaborationhelper.dto.TranslationDtos.MethodNode;
 import com.capstone.collaborationhelper.dto.TranslationDtos.RelationEdge;
 import org.springframework.stereotype.Component;
@@ -18,8 +18,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * ParsedType IR → DiagramRes (features ⊃ classes ⊃ methods + edges).
- * MVP: feature = 패키지 마지막 세그먼트, edge = INHERIT / IMPLEMENT만.
+ * ParsedType IR → DiagramRes (folders ⊃ classes ⊃ methods + edges).
+ * MVP: folder = 패키지 마지막 세그먼트, edge = INHERIT / IMPLEMENT만.
  */
 @Component
 public class DiagramMapper {
@@ -27,7 +27,7 @@ public class DiagramMapper {
     public DiagramRes toDiagram(List<ParsedType> types) {
         DiagramRes diagram = new DiagramRes();
         if (types == null || types.isEmpty()) {
-            diagram.setFeatures(List.of());
+            diagram.setFolders(List.of());
             diagram.setEdges(List.of());
             return diagram;
         }
@@ -40,24 +40,24 @@ public class DiagramMapper {
                         LinkedHashMap::new
                 ));
 
-        Map<String, List<ParsedType>> byFeature = new LinkedHashMap<>();
+        Map<String, List<ParsedType>> byFolder = new LinkedHashMap<>();
         for (ParsedType type : types) {
-            String featureKey = featureKey(type);
-            byFeature.computeIfAbsent(featureKey, k -> new ArrayList<>()).add(type);
+            String folderKey = folderKey(type);
+            byFolder.computeIfAbsent(folderKey, k -> new ArrayList<>()).add(type);
         }
 
-        List<FeatureNode> features = new ArrayList<>();
-        for (Map.Entry<String, List<ParsedType>> entry : byFeature.entrySet()) {
+        List<FolderNode> folders = new ArrayList<>();
+        for (Map.Entry<String, List<ParsedType>> entry : byFolder.entrySet()) {
             String key = entry.getKey();
-            FeatureNode feature = new FeatureNode();
-            feature.setId(featureId(key));
-            feature.setName(key);
-            feature.setDescription("");
-            feature.setClasses(entry.getValue().stream().map(this::toClassNode).toList());
-            features.add(feature);
+            FolderNode folder = new FolderNode();
+            folder.setId(folderId(key));
+            folder.setName(key);
+            folder.setDescription("");
+            folder.setClasses(entry.getValue().stream().map(this::toClassNode).toList());
+            folders.add(folder);
         }
 
-        diagram.setFeatures(features);
+        diagram.setFolders(folders);
         diagram.setEdges(buildEdges(types, simpleNameToId));
         return diagram;
     }
@@ -120,7 +120,7 @@ public class DiagramMapper {
         return edge;
     }
 
-    private String featureKey(ParsedType type) {
+    private String folderKey(ParsedType type) {
         String pkg = type.getPackageName();
         if (pkg == null || pkg.isBlank()) {
             return "default";
@@ -129,8 +129,8 @@ public class DiagramMapper {
         return dot >= 0 ? pkg.substring(dot + 1) : pkg;
     }
 
-    private String featureId(String key) {
-        return "feat_" + sanitize(key);
+    private String folderId(String key) {
+        return "folder_" + sanitize(key);
     }
 
     private String classId(ParsedType type) {

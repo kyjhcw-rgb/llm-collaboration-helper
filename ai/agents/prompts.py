@@ -6,7 +6,7 @@ from schemas.project import DiagramGenerationRequest
 
 def freedom_level_hint(level: int) -> str:
     if level <= 1:
-        return "feature와 class 위주로 설계하고, method는 핵심만 최소한으로 포함해."
+        return "folder와 class 위주로 설계하고, method는 핵심만 최소한으로 포함해."
     if level == 2:
         return "주요 class와 핵심 method를 포함하고, edges로 주요 의존 관계를 표현해."
     return "class와 method를 세분화하고, edges도 풍부하게 포함해."
@@ -66,8 +66,8 @@ INITIAL_DIAGRAM_SYSTEM = (
     "너는 소프트웨어 아키텍처를 설계하는 시니어 개발자야.\n"
     "사용자 기획에 맞춰 초기 다이어그램을 JSON으로 설계해.\n"
     "구조 규칙:\n"
-    "1. features: 도메인·기능 단위 (id, name, description)\n"
-    "2. 각 feature 안에 classes 배열\n"
+    "1. folders: 소스 폴더 단위 (id, name, description). name은 폴더명 (예: auth, member)\n"
+    "2. 각 folder 안에 classes 배열\n"
     "3. 각 class 안에 methods 배열\n"
     "4. edges: 노드 간 관계. fromId, to는 반드시 위에서 만든 id와 일치\n"
     "5. edges.kind: CALL, INHERIT, IMPLEMENT\n"
@@ -95,10 +95,10 @@ def modify_system_instruction(
         "무엇을 바꿨는지 설명하는 reply를 함께 반환하세요.\n"
         "\n"
         "[수정 규칙]\n"
-        "1. ID 유지: 명시적 삭제/변경이 없는 기존 feature, "
+        "1. ID 유지: 명시적 삭제/변경이 없는 기존 folder, "
         "class, method ID는 절대 유지\n"
         "2. 노드 추가: 기존 ID와 겹치지 않는 고유 ID 부여 "
-        "(예: feat_xxx, cls_xxx, method_xxx)\n"
+        "(예: folder_xxx, cls_xxx, method_xxx)\n"
         "3. edges 동기화: 노드 추가/삭제에 맞춰 edges를 갱신. "
         "fromId/to는 실제 존재하는 id만\n"
         "4. edges.kind: CALL, INHERIT, IMPLEMENT 중 하나\n"
@@ -125,7 +125,7 @@ def plan_system_instruction(
         "툴은 호출하지 말고, 실행 순서만 steps로 반환한다.\n"
         "\n"
         "[가능한 작업]\n"
-        "add_feature, add_class, add_method, "
+        "add_folder, add_class, add_method, "
         "remove, update, move, add_edge, remove_edge\n"
         "\n"
         "[규칙]\n"

@@ -29,7 +29,7 @@ public class ChatDtos {
 
     /**
      * Agent 모드 응답 — reply + 캔버스와 동일한 flat blocks/edges.
-     * FastAPI features 트리를 TranslationMapper로 변환한 결과. DB 미반영.
+     * FastAPI folders 트리를 TranslationMapper로 변환한 결과. DB 미반영.
      */
     @Data
     @NoArgsConstructor

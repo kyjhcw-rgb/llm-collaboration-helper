@@ -10,12 +10,14 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * 중첩 트리(features ⊃ classes ⊃ methods) ↔ DB/캔버스용 flat Block·Edge 변환.
+ * 중첩 트리(folders ⊃ classes ⊃ methods) ↔ DB/캔버스용 flat Block·Edge 변환.
+ * 캔버스 최상위 블록 type은 기존 호환을 위해 "feature"를 유지한다.
  */
 @Component
 public class TranslationMapper {
 
-    private static final double FEATURE_GAP_X = 480;
+    private static final double FOLDER_GAP_X = 480;
+    private static final String CANVAS_FOLDER_TYPE = "feature";
 
     public CanvasDtos.SyncReq toCanvasSync(DiagramRes diagram) {
         if (diagram == null) {
@@ -23,25 +25,25 @@ public class TranslationMapper {
         }
 
         List<BlockDto> blocks = new ArrayList<>();
-        List<FeatureNode> features = diagram.getFeatures() != null ? diagram.getFeatures() : List.of();
+        List<FolderNode> folders = diagram.getFolders() != null ? diagram.getFolders() : List.of();
 
-        for (int fi = 0; fi < features.size(); fi++) {
-            FeatureNode feature = features.get(fi);
-            if (feature == null || isBlank(feature.getId())) {
+        for (int fi = 0; fi < folders.size(); fi++) {
+            FolderNode folder = folders.get(fi);
+            if (folder == null || isBlank(folder.getId())) {
                 continue;
             }
 
-            double featureX = 40 + fi * FEATURE_GAP_X;
-            double featureY = 40;
+            double folderX = 40 + fi * FOLDER_GAP_X;
+            double folderY = 40;
             blocks.add(block(
-                    feature.getId(), null, "feature",
-                    feature.getName(), feature.getDescription(),
+                    folder.getId(), null, CANVAS_FOLDER_TYPE,
+                    folder.getName(), folder.getDescription(),
                     null, null, null,
-                    featureX, featureY
+                    folderX, folderY
             ));
 
-            List<ClassNode> classes = feature.getClasses() != null ? feature.getClasses() : List.of();
-            appendClasses(blocks, feature.getId(), classes);
+            List<ClassNode> classes = folder.getClasses() != null ? folder.getClasses() : List.of();
+            appendClasses(blocks, folder.getId(), classes);
         }
 
         Set<String> blockIds = blocks.stream().map(BlockDto::getFrontendId).collect(Collectors.toSet());
@@ -68,19 +70,19 @@ public class TranslationMapper {
             }
         }
 
-        List<FeatureNode> features = blocks.stream()
+        List<FolderNode> folders = blocks.stream()
                 .filter(b -> b.getParentFrontendId() == null)
-                .filter(b -> "feature".equalsIgnoreCase(normalizeCanvasType(b.getType())))
-                .map(b -> toFeatureNode(b, childrenByParent))
+                .filter(b -> CANVAS_FOLDER_TYPE.equalsIgnoreCase(normalizeCanvasType(b.getType())))
+                .map(b -> toFolderNode(b, childrenByParent))
                 .toList();
 
-        diagram.setFeatures(features);
+        diagram.setFolders(folders);
         diagram.setEdges(mapEdgesFromCanvas(edges));
         return diagram;
     }
 
     private void appendClasses(
-            List<BlockDto> blocks, String featureId, List<ClassNode> classes
+            List<BlockDto> blocks, String folderId, List<ClassNode> classes
     ) {
         if (classes == null) return;
         int offset = 0;
@@ -91,7 +93,7 @@ public class TranslationMapper {
             double classY = 48 + offset * 130;
             offset++;
             blocks.add(block(
-                    classNode.getId(), featureId, "class",
+                    classNode.getId(), folderId, "class",
                     classNode.getName(), classNode.getDescription(),
                     null, null, classNode.getAnnotations(),
                     classX, classY
@@ -124,20 +126,20 @@ public class TranslationMapper {
         }
     }
 
-    private FeatureNode toFeatureNode(BlockDto featureBlock, Map<String, List<BlockDto>> childrenByParent) {
-        FeatureNode feature = new FeatureNode();
-        feature.setId(featureBlock.getFrontendId());
-        feature.setName(featureBlock.getName());
-        feature.setDescription(featureBlock.getDescription());
+    private FolderNode toFolderNode(BlockDto folderBlock, Map<String, List<BlockDto>> childrenByParent) {
+        FolderNode folder = new FolderNode();
+        folder.setId(folderBlock.getFrontendId());
+        folder.setName(folderBlock.getName());
+        folder.setDescription(folderBlock.getDescription());
 
-        List<BlockDto> children = childrenByParent.getOrDefault(feature.getId(), List.of());
+        List<BlockDto> children = childrenByParent.getOrDefault(folder.getId(), List.of());
         List<ClassNode> classes = children.stream()
                 .filter(b -> "class".equals(normalizeCanvasType(b.getType())))
                 .map(b -> toClassNode(b, childrenByParent))
                 .toList();
 
-        feature.setClasses(classes);
-        return feature;
+        folder.setClasses(classes);
+        return folder;
     }
 
     private ClassNode toClassNode(BlockDto classBlock, Map<String, List<BlockDto>> childrenByParent) {
@@ -255,10 +257,10 @@ public class TranslationMapper {
 
     private String normalizeCanvasType(String type) {
         if (type == null) {
-            return "feature";
+            return CANVAS_FOLDER_TYPE;
         }
         return switch (type.toUpperCase(Locale.ROOT)) {
-            case "FUNCTION", "FEATURE" -> "feature";
+            case "FUNCTION", "FEATURE", "FOLDER" -> CANVAS_FOLDER_TYPE;
             case "CLASS" -> "class";
             case "INTERFACE" -> "class";
             case "METHOD" -> "method";
