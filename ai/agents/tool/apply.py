@@ -202,6 +202,8 @@ _HANDLERS = {
     "remove_edge": (RemoveEdgeArgs, remove_edge),
 }
 
+TOOL_NAMES = frozenset(_HANDLERS)
+
 
 def apply_tool(diagram: dict, name: str, args: Dict[str, Any]) -> Tuple[dict, dict]:
     handler = _HANDLERS.get(name)
