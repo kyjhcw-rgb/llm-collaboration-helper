@@ -13,7 +13,7 @@ class DiagramAgentState(TypedDict):
     generated_diagram: Optional[dict]
     original_diagram: Optional[dict]
     generated_reply: Optional[str]
-    plan_steps: Optional[List[str]]
+    plan_steps: Optional[List[dict]]
     step_index: int
     project_context: Optional[str]
 
@@ -31,4 +31,3 @@ class CodeGenerationState(TypedDict):
 
 MAX_DIAGRAM_RETRIES = 2
 MAX_CODE_RETRIES = 1
-MAX_TOOL_ROUNDS = 6

@@ -1,9 +1,16 @@
 import json
 import logging
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import HTTPException, UploadFile
+from google.genai import types
+from pydantic import BaseModel, Field
 
+from agents.prompts import (
+    meeting_extract_instruction,
+    meeting_extract_user_message,
+)
+from core.config import MODEL_ID, client
 from core.exceptions import handle_genai_error
 from schemas.chat import ChatRequest, ModifyResponse
 from schemas.common import DiagramRes
@@ -11,6 +18,51 @@ from services.chat import modify_diagram
 from services.clova import request_clova_stt
 
 logger = logging.getLogger(__name__)
+
+NO_DIAGRAM_CHANGE_REPLY = "회의에서 다이어그램에 반영할 변경이 없습니다."
+_CHANGE_MESSAGE_PREFIX = "다음 변경만 다이어그램에 반영하세요.\n"
+_CHAT_MESSAGE_MAX_LENGTH = 4000
+
+
+class MeetingChangeExtract(BaseModel):
+    changes: List[str] = Field(
+        default_factory=list,
+        description="다이어그램에 반영할 변경. 없으면 빈 배열",
+    )
+
+
+def extract_diagram_changes(
+    meeting_text: str,
+    diagram: DiagramRes,
+    project_context: Optional[str],
+) -> List[str]:
+    diagram_json = json.dumps(diagram.model_dump(), ensure_ascii=False)
+
+    response = client.models.generate_content(
+        model=MODEL_ID,
+        contents=meeting_extract_user_message(meeting_text),
+        config=types.GenerateContentConfig(
+            system_instruction=meeting_extract_instruction(
+                diagram_json,
+                project_context,
+            ),
+            response_mime_type="application/json",
+            response_schema=MeetingChangeExtract,
+            temperature=0.1,
+        ),
+    )
+
+    payload = json.loads(response.text)
+    raw = payload.get("changes") or []
+    return [item.strip() for item in raw if isinstance(item, str) and item.strip()]
+
+
+def _changes_to_agent_message(changes: List[str]) -> str:
+    body = "\n".join(f"- {item}" for item in changes)
+    message = f"{_CHANGE_MESSAGE_PREFIX}{body}"
+    if len(message) <= _CHAT_MESSAGE_MAX_LENGTH:
+        return message
+    return message[:_CHAT_MESSAGE_MAX_LENGTH]
 
 
 async def process_meeting_audio(
@@ -60,19 +112,28 @@ async def process_meeting_audio(
                 )
             )
 
-        instruction_message = (
-            "다음은 진행된 개발 회의 녹음의 STT 변환 텍스트입니다. "
-            "회의 내용을 상세히 분석하여 현재 다이어그램에 "
-            "반영해 주세요.\n\n"
-            "[회의록 텍스트]\n"
-            f"{meeting_text}"
+        changes = extract_diagram_changes(
+            meeting_text,
+            diagram_obj,
+            project_context,
         )
 
+        logger.info(
+            f"Session [{session_id}] - 추출된 다이어그램 변경 "
+            f"{len(changes)}건: {changes}"
+        )
+
+        if not changes:
+            return ModifyResponse(
+                reply=NO_DIAGRAM_CHANGE_REPLY,
+                diagram=diagram_obj,
+            )
+
         chat_request = ChatRequest(
-            message=instruction_message,
+            message=_changes_to_agent_message(changes),
             diagram=diagram_obj,
             history=[],
-            projectContext=project_context
+            projectContext=project_context,
         )
 
         return modify_diagram(chat_request)

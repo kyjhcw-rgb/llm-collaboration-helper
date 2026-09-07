@@ -4,16 +4,20 @@ from pydantic import BaseModel, Field
 
 
 class AddFolderArgs(BaseModel):
-    id: Optional[str] = Field(default=None, description="예: folder_auth. 생략 가능")
-    name: str = Field(description="폴더 이름 (예: auth)")
-    description: str = Field(default="", description="폴더 역할")
+    id: Optional[str] = Field(
+        default=None, description="예: folder_controller. 생략 가능"
+    )
+    name: str = Field(description="소스 폴더명 (예: controller, service, dto)")
+    description: str = Field(default="", description="한글 역할 설명 (예: API 계층)")
 
 
 class AddClassArgs(BaseModel):
     parentId: str = Field(description="넣을 folder id")
-    id: Optional[str] = Field(default=None, description="예: cls_auth_service. 생략 가능")
-    name: str = Field(description="클래스·인터페이스 이름")
-    description: str = Field(default="", description="클래스 역할 설명")
+    id: Optional[str] = Field(
+        default=None, description="예: cls_user_service. 생략 가능"
+    )
+    name: str = Field(description="클래스·인터페이스 이름 (예: UserService)")
+    description: str = Field(default="", description="한글 역할 설명 (예: 회원 비즈니스 로직)")
     annotations: Optional[str] = Field(
         default=None,
         description="어노테이션 (예: @RestController)"
@@ -22,9 +26,11 @@ class AddClassArgs(BaseModel):
 
 class AddMethodArgs(BaseModel):
     parentId: str = Field(description="넣을 class id")
-    id: Optional[str] = Field(default=None, description="예: method_logout. 생략 가능")
-    name: str = Field(description="메서드 이름")
-    description: str = Field(default="", description="메서드 역할 설명")
+    id: Optional[str] = Field(
+        default=None, description="예: method_get_user. 생략 가능"
+    )
+    name: str = Field(description="메서드 이름 (예: getUser)")
+    description: str = Field(default="", description="한글 역할 설명 (예: 회원 조회)")
     parameters: Optional[str] = Field(
         default=None,
         description="파라미터 (예: String email, String pwd)"

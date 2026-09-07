@@ -63,15 +63,19 @@ def chat_system_instruction(
 
 
 INITIAL_DIAGRAM_SYSTEM = (
-    "너는 소프트웨어 아키텍처를 설계하는 시니어 개발자야.\n"
+    "너는 소프트웨어 소스 구조를 설계하는 시니어 개발자야.\n"
     "사용자 기획에 맞춰 초기 다이어그램을 JSON으로 설계해.\n"
     "구조 규칙:\n"
-    "1. folders: 소스 폴더 단위 (id, name, description). name은 폴더명 (예: auth, member)\n"
-    "2. 각 folder 안에 classes 배열\n"
-    "3. 각 class 안에 methods 배열\n"
-    "4. edges: 노드 간 관계. fromId, to는 반드시 위에서 만든 id와 일치\n"
-    "5. edges.kind: CALL, INHERIT, IMPLEMENT\n"
-    "6. 절대 부연 설명 없이 지정된 JSON 스키마로만 응답해."
+    "1. folders: 실제 소스 디렉터리/패키지 한 칸 (중첩 없음). "
+    "name은 폴더명 (예: controller, service, repository, dto). "
+    "2. 각 folder 안에 classes 배열. class 하나 = 소스 파일 하나 "
+    "(예: controller 폴더의 UserController)\n"
+    "3. 각 class 안에 methods 배열. method는 그 파일의 실제 함수 "
+    "(예: getUser)\n"
+    "4. description은 한글 역할 설명 (예: 회원 API, 회원 조회)\n"
+    "5. edges: 노드 간 관계. fromId, to는 반드시 위에서 만든 id와 일치\n"
+    "6. edges.kind: CALL, INHERIT, IMPLEMENT\n"
+    "7. 절대 부연 설명 없이 지정된 JSON 스키마로만 응답해."
 )
 
 
@@ -122,46 +126,74 @@ def plan_system_instruction(
 ) -> str:
     return (
         "당신은 소프트웨어 아키텍처 다이어그램 수정의 계획을 세운다.\n"
-        "툴은 호출하지 말고, 실행 순서만 steps로 반환한다.\n"
+        "툴을 직접 호출하지 말고, 실행기가 그대로 적용할 스텝만 JSON으로 반환한다.\n"
         "\n"
-        "[가능한 작업]\n"
+        "[가능한 tool]\n"
         "add_folder, add_class, add_method, "
         "remove, update, move, add_edge, remove_edge\n"
         "\n"
+        "[args 요약]\n"
+        "- add_folder: name, description?, id?\n"
+        "- add_class: parentId(folder id), name, description?, annotations?, id?\n"
+        "- add_method: parentId(class id), name, description?, parameters?, returnType?, id?\n"
+        "- remove: id (folder/class/method)\n"
+        "- update: id + 바꿀 필드만 (name, description, annotations, parameters, returnType)\n"
+        "- move: id, parentId\n"
+        "- add_edge: fromId, to, kind(CALL|INHERIT|IMPLEMENT), id?\n"
+        "- remove_edge: id\n"
+        "\n"
         "[규칙]\n"
         "1. 사용자 요청에 있는 변경만 넣는다. 없는 노드를 만들지 않는다.\n"
-        "2. 한 스텝은 툴 하나 분량이다. "
-        "새 class와 그 method는 스텝을 나눈다.\n"
-        "3. 기존 노드는 다이어그램에 있는 id를 스텝에 적는다.\n"
+        "2. 한 스텝은 툴 하나. 새 class와 그 method는 스텝을 나눈다.\n"
+        "3. 기존 노드는 다이어그램에 있는 id를 args에 그대로 적는다.\n"
         "4. 변경이 없으면 steps는 빈 배열이다.\n"
+        "5. 실행기가 이 JSON만 적용하므로, 요청에 없는 작업을 넣지 마라.\n"
         f"{project_context_block(project_context)}"
         f"[현재 프로젝트 다이어그램]\n{diagram_json}"
     )
 
 
-def act_system_instruction(
+def meeting_extract_instruction(
     diagram_json: str,
     project_context: Optional[str]
 ) -> str:
     return (
-        "당신은 다이어그램 수정 실행기다. 지금 스텝만 툴로 처리한다.\n"
-        "요청에 없는 노드를 만들거나 바꾸지 마라.\n"
-        "id가 비면 우리가 부여하니 생략해도 된다.\n"
-        "스텝이 끝나면 툴 없이 한 줄로 무엇을 했는지 적어라.\n"
+        "당신은 개발 회의 STT에서 다이어그램 변경만 추출한다.\n"
+        "회의록을 쓰지 말고, 소스 구조(폴더/클래스/메서드/엣지)를 "
+        "바꾸기로 한 합의만 한글 불릿으로 반환한다.\n"
+        "\n"
+        "[규칙]\n"
+        "1. 잡담, 일정, 배포, '나중에 하자', 코드 구현 디테일은 넣지 않는다.\n"
+        "2. 다이어그램에 없는 폴더/클래스를 지어내지 않는다. "
+        "새로 만들기로 명확히 말한 것만 추가한다.\n"
+        "3. 기존 노드는 [현재 프로젝트 다이어그램]의 name과 id를 그대로 쓴다.\n"
+        "4. 한 불릿은 한 변경. 예: "
+        "'UserController(id: cls_xxx)에 logout 메서드 추가'\n"
+        "5. 다이어그램에 반영할 합의가 없으면 changes는 빈 배열이다.\n"
         f"{project_context_block(project_context)}"
         f"[현재 프로젝트 다이어그램]\n{diagram_json}"
+    )
+
+
+def meeting_extract_user_message(meeting_text: str) -> str:
+    return (
+        "[회의 STT]\n"
+        f"{meeting_text}\n\n"
+        "위 회의에서 다이어그램에 반영할 변경만 추출하세요."
     )
 
 
 def file_tree_system_instruction(target_framework: str) -> str:
     return (
-        f"너는 다이어그램(JSON)을 보고 "
-        f"소프트웨어 패키지 구조를 설계하는 아키텍트야.\n"
-        f"제공된 구조를 바탕으로 "
-        f"[{target_framework}] 프로젝트에 필요한 "
-        "파일 경로 목록을 작성해.\n"
-        "실제 코드는 작성하지 말고, "
-        "오직 파일 경로와 해당 파일의 간단한 역할만 JSON으로 응답해."
+        f"너는 다이어그램(JSON)을 [{target_framework}] "
+        "파일 경로로 옮기는 아키텍트야.\n"
+        "folder name은 디렉터리/패키지로, class name은 "
+        "파일 하나(클래스 하나)로 반영해.\n"
+        "기능 폴더(auth, member)를 새로 만들지 말고, "
+        "다이어그램에 있는 controller, service 같은 폴더를 따라라.\n"
+        "프레임워크 필수 파일(설정 등)만 보강하고, "
+        "실제 코드는 작성하지 마. "
+        "파일 경로와 해당 파일의 간단한 역할만 JSON으로 응답해."
     )
 
 
