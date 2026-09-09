@@ -8,6 +8,13 @@ import { request } from '../api/http'
 
 export const LAYOUT = { HEADER_HEIGHT: 36, PADDING: 16, FEATURE_GAP: 150 };
 
+// 팀원 실시간 하이라이트에서 유저마다 항상 같은 색이 배정되도록 userId를 해시해서 고르는 팔레트
+const PRESENCE_COLORS = ['#F43F5E', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316'];
+export function getPresenceColor(userId) {
+    const n = Number(userId) || 0;
+    return PRESENCE_COLORS[Math.abs(n) % PRESENCE_COLORS.length];
+}
+
 const DEFAULT_SIZES = {
     feature: { w: 400, h: 300 },
     class:   { w: 250, h: 150 },
@@ -429,6 +436,10 @@ export const useCanvasStore = create((set, get) => ({
     onlineUsers: [],
     availableVersions: [], // { versionNumber, commitMessage, createdAt } 객체 배열
 
+    // 팀원이 지금 캔버스에서 선택 중인 블록 실시간 표시용 (영구 저장 안 함).
+    // { [userId]: string[] (selectedNodeIds) }
+    presence: {},
+
     // 6번: 마지막 커밋 이후 바뀐 블록을 표시하기 위한 체크포인트.
     // 블록의 data.lastUpdatedAt이 이 값보다 크면 "커밋 이후 변경됨"으로 간주.
     lastCommitAt: 0,
@@ -442,6 +453,17 @@ export const useCanvasStore = create((set, get) => ({
     setProjectName: (name) => set({ projectName: name }),
     setSelectedNodeId: (id) => set({ selectedNodeId: id, selectedEdgeId: null }),
     setSelectedEdgeId: (id) => set({ selectedEdgeId: id, selectedNodeId: null }),
+
+    // 지금 내가 선택 중인 블록들을 팀원들에게 실시간으로 알림 (영구 저장 데이터 아님).
+    // 서버는 내용 검사 없이 그대로 릴레이만 하므로 userId는 프론트가 직접 채워서 보낸다.
+    sendPresenceUpdate: (selectedNodeIds) => {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        const myUserId = get().myUserId;
+        if (myUserId === null) return;
+        try {
+            ws.send(JSON.stringify({ type: 'PRESENCE_UPDATE', userId: myUserId, selectedNodeIds }));
+        } catch (e) {}
+    },
 
     undo: () => undoManager.undo(),
     redo: () => undoManager.redo(),
@@ -563,6 +585,18 @@ export const useCanvasStore = create((set, get) => ({
                         window.location.href = '/projects';
                     } else if (msg.type === 'MENTIONED') {
                         alert(`🔔 ${msg.senderNickname}님이 댓글에서 회원님을 멘션했습니다!`);
+                    } else if (msg.type === 'PRESENCE_UPDATE') {
+                        // 내 자신이 보낸 메시지가 다른 탭을 통해 되돌아오는 경우까지 방어적으로 무시
+                        if (msg.userId === get().myUserId) return;
+                        set((state) => {
+                            const nextPresence = { ...state.presence };
+                            if (!msg.selectedNodeIds || msg.selectedNodeIds.length === 0) {
+                                delete nextPresence[msg.userId];
+                            } else {
+                                nextPresence[msg.userId] = msg.selectedNodeIds;
+                            }
+                            return { presence: nextPresence };
+                        });
                     }
                 } catch(e) {}
                 return;
@@ -669,6 +703,7 @@ export const useCanvasStore = create((set, get) => ({
             selectedNodeId: null,
             selectedEdgeId: null,
             onlineUsers: [],
+            presence: {},
         });
     },
 
@@ -797,7 +832,7 @@ export const useCanvasStore = create((set, get) => ({
                 selectedNodeId: null,
                 selectedEdgeId: null,
                 nodes: displayNodes,
-                edges: displayEdges
+                edges: displayEdges,
             });
 
             // 라이브 화면일 때만: ydoc이 새로 만들어졌으니 반드시 리스너를 다시 연결해야 함
@@ -862,7 +897,8 @@ export const useCanvasStore = create((set, get) => ({
             userRole: 'OWNER',
             availableVersions: [],
             selectedNodeId: null,
-            selectedEdgeId: null
+            selectedEdgeId: null,
+            presence: {},
         });
 
     },

@@ -127,6 +127,17 @@ const FlowContents = () => {
     const nodes = useCanvasStore((state) => state.nodes);
     const edges = useCanvasStore((state) => state.edges);
     const myUserId = useCanvasStore((state) => state.myUserId);
+    const sendPresenceUpdate = useCanvasStore((state) => state.sendPresenceUpdate);
+
+    // 지금 내가 선택 중인 블록이 바뀔 때마다 팀원들에게 실시간으로 알림.
+    // nodes 배열 자체는 위치 변경 등으로 계속 새 참조가 되므로, 실제 선택 id 목록을
+    // 문자열로 만들어 그 "값"이 바뀔 때만 전송되도록 한다.
+    const selectedIds = useMemo(() => nodes.filter((n) => n.selected).map((n) => n.id), [nodes]);
+    const selectedIdsKey = selectedIds.join(',');
+    useEffect(() => {
+        sendPresenceUpdate(selectedIds);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedIdsKey]);
 
     const connectingHandleRef = useRef(null);
     const [hoveredEdgeId, setHoveredEdgeId] = useState(null);

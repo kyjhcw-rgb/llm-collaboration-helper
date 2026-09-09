@@ -338,7 +338,7 @@ const SidebarRight = () => {
                 </button>
             </div>
 
-            <div className="tab-content">
+            <div className={`tab-content ${activeTab === "comments" ? "tab-content--comments" : ""}`}>
                 {activeTab === "info" && (
                     <div className="info-panel">
                         {/* 1. 선(Edge)이 선택된 경우 */}
