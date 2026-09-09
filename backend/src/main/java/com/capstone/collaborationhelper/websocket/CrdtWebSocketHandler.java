@@ -182,6 +182,17 @@ public class CrdtWebSocketHandler extends AbstractWebSocketHandler {
             } else {
                 // 누군가 퇴장하면 남은 사람들에게 갱신된 온라인 유저 목록 브로드캐스트
                 broadcastOnlineUsers(projectId);
+
+                // 유저 접속이 완전히 끊겼을 때 (다른 탭 포함) 하이라이트 지우기
+                Integer userId = (Integer) session.getAttributes().get("userId");
+                if (userId != null) {
+                    boolean isUserStillOnline = sessions.stream()
+                            .anyMatch(s -> s.isOpen() && userId.equals(s.getAttributes().get("userId")));
+
+                    if (!isUserStillOnline) {
+                        broadcastPresenceClear(projectId, userId);
+                    }
+                }
             }
         }
     }
@@ -318,6 +329,30 @@ public class CrdtWebSocketHandler extends AbstractWebSocketHandler {
             }
         } catch (Exception e) {
             log.error("온라인 유저 브로드캐스트 실패", e);
+        }
+    }
+
+    // 유저가 오프라인이 될 때 선택을 지워주는 빈 브로드캐스트
+    private void broadcastPresenceClear(Integer projectId, Integer userId) {
+        CopyOnWriteArrayList<WebSocketSession> sessions = projectSessions.get(projectId);
+        if (sessions == null) return;
+
+        try {
+            java.util.Map<String, Object> message = new java.util.HashMap<>();
+            message.put("type", "PRESENCE_UPDATE");
+            message.put("userId", userId);
+            message.put("selectedNodeIds", new java.util.ArrayList<>());
+
+            TextMessage textMsg = new TextMessage(objectMapper.writeValueAsString(message));
+            for (WebSocketSession s : sessions) {
+                if (s.isOpen()) {
+                    synchronized (s) {
+                        try { s.sendMessage(textMsg); } catch (Exception e) {}
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("Failed to broadcast presence clear", e);
         }
     }
 }
