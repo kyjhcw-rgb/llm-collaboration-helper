@@ -2,7 +2,7 @@ import React, { memo, useEffect, useState } from 'react';
 import { Handle, Position, useUpdateNodeInternals, useStore } from 'reactflow';
 import { NodeResizer } from '@reactflow/node-resizer';
 import '@reactflow/node-resizer/dist/style.css';
-import { useCanvasStore } from '../../store/useCanvasStore';
+import { useCanvasStore, getPresenceColor } from '../../store/useCanvasStore';
 
 const CustomNode = ({ id, data, selected }) => {
     const updateNodeInternals = useUpdateNodeInternals();
@@ -20,6 +20,16 @@ const CustomNode = ({ id, data, selected }) => {
     // 6번: 마지막 커밋 이후에 이 블록이 바뀌었는지 여부
     const lastCommitAt = useCanvasStore(state => state.lastCommitAt);
     const changedSinceCommit = !!data.lastUpdatedAt && data.lastUpdatedAt > lastCommitAt;
+
+    // 팀원 실시간 하이라이트: 지금 이 블록을 선택 중인 다른 유저들
+    const presence = useCanvasStore(state => state.presence);
+    const viewerUserIds = Object.entries(presence)
+        .filter(([, ids]) => ids.includes(id))
+        .map(([userId]) => Number(userId));
+    const viewerNames = viewerUserIds
+        .map((uid) => projectMembers.find((m) => m.userId === uid)?.nickname)
+        .filter(Boolean);
+    const presenceColor = viewerUserIds.length > 0 ? getPresenceColor(viewerUserIds[0]) : null;
 
     // 핸들을 보여줄 조건:
     // 1. 이 노드가 선택(클릭)됐을 때
@@ -44,7 +54,10 @@ const CustomNode = ({ id, data, selected }) => {
 
     return (
         <div
-            style={{ width: '100%', height: '100%' }}
+            style={{
+                width: '100%', height: '100%',
+                ...(presenceColor ? { boxShadow: `inset 0 0 0 3px ${presenceColor}`, borderRadius: '6px' } : {}),
+            }}
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
         >
@@ -56,6 +69,17 @@ const CustomNode = ({ id, data, selected }) => {
                     fontWeight: 'bold', boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
                 }}>
                     ✍️ {updaterName}
+                </div>
+            )}
+
+            {viewerNames.length > 0 && (
+                <div style={{
+                    position: 'absolute', top: '-18px', right: 0,
+                    fontSize: '11px', color: '#fff', background: presenceColor,
+                    padding: '2px 6px', borderRadius: '4px', zIndex: 10,
+                    fontWeight: 'bold', boxShadow: '0 1px 3px rgba(0,0,0,0.2)', whiteSpace: 'nowrap',
+                }}>
+                    👀 {viewerNames.join(', ')}
                 </div>
             )}
 

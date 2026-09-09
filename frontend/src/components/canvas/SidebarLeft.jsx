@@ -17,6 +17,7 @@ const SidebarLeft = () => {
 
     const [openNodes, setOpenNodes] = useState({});
     const [fileContextMenu, setFileContextMenu] = useState(null); // { x, y, fileId } — 파일 우클릭 시 "삭제" 메뉴
+    const [searchQuery, setSearchQuery] = useState('');
 
     const toggleNode = (id) => {
         setOpenNodes((prev) => ({
@@ -98,6 +99,29 @@ const SidebarLeft = () => {
     const classNodes = nodes.filter((node) => node.data.type === 'class');
     const methodNodes = nodes.filter((node) => node.data.type === 'method');
 
+    // 이름(label/name)뿐 아니라 설명/파라미터/리턴타입까지 포함해서 검색
+    const query = searchQuery.trim().toLowerCase();
+    const isSearching = query.length > 0;
+
+    const matchesSearch = (node) => {
+        if (!node) return false;
+        const d = node.data || {};
+        return [d.label, d.name, d.description, d.parameters, d.returnType, d.annotations]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase()
+            .includes(query);
+    };
+
+    // 클래스/파일은 자기 자신이 매칭되지 않아도, 그 안의 메소드가 매칭되면 "경로"로서 계속 보여줘야 함
+    const isClassRelevant = (cls) =>
+        matchesSearch(cls) || methodNodes.some((m) => m.parentNode === cls.id && matchesSearch(m));
+
+    const isFeatureRelevant = (feature) =>
+        matchesSearch(feature) ||
+        classNodes.some((c) => c.parentNode === feature.id && isClassRelevant(c)) ||
+        methodNodes.some((m) => m.parentNode === feature.id && matchesSearch(m));
+
     const handleFeatureClick = (featureId) => {
         const state = useCanvasStore.getState();
         const myUserId = state.myUserId;
@@ -166,6 +190,16 @@ const SidebarLeft = () => {
                     )}
                 </div>
 
+                <div className="sidebar-search-row">
+                    <input
+                        type="text"
+                        className="sidebar-search-input"
+                        placeholder="이름, 설명으로 검색..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                </div>
+
                 <div
                     className="directory-box"
                     onContextMenu={(e) => {
@@ -180,8 +214,14 @@ const SidebarLeft = () => {
                             {projectName || '내 프로젝트'}
                         </div>
 
-                        {featureNodes.map((feature) => {
-                            const isFeatureExpanded = openNodes[feature.id] ?? true;
+                        {isSearching && !featureNodes.some(isFeatureRelevant) && (
+                            <div className="sidebar-no-results">검색 결과가 없습니다.</div>
+                        )}
+                        {featureNodes
+                            .filter((feature) => !isSearching || isFeatureRelevant(feature))
+                            .map((feature) => {
+                            const featureMatched = matchesSearch(feature);
+                            const isFeatureExpanded = isSearching ? true : (openNodes[feature.id] ?? true);
                             const isFeatureSelected = feature.id === selectedNodeId || feature.data?.hidden === false;
 
                             return (
@@ -213,6 +253,7 @@ const SidebarLeft = () => {
                                         <div className="tree-branch">
                                             {methodNodes
                                                 .filter((method) => method.parentNode === feature.id)
+                                                .filter((method) => !isSearching || featureMatched || matchesSearch(method))
                                                 .map((method) => {
                                                     const isSelected = method.id === selectedNodeId;
                                                     const isRelated = relatedMethodIds.has(method.id);
@@ -232,8 +273,10 @@ const SidebarLeft = () => {
                                                 })}
                                             {classNodes
                                                 .filter((cls) => cls.parentNode === feature.id)
+                                                .filter((cls) => !isSearching || featureMatched || isClassRelevant(cls))
                                                 .map((cls) => {
-                                                    const isClassExpanded = openNodes[cls.id] ?? true;
+                                                    const classMatched = matchesSearch(cls);
+                                                    const isClassExpanded = isSearching ? true : (openNodes[cls.id] ?? true);
                                                     const isClassSelected = cls.id === selectedNodeId;
 
                                                     return (
@@ -256,6 +299,7 @@ const SidebarLeft = () => {
                                                                 <div className="tree-branch">
                                                                     {methodNodes
                                                                         .filter((method) => method.parentNode === cls.id)
+                                                                        .filter((method) => !isSearching || featureMatched || classMatched || matchesSearch(method))
                                                                         .map((method) => {
                                                                             const isSelected = method.id === selectedNodeId;
                                                                             const isRelated = relatedMethodIds.has(method.id);
