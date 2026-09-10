@@ -32,3 +32,4 @@ class SingleCodeGenerationRequest(BaseModel):
 class SingleCodeGenerationResponse(BaseModel):
     filePath: str
     code: str = Field(description="해당 파일의 완벽한 소스 코드 내용")
+ 

@@ -6,16 +6,14 @@ from fastapi import HTTPException, UploadFile
 from google.genai import types
 from pydantic import BaseModel, Field
 
-from agents.prompts import (
-    meeting_extract_instruction,
-    meeting_extract_user_message,
-)
+from agents.prompts import meeting_extract_instruction, meeting_extract_user_message
 from core.config import MODEL_ID, client
 from core.exceptions import handle_genai_error
 from schemas.chat import ChatRequest, ModifyResponse
 from schemas.common import DiagramRes
 from services.chat import modify_diagram
 from services.clova import request_clova_stt
+from utils.diagram_helper import serialize_diagram, parse_diagram_json
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +34,7 @@ def extract_diagram_changes(
     diagram: DiagramRes,
     project_context: Optional[str],
 ) -> List[str]:
-    diagram_json = json.dumps(diagram.model_dump(), ensure_ascii=False)
+    diagram_json = serialize_diagram(diagram)
 
     response = client.models.generate_content(
         model=MODEL_ID,
@@ -92,25 +90,10 @@ async def process_meeting_audio(
                 detail="음성에서 인식된 회의 내용 텍스트가 없습니다."
             )
 
-        logger.info(
-            f"Session [{session_id}] - STT 변환 완료:\n"
-            f"{meeting_text}"
-        )
+        logger.info(f"Session [{session_id}] - STT 변환 완료:\n{meeting_text}")
 
-        try:
-            diagram_dict = json.loads(current_diagram)
-            diagram_obj = DiagramRes(**diagram_dict)
-        except Exception as parse_err:
-            logger.error(
-                f"다이어그램 JSON 파싱 에러: {parse_err}"
-            )
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "전달받은 currentDiagram JSON 형식이 "
-                    "올바르지 않습니다."
-                )
-            )
+        # Helper 함수를 활용한 파싱 처리
+        diagram_obj = parse_diagram_json(current_diagram)
 
         changes = extract_diagram_changes(
             meeting_text,
@@ -141,7 +124,4 @@ async def process_meeting_audio(
     except HTTPException:
         raise
     except Exception as e:
-        handle_genai_error(
-            e,
-            "회의 음성 처리 및 다이어그램 반영"
-        )
+        handle_genai_error(e, "회의 음성 처리 및 다이어그램 반영")

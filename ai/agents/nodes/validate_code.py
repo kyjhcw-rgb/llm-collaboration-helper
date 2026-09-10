@@ -1,4 +1,8 @@
+import logging
+
 from agents.states import MAX_CODE_RETRIES, CodeGenerationState
+
+logger = logging.getLogger(__name__)
 
 
 def validate_code(state: CodeGenerationState) -> CodeGenerationState:
@@ -7,27 +11,15 @@ def validate_code(state: CodeGenerationState) -> CodeGenerationState:
     result = state.get("result")
 
     if not result:
-        if state["retry_count"] < MAX_CODE_RETRIES:
-            state["retry_count"] += 1
-            state["validation_error"] = (
-                "생성 결과가 없습니다."
-            )
-        return state
-
-    if state["mode"] == "file_tree":
+        state["validation_error"] = "생성 결과가 없습니다."
+    elif state["mode"] == "file_tree":
         file_paths = result.get("filePaths")
-
         if not isinstance(file_paths, dict):
-            state["validation_error"] = (
-                "filePaths는 JSON object여야 합니다."
-            )
+            state["validation_error"] = "filePaths는 JSON object여야 합니다."
         elif not file_paths:
-            state["validation_error"] = (
-                "생성된 파일 목록이 비어 있습니다."
-            )
+            state["validation_error"] = "생성된 파일 목록이 비어 있습니다."
         else:
             state["validation_error"] = None
-
     else:
         file_path = result.get("filePath")
         code = result.get("code")
@@ -35,13 +27,9 @@ def validate_code(state: CodeGenerationState) -> CodeGenerationState:
         if not file_path:
             state["validation_error"] = "filePath가 없습니다."
         elif code is None or not isinstance(code, str):
-            state["validation_error"] = (
-                "code가 문자열로 존재하지 않습니다."
-            )
+            state["validation_error"] = "code가 문자열로 존재하지 않습니다."
         elif not code.strip():
-            state["validation_error"] = (
-                "생성된 코드가 비어 있습니다."
-            )
+            state["validation_error"] = "생성된 코드가 비어 있습니다."
         elif (
             state.get("target_file_path")
             and file_path != state["target_file_path"]
@@ -53,10 +41,13 @@ def validate_code(state: CodeGenerationState) -> CodeGenerationState:
         else:
             state["validation_error"] = None
 
-    if (
-        state["validation_error"]
-        and state["retry_count"] < MAX_CODE_RETRIES
-    ):
-        state["retry_count"] += 1
+    # 검증 실패 시 재시도 카운트 조절
+    if state["validation_error"]:
+        if state["retry_count"] < MAX_CODE_RETRIES:
+            state["retry_count"] += 1
+            logger.warning(
+                f"코드 검증 실패 (재시도 {state['retry_count']}/{MAX_CODE_RETRIES}): "
+                f"{state['validation_error']}"
+            )
 
     return state
