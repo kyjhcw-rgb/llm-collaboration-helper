@@ -232,3 +232,51 @@ def single_code_user_message(
         f"위 파일 경로에 들어갈 "
         f"[{target_framework}] 보일러플레이트 코드를 짜줘."
     )
+
+def database_ddl_system_instruction(
+    db_type: str,
+    diagram_json: str,
+    project_context: Optional[str] = None
+) -> str:
+    """선택한 DB(MySQL/PostgreSQL)에 맞춘 DDL 생성 시스템 프롬프트"""
+    target_db = "MySQL 8.0+" if db_type.lower() == "mysql" else "PostgreSQL 15+"
+
+    return (
+        "너는 데이터베이스 설계 및 DDL SQL 작성 전문가이다.\n"
+        f"제공된 소프트웨어 다이어그램 구조(클래스, 메서드, 관계 엣지)를 분석하여 {target_db} 사양에 맞는 실행 가능한 DDL SQL 쿼리를 생성해야 한다.\n"
+        "\n"
+        "[지침]\n"
+        "1. 다이어그램의 엔티티/클래스 구조와 관계를 해석하여 RDB 테이블, 컬럼, PK, FK, 인덱스 제약조건을 도출해라.\n"
+        f"2. {target_db}의 키워드 및 식별자 규칙을 엄격히 준수해라.\n"
+        "   - MySQL: 백틱(`) 사용, AUTO_INCREMENT, ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 적용\n"
+        "   - PostgreSQL: 필요시 큰따옴표(\") 사용, SERIAL / BIGSERIAL 사용, TIMESTAMP WITH TIME ZONE 지정\n"
+        "3. 응답은 반드시 지정된 JSON 형식으로만 반환해야 하며, 마크다운 코드 블록(```sql 등)을 제외한 순수 문자열 형태의 SQL을 작성해라.\n"
+        f"{project_context_block(project_context)}"
+        f"[다이어그램 구조 JSON]\n"
+        f"{diagram_json}"
+    )
+
+
+def database_ddl_user_message(db_type: str) -> str:
+    """DB DDL 생성 유저 메시지"""
+    return (
+        f"위 다이어그램 구조를 바탕으로 {db_type.upper()} DDL SQL과 스키마 요약 설명을 생성해줘.\n\n"
+        "1. sql: 바로 실행 가능한 완벽한 DDL SQL 문 (CREATE TABLE, ALTER TABLE FOREIGN KEY 등 포함)\n"
+        "2. summary: 테이블 구성 및 관계에 대한 간단한 한글 설명"
+    )
+
+def benchmark_analysis_system_instruction(
+    diagram_json: str,
+    project_context: Optional[str]
+) -> str:
+    return (
+        "당신은 최고 수준의 IT 서비스 아키텍트 및 도메인 분석가입니다.\n"
+        "제공된 프로젝트 다이어그램 및 기획 설명을 바탕으로 다음 단계를 수행하세요.\n\n"
+        "[분석 및 개선 가이드]\n"
+        "1. 서비스 도메인 파악: 다이어그램의 패키지, 클래스, 메서드 구조를 보고 어떤 종류의 서비스인지 파악하세요.\n"
+        "2. 유사 서비스 벤치마킹: 시중에 존재하는 대표적인 유사 서비스/플랫폼 2~3개를 도출하고, 해당 서비스들의 표준적 아키텍처 특징을 비교하세요.\n"
+        "3. 아키텍처 개선점 도출: 유사 서비스들의 핵심 기능(예: 보안, 결제, 알림, 로깅, 캐싱 등) 대비 현재 다이어그램에서 누락되었거나 보완이 필요한 클래스/메서드/관계(Edge)를 도출하세요.\n"
+        "4. 다이어그램 수정: 개선점을 반영하여 기존 다이어그램에 새 노드(Folder, Class, Method) 및 관계(Edge)를 추가/수정한 전체 다이어그램 JSON을 함께 작성하세요.\n"
+        f"{project_context_block(project_context)}"
+        f"[현재 프로젝트 다이어그램]\n{diagram_json}"
+    )

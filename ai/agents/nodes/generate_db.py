@@ -5,30 +5,24 @@ from google.genai import types
 
 from agents.states import CodeGenerationState
 from core.config import MODEL_ID, client
-from schemas.project import FileStructureResponse, SingleCodeGenerationResponse
+from schemas.database import DatabaseDDLResponse
 
 logger = logging.getLogger(__name__)
 
 
-def generate_code(state: CodeGenerationState) -> CodeGenerationState:
-    """파일 트리 또는 단일 소스 코드를 생성한다."""
+def generate_db(state: CodeGenerationState) -> CodeGenerationState:
+    """다이어그램 구조를 분석하여 선택한 DB의 DDL SQL을 생성한다."""
 
     instruction = state["system_instruction"]
 
-    # 이전 실패 이력이 있다면 프롬프트 하단에 1회성으로 피드백 추가
+    # 이전 검증 단계에서 에러가 있었을 경우 재시도 프롬프트 보강
     if state.get("validation_error"):
         instruction += (
             "\n\n"
             "[이전 생성 오류]\n"
             f"{state['validation_error']}\n"
-            "위 오류를 수정하여 지침에 맞게 다시 생성하세요."
+            "위 오류를 수정하여 올바른 DDL SQL과 요약을 다시 생성하세요."
         )
-
-    response_schema = (
-        FileStructureResponse
-        if state["mode"] == "file_tree"
-        else SingleCodeGenerationResponse
-    )
 
     try:
         response = client.models.generate_content(
@@ -37,18 +31,22 @@ def generate_code(state: CodeGenerationState) -> CodeGenerationState:
             config=types.GenerateContentConfig(
                 system_instruction=instruction,
                 response_mime_type="application/json",
-                response_schema=response_schema,
-                temperature=0.1 if state["mode"] == "file_tree" else 0.3,
+                response_schema=DatabaseDDLResponse,
+                temperature=0.1,
             ),
         )
 
         payload = json.loads(response.text)
+
+        if "sql" not in payload:
+            raise ValueError("응답 결과에 'sql' 필드가 없습니다.")
+
         state["result"] = payload
         state["validation_error"] = None
 
     except Exception as e:
-        logger.error(f"코드 생성 노드 에러: {str(e)}", exc_info=True)
+        logger.error(f"DB DDL 생성 노드 에러: {str(e)}", exc_info=True)
         state["result"] = None
-        state["validation_error"] = f"JSON 생성 및 파싱 실패: {str(e)}"
+        state["validation_error"] = str(e)
 
     return state

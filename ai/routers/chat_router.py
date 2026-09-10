@@ -20,3 +20,10 @@ async def chat_about_project(request: ChatRequest):
 )
 async def agent_modify_diagram(request: ChatRequest):
     return modify_diagram(request)
+
+@router.post(
+    "/project/benchmark-upgrade",
+    response_model=BenchmarkAnalysisResponse
+)
+async def benchmark_and_upgrade(request: BenchmarkAnalysisRequest):
+    return analyze_and_upgrade_diagram(request)
