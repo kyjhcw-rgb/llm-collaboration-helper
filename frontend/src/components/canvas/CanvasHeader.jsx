@@ -3,8 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import usericon from '../../images/usericon.png';
 import './CanvasHeader.css';
 import { useCanvasStore } from '../../store/useCanvasStore';
-import { request, requestUpload } from '../../api/http';
-import { useAudioRecorder } from '../../hooks/useAudioRecorder';
+import { request } from '../../api/http';
 
 const CanvasHeader = () => {
     const navigate = useNavigate();
@@ -28,31 +27,10 @@ const CanvasHeader = () => {
     const [inviteEmail, setInviteEmail] = useState('');
     const [inviteRole, setInviteRole] = useState('MEMBER');
 
-    // 접속 중인 유저 더미 데이터
+    // 접속 중인 유저 더미 데이터 
     const onlineUsers = [
         { id: 1, name: '접속자', avatar: usericon }
     ];
-
-    // 방장이 회의를 녹음해서 그 내용으로 현재 캔버스를 바로 수정하는 기능.
-    // 녹음이 끝나면 즉시 백엔드로 전송하고, 이후 다이어그램 반영/전원 새로고침은 백엔드가 처리함.
-    const [isUploadingMeetingAudio, setIsUploadingMeetingAudio] = useState(false);
-    const { isRecording: isMeetingRecording, toggleRecording: toggleMeetingRecording } = useAudioRecorder({
-        onStop: async (blob) => {
-            if (!currentProjectId) return;
-            setIsUploadingMeetingAudio(true);
-            try {
-                const formData = new FormData();
-                formData.append('file', blob, 'recording.webm');
-                await requestUpload(`/projects/${currentProjectId}/meeting-audio`, formData);
-                // 성공 시 백엔드가 FORCE_RELOAD 웹소켓 이벤트를 쏴서 본인 포함 전원 새로고침되므로 별도 처리 불필요
-            } catch (error) {
-                console.error('회의 녹음 전송 실패:', error);
-                alert('녹음 파일 전송에 실패했습니다.');
-            } finally {
-                setIsUploadingMeetingAudio(false);
-            }
-        },
-    });
 
     // 유저 ID 기반 배경색 생성 함수
     const getRandomColor = (id) => {
@@ -177,7 +155,7 @@ const CanvasHeader = () => {
                     </select>
 
                     {currentVersion !== 'live' && userRole === 'OWNER' && (
-                        <button className="commit-btn" style={{ marginLeft: '10px', backgroundColor: '#e67e22' }} onClick={() => {
+                        <button className="commit-btn" style={{ marginLeft: '0px', backgroundColor: '#e67e22' }} onClick={() => {
                             if (window.confirm(`이 버전(v${currentVersion})으로 현재 프로젝트를 완전히 덮어쓰시겠습니까?`)) {
                                 restoreProjectFromServer(currentVersion);
                             }
@@ -193,19 +171,9 @@ const CanvasHeader = () => {
                     )}
                 </div>
 
-                <div className="action-buttons" style={{ display: 'flex', gap: '8px', marginLeft: '15px' }}>
+                <div className="action-buttons" style={{ display: 'flex', gap: '10px', marginLeft: '0px' }}>
                     {userRole === 'OWNER' && (
                         <button className="commit-btn" onClick={handleCommit}>버전 저장 (Commit)</button>
-                    )}
-                    {userRole === 'OWNER' && (
-                        <button
-                            className={`meeting-record-btn ${isMeetingRecording ? 'recording' : ''}`}
-                            onClick={toggleMeetingRecording}
-                            disabled={isUploadingMeetingAudio}
-                            title={isMeetingRecording ? '녹음 종료 후 캔버스에 반영' : '회의 내용을 녹음해서 캔버스에 반영'}
-                        >
-                            {isUploadingMeetingAudio ? '⏳ 반영 중...' : isMeetingRecording ? '🔴 녹음 종료' : '🎙️ 회의 녹음'}
-                        </button>
                     )}
                 </div>
             </div>
@@ -215,7 +183,7 @@ const CanvasHeader = () => {
                     onClick={openMemberModal}
                     style={{ padding: '5px 10px', backgroundColor: '#fff', color: 'black', border: 'none', borderRadius: '50px', cursor: 'pointer', fontWeight: 'bold' }}
                 >
-                    ⚙️ 멤버 관리
+                   ⚙️ 멤버 관리
                 </button>
 
                 <div className="online-members" style={{ display: 'flex', gap: '8px' }}>
