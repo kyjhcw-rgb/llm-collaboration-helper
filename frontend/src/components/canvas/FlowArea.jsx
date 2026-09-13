@@ -132,6 +132,9 @@ const FlowContents = () => {
     const [hoveredEdgeId, setHoveredEdgeId] = useState(null);
     const [contextMenu, setContextMenu] = useState(null);
 
+    // 선택된 API 상태 관리
+    const [selectedApi, setSelectedApi] = useState("POST /api/v1/users");
+
     const closeFile = useCallback((fileId) => {
         if (!isEditable) return;
         const state = useCanvasStore.getState();
@@ -173,18 +176,35 @@ const FlowContents = () => {
         [nodes, getRoot]
     );
 
-    const openFiles = useMemo(
-        () => nodes.filter(n => n.data?.type === 'feature' && n.data?.hidden === false),
-        [nodes]
-    );
+    // ========================================================
+    // 💡 핵심: 선택된 API별로 노드 및 엣지 필터링하기
+    // ========================================================
+    const apiFilteredNodes = useMemo(() => {
+        return revealedNodes.filter(node => {
+            // 레이어/배경용 그룹 노드이거나 api 정보가 없는 노드는 항상 노출
+            if (node.data?.type === 'layer' || !node.data?.api) return true;
+            
+            // 배열로 관리하는 경우: node.data.api.includes(selectedApi)
+            // 단일 문자열인 경우: node.data.api === selectedApi
+            if (Array.isArray(node.data?.api)) {
+                return node.data.api.includes(selectedApi);
+            }
+            return node.data?.api === selectedApi;
+        });
+    }, [revealedNodes, selectedApi]);
 
-    const visibleNodeIds = useMemo(() => new Set(revealedNodes.map(n => n.id)), [revealedNodes]);
+    const apiFilteredNodeIds = useMemo(() => new Set(apiFilteredNodes.map(n => n.id)), [apiFilteredNodes]);
 
     const displayEdges = useMemo(() => {
         return edges
-            .filter(e => visibleNodeIds.has(e.source) && visibleNodeIds.has(e.target))
+            .filter(e => apiFilteredNodeIds.has(e.source) && apiFilteredNodeIds.has(e.target))
             .map(e => ({ ...e, zIndex: e.id === hoveredEdgeId ? 10 : 0 }));
-    }, [edges, visibleNodeIds, hoveredEdgeId]);
+    }, [edges, apiFilteredNodeIds, hoveredEdgeId]);
+
+    const openFiles = useMemo(
+        () => apiFilteredNodes.filter(n => n.data?.type === 'feature' && n.data?.hidden === false),
+        [apiFilteredNodes]
+    );
 
     const relatedCallMethods = useMemo(() => {
         if (!selectedNodeId) return [];
@@ -484,7 +504,7 @@ const FlowContents = () => {
             const nextNodes = state.nodes.map(n => n.id !== fileId ? n : {
                 ...n,
                 position: { x: projectedPosition.x - w / 2, y: projectedPosition.y - h / 2 },
-                data: { ...n.data, hidden: false, lastUpdatedBy: myUserId, lastUpdatedAt: Date.now() },
+                data: { ...n.data, hidden: false, api: selectedApi, lastUpdatedBy: myUserId, lastUpdatedAt: Date.now() },
             });
             state.setNodes(recalculateContainerSizes(nextNodes));
             return;
@@ -515,7 +535,8 @@ const FlowContents = () => {
             id: `node_${Date.now()}`,
             type: 'custom',
             position: { x: projectedPosition.x - (initialWidth / 2), y: projectedPosition.y - 320 },
-            data: { label: `${type} 블록`, description: '', type: domainType, name: `${type} 블록` },
+            // 생성되는 노드 데이터에 현재 selectedApi 태그 기록
+            data: { label: `${type} 블록`, description: '', type: domainType, name: `${type} 블록`, api: selectedApi },
             className: nodeClass,
             width: initialWidth,
             height: initialHeight,
@@ -545,7 +566,7 @@ const FlowContents = () => {
         }
 
         state.setNodes(recalculateContainerSizes([...state.nodes, finalNode]));
-    }, [screenToFlowPosition, isEditable, myUserId]);
+    }, [screenToFlowPosition, isEditable, myUserId, selectedApi]);
 
     const selectedNode = useMemo(() => nodesMap.get(selectedNodeId), [nodesMap, selectedNodeId]);
 
@@ -559,39 +580,88 @@ const FlowContents = () => {
             }}
             style={{ flex: 1, width: '100%', height: '100%', position: 'relative' }}
         >
-            {/* 상단 중앙 플로팅 탭 바 — 현재 열려있는(hidden:false) 기능/파일 목록 */}
-{openFiles.length > 0 && (
-    <div className="canvas-top-tabbar-container">
-        <div className="open-files-tabbar">
-            {openFiles.map(file => {
-                const isSelected = file.id === selectedNodeId;
-                return (
-                    <div 
-                        key={file.id} 
-                        className={`open-file-tab ${isSelected ? 'active' : ''}`}
-                        onClick={() => setSelectedNodeId(file.id)}
-                    >
-                        <span className="open-file-tab-label">
-                            {file.data?.label || file.data?.name || '기능'}
-                        </span>
-                        {isEditable && (
-                            <button
-                                className="open-file-tab-close"
-                                title="닫기"
-                                onClick={(e) => {
-                                    e.stopPropagation(); // 탭 클릭 이벤트와 겹쳐서 선택되는 것 방지
-                                    closeFile(file.id);
-                                }}
-                            >
-                                ✕
-                            </button>
-                        )}
+            {/* 상단 API 선택 드롭다운 */}
+            <div 
+                className="api-selector-floating" 
+                style={{
+                    position: 'absolute',
+                    top: 15,
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    zIndex: 200,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    backgroundColor: '#ffffff',
+                    padding: '6px 16px',
+                    borderRadius: '30px',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
+                    border: '1px solid #e2e8f0'
+                }}
+            >
+                <span 
+                    style={{
+                        backgroundColor: selectedApi.startsWith('POST') ? '#22c55e' : '#3b82f6',
+                        color: '#ffffff',
+                        fontSize: '11px',
+                        fontWeight: 'bold',
+                        padding: '3px 8px',
+                        borderRadius: '4px'
+                    }}
+                >
+                    {selectedApi.split(' ')[0]}
+                </span>
+                <select
+                    value={selectedApi}
+                    onChange={(e) => setSelectedApi(e.target.value)}
+                    style={{
+                        border: 'none',
+                        outline: 'none',
+                        background: 'transparent',
+                        fontWeight: '600',
+                        fontSize: '14px',
+                        color: '#1e293b',
+                        cursor: 'pointer'
+                    }}
+                >
+                    <option value="POST /api/v1/users">[POST] /api/v1/users (회원가입 API)</option>
+                    <option value="GET /api/v1/orders/{id}">[GET] /api/v1/orders/{'{id}'} (주문 단건 조회 API)</option>
+                </select>
+            </div>
+
+            {/* 플로팅 탭 바 */}
+            {openFiles.length > 0 && (
+                <div className="canvas-top-tabbar-container">
+                    <div className="open-files-tabbar">
+                        {openFiles.map(file => {
+                            const isSelected = file.id === selectedNodeId;
+                            return (
+                                <div 
+                                    key={file.id} 
+                                    className={`open-file-tab ${isSelected ? 'active' : ''}`}
+                                    onClick={() => setSelectedNodeId(file.id)}
+                                >
+                                    <span className="open-file-tab-label">
+                                        {file.data?.label || file.data?.name || '기능'}
+                                    </span>
+                                    {isEditable && (
+                                        <button
+                                            className="open-file-tab-close"
+                                            title="닫기"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                closeFile(file.id);
+                                            }}
+                                        >
+                                            ✕
+                                        </button>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
-                );
-            })}
-        </div>
-    </div>
-)}
+                </div>
+            )}
 
             {contextMenu && (
                 <div
@@ -618,8 +688,9 @@ const FlowContents = () => {
                 </defs>
             </svg>
 
+            {/* 필터링된 노드(apiFilteredNodes) 및 엣지(displayEdges) 전달 */}
             <ReactFlow
-                nodes={revealedNodes}
+                nodes={apiFilteredNodes}
                 edges={displayEdges}
                 nodeTypes={nodeTypes}
                 edgeTypes={edgeTypes}
@@ -668,7 +739,7 @@ const FlowContents = () => {
                     boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
                     zIndex: 100
                 }}>
-                    <div style={{ fontSize: '20px',fontWeight: 'bold', marginBottom: '0px', color: '#333' }}>
+                    <div style={{ fontSize: '15px',fontWeight: 'bold', marginBottom: '0px', color: '#333' }}>
                         호출 관계 목록 <span style={{ color: '#0056b3' }}>{selectedNode.data?.label}</span>
                     </div>
                     {relatedCallMethods.length > 0 ? (
@@ -680,14 +751,14 @@ const FlowContents = () => {
                                     color: '#856404',
                                     padding: '5px 10px',
                                     borderRadius: '5px',
-                                    fontSize: '20px'
+                                    fontSize: '15px'
                                 }}>
                                     🔹 {m.data?.label}
                                 </span>
                             ))}
                         </div>
                     ) : (
-                        <div style={{ fontSize: '20px', padding: '6px 10px',color: '#777' }}>연관된 호출 메서드가 없습니다.</div>
+                        <div style={{ fontSize: '15px', padding: '5px 10px',color: '#777' }}>연관된 호출 메서드가 없습니다.</div>
                     )}
                 </div>
             )}
