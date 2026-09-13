@@ -11,8 +11,8 @@ from core.config import MODEL_ID, client
 from core.exceptions import handle_genai_error
 from schemas.chat import ChatRequest, ModifyResponse
 from schemas.common import DiagramRes
-from services.chat import modify_diagram
-from services.clova import request_clova_stt
+from services.chat_service import modify_diagram
+from services.clova_service import request_clova_stt
 from utils.diagram_helper import serialize_diagram, parse_diagram_json
 
 logger = logging.getLogger(__name__)

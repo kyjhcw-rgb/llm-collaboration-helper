@@ -3,7 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, File, Form, UploadFile
 
 from schemas.chat import ModifyResponse
-from services.meetings import process_meeting_audio
+from services.meetings_service import process_meeting_audio
 
 router = APIRouter()
 
