@@ -8,7 +8,7 @@ from schemas.project import (
     SingleCodeGenerationRequest,
     SingleCodeGenerationResponse,
 )
-from services.project import (
+from services.project_service import (
     generate_file_tree,
     generate_initial_diagram,
     generate_single_code,

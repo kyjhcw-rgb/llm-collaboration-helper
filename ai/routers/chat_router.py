@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from schemas.chat import ChatRequest, ChatResponse, ModifyResponse
-from services.chat import ask_about_project, modify_diagram
+from services.chat_service import ask_about_project, modify_diagram
 
 router = APIRouter()
 
