@@ -348,6 +348,7 @@ function parseCanvasData(data) {
                 parameters: block.parameters || '',
                 returnType: block.returnType || '',
                 annotations: block.annotations || '',
+                api: block.api || block.apiEndpoint || null,
                 lastUpdatedBy: null,
                 lastUpdatedAt: null
             }
@@ -882,6 +883,7 @@ export const useCanvasStore = create((set, get) => ({
             parameters: node.data?.parameters || null,
             returnType: node.data?.returnType || null,
             annotations: node.data?.annotations || null,
+            api: node.data?.api || null,
             posX: parseFloat(node.position.x || 0),
             posY: parseFloat(node.position.y || 0),
             width: parseFloat(node.width || node.style?.width || DEFAULT_SIZES[node.data?.type]?.w || 150),
