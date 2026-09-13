@@ -99,11 +99,12 @@
 
 /* 탭 바 패널 스타일 */
 .open-files-tabbar {
+    margin-top: 50px;
     pointer-events: auto; /* 탭 버튼 영역은 클릭 가능하도록 설정 */
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 10px 10px;
+    padding: 5px;
     background: rgba(255, 255, 255, 0.92);
     backdrop-filter: blur(8px); /* 모던한 글래스모피즘 효과 */
     border: 1px solid rgba(226, 232, 240, 0.8);
@@ -123,10 +124,10 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 10px 15px;
+    padding: 5px 10px;
     background-color: #f1f5f9;
     color: #475569;
-    font-size: 18px;
+    font-size: 13px;
     font-weight: 500;
     border-radius: 50px;
     cursor: pointer;
