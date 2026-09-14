@@ -53,6 +53,23 @@
     width: 100%;
 }
 
+/* 댓글 탭에서만 좌우 패딩을 줄여서 댓글 입력창이 훨씬 넓게 보이도록 함.
+   (overflow: auto가 걸린 상태라 음수 마진으로 삐져나오게 하는 방식은 CSS 스펙상
+   overflow-x/overflow-y 중 하나만 visible로 둘 수 없어서 - 나머지 자식들은
+   기존 15px 인셋을 유지하도록 아래에서 보정한다.) */
+.tab-content--comments {
+    padding-left: 2px;
+    padding-right: 2px;
+}
+
+.tab-content--comments .info-title,
+.tab-content--comments .comment-list,
+.tab-content--comments .no-selection-wrapper {
+    padding-left: 13px;
+    padding-right: 13px;
+    box-sizing: border-box;
+}
+
 /* 제목 */
 .info-title {
     font-size: 18px;
@@ -399,6 +416,11 @@
     flex-direction: column;
     height: 100%;
     width: 100%;
+    /* SignupPage.css의 스코프 없는 전역 `div { align-items:center; justify-content:space-between;
+       gap:20px }` 규칙이 이 앱 전체 div에 새어 들어와서 명시적으로 덮어써야 함 */
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 0;
 }
 
 .comment-list {
