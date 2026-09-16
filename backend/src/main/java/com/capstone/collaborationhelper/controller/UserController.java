@@ -50,4 +50,18 @@ public class UserController {
             return ResponseEntity.internalServerError().body(Map.of("error", "서버 오류가 발생했습니다."));
         }
     }
+
+    // 회원 탈퇴 API
+    @DeleteMapping("/me")
+    public ResponseEntity<?> withdrawUser(Principal principal) {
+        if (principal == null) {
+            return ResponseEntity.status(401).body(Map.of("error", "인증이 필요합니다."));
+        }
+        try {
+            authService.withdrawUser(principal.getName());
+            return ResponseEntity.ok(Map.of("message", "회원 탈퇴가 완료되었습니다."));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(Map.of("error", "탈퇴 처리 중 오류가 발생했습니다."));
+        }
+    }
 }
