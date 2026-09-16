@@ -451,6 +451,10 @@ export const useCanvasStore = create((set, get) => ({
     selectedNodeId: null,
     selectedEdgeId: null,
 
+    // AI Agent 미리보기를 위한 상태
+    isAgentPreviewing: false,
+    backupState: null,
+
     setProjectName: (name) => set({ projectName: name }),
     setSelectedNodeId: (id) => set({ selectedNodeId: id, selectedEdgeId: null }),
     setSelectedEdgeId: (id) => set({ selectedEdgeId: id, selectedNodeId: null }),
@@ -638,6 +642,10 @@ export const useCanvasStore = create((set, get) => ({
             if (origin !== 'remote' && ws && ws.readyState === WebSocket.OPEN && get().currentVersion === 'live') {
                 ws.send(update);
             }
+
+            // AI 에이전트 수정 제안을 미리보기 중일 때는, Yjs 업데이트를 화면에 반영하지 않음
+            if (get().isAgentPreviewing) return;
+
 
             // 현재 Zustand에 있는 노드의 UI 전용 상태들(선택, 드래그, 크기 정보) 가져오기
             const currentNodes = get().nodes;
@@ -1026,5 +1034,62 @@ export const useCanvasStore = create((set, get) => ({
             console.error("버전 삭제 실패:", error);
             alert("버전 삭제에 실패했습니다.");
         }
+    },
+
+    // ======== AI Agent 미리보기 & 적용 관련 기능 ========
+    // 1. 에이전트 수정안을 메모리 상(Zustand)에만 미리보기
+    previewAgentChanges: (blocks, edges) => {
+        const state = get();
+        const { nodes: parsedNodes, edges: parsedEdges } = parseCanvasData({ blocks, edges });
+        const finalNodes = sortNodesParentFirst(fixOverlapsAndRecalculate(parsedNodes));
+
+        set({
+            isAgentPreviewing: true,
+            backupState: { nodes: [...state.nodes], edges: [...state.edges] },
+            nodes: finalNodes,
+            edges: parsedEdges
+        });
+    },
+
+    // 2. 미리보기 거절 (백업 복원)
+    rollbackAgentChanges: () => {
+        const state = get();
+        if (!state.isAgentPreviewing || !state.backupState) return;
+
+        set({
+            isAgentPreviewing: false,
+            nodes: state.backupState.nodes,
+            edges: state.backupState.edges,
+            backupState: null
+        });
+    },
+
+    // 3. 에이전트 수정안을 최종 동의 시 실제 Yjs 맵에 적용
+    applyAgentChangesToYjs: (blocks, edges) => {
+        const { nodes: parsedNodes, edges: parsedEdges } = parseCanvasData({ blocks, edges });
+        const finalNodes = sortNodesParentFirst(fixOverlapsAndRecalculate(parsedNodes));
+
+        set({ isAgentPreviewing: false, backupState: null });
+
+        ydoc.transact(() => {
+            const currentNodesIds = new Set(finalNodes.map(n => n.id));
+            const currentEdgesIds = new Set(parsedEdges.map(e => e.id));
+
+            Array.from(ynodesMap.keys()).forEach(id => {
+                if (!currentNodesIds.has(id)) ynodesMap.delete(id);
+            });
+            Array.from(yedgesMap.keys()).forEach(id => {
+                if (!currentEdgesIds.has(id)) yedgesMap.delete(id);
+            });
+
+            finalNodes.forEach(node => ynodesMap.set(node.id, stripUIProps(node)));
+            parsedEdges.forEach(edge => yedgesMap.set(edge.id, stripUIProps(edge)));
+        }, 'local');
+    },
+
+    // 4. API 전송용 Yjs Base64 데이터 추출
+    getEncodedYjsData: () => {
+        const yjsUpdate = Y.encodeStateAsUpdate(ydoc);
+        return uint8ArrayToBase64(yjsUpdate);
     }
 }));

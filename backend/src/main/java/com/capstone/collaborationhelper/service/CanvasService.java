@@ -70,14 +70,15 @@ public class CanvasService {
 
         project.setUpdatedAt(ZonedDateTime.now());
 
-        // 프론트엔드가 보낸 Yjs Binary를 디코딩하여 DB에 저장
-        if (req.getYjsData() != null && !req.getYjsData().isBlank()) {
-            project.setCrdtSnapshot(java.util.Base64.getDecoder().decode(req.getYjsData()));
-        } else {
-            // yjsData가 오지 않은 경우(수정 제안 수락 등), 스냅샷을 초기화하여 새로운 블록/엣지 데이터를 우선하도록 함
-            project.setCrdtSnapshot(null);
+        // yjsData가 명시적으로 들어왔을 때만 스냅샷 처리 진행 (null이면 무시)
+        if (req.getYjsData() != null) {
+            if (!req.getYjsData().isBlank()) {
+                project.setCrdtSnapshot(java.util.Base64.getDecoder().decode(req.getYjsData()));
+            } else {
+                // 명시적으로 빈 문자열("")을 보냈을 때만 null로 초기화하여 기존 스냅샷 삭제
+                project.setCrdtSnapshot(null);
+            }
         }
-
         projectRepository.save(project);
 
         // Block UPSERT
