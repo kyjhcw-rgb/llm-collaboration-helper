@@ -123,21 +123,16 @@ const SidebarLeft = () => {
         methodNodes.some((m) => m.parentNode === feature.id && matchesSearch(m));
 
     const handleFeatureClick = (featureId) => {
+        if (!canDragFiles) return;
         const state = useCanvasStore.getState();
         const myUserId = state.myUserId;
 
         const nextNodes = state.nodes.map((node) => {
-            if (node.data?.type === 'feature') {
-                if (node.id === featureId) {
-                    return {
-                        ...node,
-                        position: { x: 100, y: 100 },
-                        data: { ...node.data, hidden: false, lastUpdatedBy: myUserId, lastUpdatedAt: Date.now() },
-                    };
-                }
+            if (node.data?.type === 'feature' && node.id === featureId) {
                 return {
                     ...node,
-                    data: { ...node.data, hidden: true, lastUpdatedBy: myUserId, lastUpdatedAt: Date.now() },
+                    position: { x: 100, y: 100 },
+                    data: { ...node.data, hidden: false, lastUpdatedBy: myUserId, lastUpdatedAt: Date.now() },
                 };
             }
             return node;

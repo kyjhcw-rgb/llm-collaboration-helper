@@ -18,7 +18,9 @@ const CanvasHeader = () => {
         loadProjectFromServer,
         loadVersionsFromServer,
         deleteVersionFromServer,
-        restoreProjectFromServer
+        restoreProjectFromServer,
+        myUserId,
+        onlineUsers,
     } = useCanvasStore();
 
     // 모달 및 멤버 관리 상태
@@ -26,11 +28,6 @@ const CanvasHeader = () => {
     const [projectMembers, setProjectMembers] = useState([]);
     const [inviteEmail, setInviteEmail] = useState('');
     const [inviteRole, setInviteRole] = useState('MEMBER');
-
-    // 접속 중인 유저 더미 데이터 
-    const onlineUsers = [
-        { id: 1, name: '접속자', avatar: usericon }
-    ];
 
     // 유저 ID 기반 배경색 생성 함수
     const getRandomColor = (id) => {
@@ -188,26 +185,26 @@ const CanvasHeader = () => {
 
                 <div className="online-members" style={{ display: 'flex', gap: '8px' }}>
     {onlineUsers.map(user => (
-        <div 
-            key={user.id} 
-            className="member-avatar" 
-            style={{ position: 'relative' }} 
+        <div
+            key={user.userId}
+            className="member-avatar"
+            style={{ position: 'relative' }}
         >
-            <img 
-                className="usericon" 
-                src={user.avatar} 
-                alt="user-icon" 
+            <img
+                className="usericon"
+                src={user.profileImageUrl || usericon}
+                alt="user-icon"
                 style={{
                     width: '35px',
                     height: '35px',
                     borderRadius: '50%',
-                    backgroundColor: user.color || getRandomColor(user.id),
+                    backgroundColor: getRandomColor(user.userId),
                     boxSizing: 'border-box',
                     display: 'block'
                 }}
             />
             <div className="online-dot"></div>
-            <span className="tooltip">{user.name}</span>
+            <span className="tooltip">{user.nickname}</span>
         </div>
     ))}
 </div>
@@ -261,6 +258,12 @@ const CanvasHeader = () => {
                                             {userRole === 'OWNER' && member.role !== 'OWNER' && (
                                                 <button onClick={() => handleRemoveMember(member.userId, false)} style={{ height: '32px', padding: '0 12px', backgroundColor: '#fee2e2', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                                                     삭제
+                                                </button>
+                                            )}
+
+                                            {member.userId === myUserId && member.role !== 'OWNER' && (
+                                                <button onClick={() => handleRemoveMember(member.userId, true)} style={{ height: '32px', padding: '0 12px', backgroundColor: '#f1f5f9', color: '#64748b', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                                                    나가기
                                                 </button>
                                             )}
                                         </div>
