@@ -16,11 +16,14 @@ const SidebarRight = () => {
         deleteNode,  // 새롭게 만든 Yjs 기반 노드 삭제 함수
         deleteEdge,  // 새롭게 만든 Yjs 기반 엣지 삭제 함수
         saveProjectToServer,
-        loadProjectFromServer,
         userRole,
         currentProjectId,
         currentVersion,
-        myUserId, projectMembers
+        myUserId, projectMembers,
+        previewAgentChanges,
+        rollbackAgentChanges,
+        applyAgentChangesToYjs,
+        getEncodedYjsData,
     } = useCanvasStore();
 
     const [activeTab, setActiveTab] = useState("info");
@@ -203,20 +206,30 @@ const SidebarRight = () => {
         }
     };
 
-    // Agent 제안에 동의 → 이때만 백엔드에 적용 요청을 보내고, 성공 시 캔버스를 새로고침
+    // 미리보기: 캔버스를 제안 상태로 바꿔서 보여줌 (아직 Yjs/서버에는 반영 안 됨)
+    const handleAgentPreview = (msgId) => {
+        const target = messages.find((m) => m.id === msgId);
+        if (!target || target.status !== "pending") return;
+
+        previewAgentChanges(target.blocks, target.edges);
+        setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, status: "previewing" } : m)));
+    };
+
+    // Agent 제안에 동의(미리보기 없이 바로 적용, 또는 미리보기 확정) → Yjs에 반영 + yjsData와 함께 백엔드에 저장
     const handleAgentAgree = async (msgId) => {
         if (applyingProposalIdsRef.current.has(msgId)) return; // 연타 시 두 번째 클릭을 동기적으로 즉시 차단
         const target = messages.find((m) => m.id === msgId);
-        if (!target || target.status !== "pending") return;
+        if (!target || (target.status !== "pending" && target.status !== "previewing")) return;
 
         applyingProposalIdsRef.current.add(msgId);
         setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, status: "applying" } : m)));
         try {
+            applyAgentChangesToYjs(target.blocks, target.edges);
+            const yjsData = getEncodedYjsData();
             await request(`/projects/${currentProjectId}/chat/agent/agree`, {
                 method: "POST",
-                body: JSON.stringify({ blocks: target.blocks, edges: target.edges }),
+                body: JSON.stringify({ blocks: target.blocks, edges: target.edges, yjsData }),
             });
-            await loadProjectFromServer(currentProjectId, null);
             setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, status: "applied" } : m)));
         } catch (e) {
             alert(e.message || "변경사항 적용에 실패했습니다.");
@@ -226,8 +239,12 @@ const SidebarRight = () => {
         }
     };
 
-    // 거부 시에는 로컬 상태만 지우고, 백엔드에는 어떤 요청도 보내지 않음
+    // 거부/롤백: 미리보기 중이었다면 캔버스를 원래대로 되돌리고, 백엔드에는 어떤 요청도 보내지 않음
     const handleAgentDecline = (msgId) => {
+        const target = messages.find((m) => m.id === msgId);
+        if (target?.status === "previewing") {
+            rollbackAgentChanges();
+        }
         setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, status: "declined" } : m)));
     };
 
@@ -450,8 +467,22 @@ const SidebarRight = () => {
                                                 <button className="agent-decline-btn" onClick={() => handleAgentDecline(msg.id)}>
                                                     거부
                                                 </button>
+                                                <button className="agent-preview-btn" onClick={() => handleAgentPreview(msg.id)}>
+                                                    미리보기
+                                                </button>
                                                 <button className="agent-agree-btn" onClick={() => handleAgentAgree(msg.id)}>
-                                                    동의하고 적용
+                                                    바로 적용
+                                                </button>
+                                            </div>
+                                        )}
+                                        {msg.status === "previewing" && (
+                                            <div className="agent-proposal-actions">
+                                                <div className="agent-proposal-status">🔍 미리보기 중</div>
+                                                <button className="agent-decline-btn" onClick={() => handleAgentDecline(msg.id)}>
+                                                    롤백
+                                                </button>
+                                                <button className="agent-agree-btn" onClick={() => handleAgentAgree(msg.id)}>
+                                                    적용
                                                 </button>
                                             </div>
                                         )}
