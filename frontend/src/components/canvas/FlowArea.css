@@ -52,9 +52,6 @@
     height: 48px !important;
     min-height: 48px;
     max-height: 48px;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
 }
 
 /* =========================================
@@ -86,6 +83,14 @@
     width: 20px !important;
     height: 20px !important;
     background-color: #ff4d4f;
+}
+
+/* 핸들이 시각적으로는 작아도(8~14px), 클릭 판정 범위는 눈에 안 보이게 더 넓혀서
+   핸들을 살짝 빗맞혀도 노드 전체가 드래그되지 않고 연결(Connection)로 인식되게 함 */
+.react-flow__handle::after {
+    content: '';
+    position: absolute;
+    inset: -10px;
 }
 /* 캔버스 상단 중앙 플로팅 컨테이너 */
 .canvas-top-tabbar-container {
