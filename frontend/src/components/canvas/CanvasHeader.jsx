@@ -21,7 +21,14 @@ const CanvasHeader = () => {
         restoreProjectFromServer,
         myUserId,
         onlineUsers,
+        undo,
+        redo,
+        canUndo,
+        canRedo,
     } = useCanvasStore();
+
+    const isLive = currentVersion === 'live';
+    const canEditHistory = isLive && userRole !== 'GUEST';
 
     // 모달 및 멤버 관리 상태
     const [isMemberModalOpen, setIsMemberModalOpen] = useState(false);
@@ -169,6 +176,26 @@ const CanvasHeader = () => {
                 </div>
 
                 <div className="action-buttons" style={{ display: 'flex', gap: '10px', marginLeft: '0px' }}>
+                    {canEditHistory && (
+                        <>
+                            <button
+                                onClick={undo}
+                                disabled={!canUndo}
+                                title="실행취소 (Ctrl+Z)"
+                                style={{ padding: '6px 10px', backgroundColor: '#fff', color: canUndo ? '#334155' : '#cbd5e1', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: canUndo ? 'pointer' : 'default', fontWeight: 'bold' }}
+                            >
+                                ↩️ 실행취소
+                            </button>
+                            <button
+                                onClick={redo}
+                                disabled={!canRedo}
+                                title="재실행 (Ctrl+Shift+Z)"
+                                style={{ padding: '6px 10px', backgroundColor: '#fff', color: canRedo ? '#334155' : '#cbd5e1', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: canRedo ? 'pointer' : 'default', fontWeight: 'bold' }}
+                            >
+                                ↪️ 재실행
+                            </button>
+                        </>
+                    )}
                     {userRole === 'OWNER' && (
                         <button className="commit-btn" onClick={handleCommit}>버전 저장 (Commit)</button>
                     )}

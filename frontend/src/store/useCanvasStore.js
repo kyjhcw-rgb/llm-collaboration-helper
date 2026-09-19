@@ -414,7 +414,18 @@ let ws = null;
 let syncDebounceTimer = null;
 let ydocUpdateHandler = null; // 추가: 이벤트 리스너 해제를 위한 참조 변수
 
-function resetYjsEnv() {
+// 헤더의 실행취소/재실행 버튼 활성화 여부를 위해 undo/redo 스택 유무를 스토어에 반영
+function bindUndoManagerEvents(set) {
+    const updateUndoRedoFlags = () => set({
+        canUndo: undoManager.undoStack.length > 0,
+        canRedo: undoManager.redoStack.length > 0,
+    });
+    undoManager.on('stack-item-added', updateUndoRedoFlags);
+    undoManager.on('stack-item-popped', updateUndoRedoFlags);
+    updateUndoRedoFlags();
+}
+
+function resetYjsEnv(set) {
     if (ydocUpdateHandler) {
         ydoc.off('update', ydocUpdateHandler);
         ydocUpdateHandler = null;
@@ -425,6 +436,7 @@ function resetYjsEnv() {
     undoManager = new Y.UndoManager([ynodesMap, yedgesMap], {
         trackedOrigins: new Set(['local']),
     });
+    bindUndoManagerEvents(set);
 }
 
 export const useCanvasStore = create((set, get) => ({
@@ -435,6 +447,8 @@ export const useCanvasStore = create((set, get) => ({
     myUserId: null, // 권한 변경 감지용
     projectMembers: [], // 멤버 정보 상태 추가
     onlineUsers: [],
+    canUndo: false,
+    canRedo: false,
     availableVersions: [], // { versionNumber, commitMessage, createdAt } 객체 배열
 
     // 팀원이 지금 캔버스에서 선택 중인 블록 실시간 표시용 (영구 저장 안 함).
@@ -693,7 +707,7 @@ export const useCanvasStore = create((set, get) => ({
     resetProject: () => {
         localStorage.removeItem('canvas-storage');
         get().disconnectWebSocket();
-        resetYjsEnv();
+        resetYjsEnv(set);
         set({
             currentProjectId: null,
             projectName: '',
@@ -809,7 +823,7 @@ export const useCanvasStore = create((set, get) => ({
             const { yjsData } = data;   // 서버에서 전달받은 Base64 Yjs 바이너리
 
             // Yjs 평행우주 충돌 방지를 위해 REST 로드 시 아예 백지로 갈아끼우기
-            resetYjsEnv();
+            resetYjsEnv(set);
 
             // Yjs 바이너리 데이터가 있으면 Apply, 없으면 (구버전) 수동 주입
             if (yjsData) {
@@ -1056,3 +1070,5 @@ export const useCanvasStore = create((set, get) => ({
         return uint8ArrayToBase64(yjsUpdate);
     }
 }));
+
+bindUndoManagerEvents(useCanvasStore.setState);
