@@ -20,10 +20,9 @@ const SidebarRight = () => {
         currentProjectId,
         currentVersion,
         myUserId, projectMembers,
-        previewAgentChanges,
-        rollbackAgentChanges,
         applyAgentChangesToYjs,
         getEncodedYjsData,
+        undo,
     } = useCanvasStore();
 
     const [activeTab, setActiveTab] = useState("info");
@@ -206,20 +205,11 @@ const SidebarRight = () => {
         }
     };
 
-    // 미리보기: 캔버스를 제안 상태로 바꿔서 보여줌 (아직 Yjs/서버에는 반영 안 됨)
-    const handleAgentPreview = (msgId) => {
-        const target = messages.find((m) => m.id === msgId);
-        if (!target || target.status !== "pending") return;
-
-        previewAgentChanges(target.blocks, target.edges);
-        setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, status: "previewing" } : m)));
-    };
-
-    // Agent 제안에 동의(미리보기 없이 바로 적용, 또는 미리보기 확정) → Yjs에 반영 + yjsData와 함께 백엔드에 저장
+    // Agent 제안에 동의 → Yjs에 바로 반영 + yjsData와 함께 백엔드에 저장
     const handleAgentAgree = async (msgId) => {
         if (applyingProposalIdsRef.current.has(msgId)) return; // 연타 시 두 번째 클릭을 동기적으로 즉시 차단
         const target = messages.find((m) => m.id === msgId);
-        if (!target || (target.status !== "pending" && target.status !== "previewing")) return;
+        if (!target || target.status !== "pending") return;
 
         applyingProposalIdsRef.current.add(msgId);
         setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, status: "applying" } : m)));
@@ -239,13 +229,19 @@ const SidebarRight = () => {
         }
     };
 
-    // 거부/롤백: 미리보기 중이었다면 캔버스를 원래대로 되돌리고, 백엔드에는 어떤 요청도 보내지 않음
+    // 거절 시에는 로컬 상태만 지우고, 백엔드에는 어떤 요청도 보내지 않음
     const handleAgentDecline = (msgId) => {
-        const target = messages.find((m) => m.id === msgId);
-        if (target?.status === "previewing") {
-            rollbackAgentChanges();
-        }
         setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, status: "declined" } : m)));
+    };
+
+    // 적용된 변경을 되돌리기 (Ctrl+Z와 동일한 Yjs UndoManager 재사용)
+    const handleAgentRevert = async (msgId) => {
+        const target = messages.find((m) => m.id === msgId);
+        if (!target || target.status !== "applied") return;
+
+        undo();
+        await saveProjectToServer();
+        setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, status: "reverted" } : m)));
     };
 
     const handleChatKeyDown = (e) => {
@@ -465,24 +461,10 @@ const SidebarRight = () => {
                                         {msg.status === "pending" && (
                                             <div className="agent-proposal-actions">
                                                 <button className="agent-decline-btn" onClick={() => handleAgentDecline(msg.id)}>
-                                                    거부
-                                                </button>
-                                                <button className="agent-preview-btn" onClick={() => handleAgentPreview(msg.id)}>
-                                                    미리보기
+                                                    거절
                                                 </button>
                                                 <button className="agent-agree-btn" onClick={() => handleAgentAgree(msg.id)}>
-                                                    바로 적용
-                                                </button>
-                                            </div>
-                                        )}
-                                        {msg.status === "previewing" && (
-                                            <div className="agent-proposal-actions">
-                                                <div className="agent-proposal-status">🔍 미리보기 중</div>
-                                                <button className="agent-decline-btn" onClick={() => handleAgentDecline(msg.id)}>
-                                                    롤백
-                                                </button>
-                                                <button className="agent-agree-btn" onClick={() => handleAgentAgree(msg.id)}>
-                                                    적용
+                                                    확인
                                                 </button>
                                             </div>
                                         )}
@@ -490,10 +472,18 @@ const SidebarRight = () => {
                                             <div className="agent-proposal-status">적용 중...</div>
                                         )}
                                         {msg.status === "applied" && (
-                                            <div className="agent-proposal-status applied">✅ 캔버스에 적용됨</div>
+                                            <div className="agent-proposal-actions">
+                                                <div className="agent-proposal-status applied">✅ 캔버스에 적용됨</div>
+                                                <button className="agent-revert-btn" onClick={() => handleAgentRevert(msg.id)}>
+                                                    되돌리기
+                                                </button>
+                                            </div>
+                                        )}
+                                        {msg.status === "reverted" && (
+                                            <div className="agent-proposal-status declined">되돌려짐 (적용 이전 상태로 복구됨)</div>
                                         )}
                                         {msg.status === "declined" && (
-                                            <div className="agent-proposal-status declined">거부됨 (캔버스에 반영되지 않았습니다)</div>
+                                            <div className="agent-proposal-status declined">거절됨 (캔버스에 반영되지 않았습니다)</div>
                                         )}
                                     </div>
                                 ) : (

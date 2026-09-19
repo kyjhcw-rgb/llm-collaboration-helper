@@ -283,7 +283,7 @@
     gap: 8px;
 }
 
-.agent-agree-btn, .agent-decline-btn, .agent-preview-btn {
+.agent-agree-btn, .agent-decline-btn, .agent-revert-btn {
     flex: 1;
     padding: 8px;
     font-size: 12px;
@@ -303,7 +303,7 @@
     color: #555;
 }
 
-.agent-preview-btn {
+.agent-revert-btn {
     background-color: #4953BE;
     color: #fff;
 }
