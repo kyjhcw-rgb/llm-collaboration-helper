@@ -734,7 +734,7 @@ const FlowContents = () => {
                 fitView
             >
                 <Background color="#aaa" gap={20} variant="dots" />
-                <Controls />
+                <Controls position="top-left" />
             </ReactFlow>
 
             {selectedNode && selectedNode.data?.type === 'method' && (
