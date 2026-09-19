@@ -20,6 +20,8 @@ export default function App() {
 
             if (modifier && e.key.toLowerCase() === 'z') {
                 e.preventDefault();
+                const { userRole, currentVersion } = useCanvasStore.getState();
+                if (userRole === 'GUEST' || currentVersion !== 'live') return;
                 if (e.shiftKey) {
                     useCanvasStore.getState().redo();
                 } else {
