@@ -35,17 +35,17 @@ def _declaration(
 DIAGRAM_FUNCTION_DECLARATIONS: List[types.FunctionDeclaration] = [
     _declaration(
         "add_folder",
-        "루트에 소스 폴더를 하나 추가한다. name은 controller, service 같은 디렉터리명. 자식 class는 넣지 말고 add_class로 이어라.",
+        "루트에 소스 폴더를 하나 추가한다. id는 필수. name은 controller, service 같은 디렉터리명. 자식 class는 넣지 말고 add_class로 이어라.",
         AddFolderArgs,
     ),
     _declaration(
         "add_class",
-        "있는 folder(parentId) 아래에 class를 하나 추가한다. 자식 method는 add_method로 이어라.",
+        "있는 folder(parentId) 아래에 class를 하나 추가한다. id는 필수. 자식 method는 add_method로 이어라.",
         AddClassArgs,
     ),
     _declaration(
         "add_method",
-        "있는 class(parentId) 아래에 method를 하나 추가한다.",
+        "있는 class(parentId) 아래에 method를 하나 추가한다. id는 필수.",
         AddMethodArgs,
     ),
     _declaration(
