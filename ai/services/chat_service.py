@@ -72,47 +72,47 @@ def modify_diagram(request: ChatRequest) -> ModifyResponse:
     except Exception as e:
         handle_genai_error(e, "다이어그램 수정")
 
-def analyze_and_upgrade_diagram(
-    request: BenchmarkAnalysisRequest
-) -> BenchmarkAnalysisResponse:
-    """유사 서비스를 분석하고 다이어그램 구조 개선안을 제안 및 자동 반영합니다."""
-    diagram_json = serialize_diagram(request.diagram)
+# def analyze_and_upgrade_diagram(
+#     request: BenchmarkAnalysisRequest
+# ) -> BenchmarkAnalysisResponse:
+#     """유사 서비스를 분석하고 다이어그램 구조 개선안을 제안 및 자동 반영합니다."""
+#     diagram_json = serialize_diagram(request.diagram)
     
-    user_prompt = (
-        "현재 다이어그램 구조를 분석하여 시중의 유사 서비스와 비교해줘. "
-        "유사 서비스의 아키텍처 패턴을 바탕으로 우리 서비스의 개선점을 제안하고, "
-        "필요한 클래스/메서드/관계(Edge)를 다이어그램에 추가해서 업데이트해줘."
-    )
+#     user_prompt = (
+#         "현재 다이어그램 구조를 분석하여 시중의 유사 서비스와 비교해줘. "
+#         "유사 서비스의 아키텍처 패턴을 바탕으로 우리 서비스의 개선점을 제안하고, "
+#         "필요한 클래스/메서드/관계(Edge)를 다이어그램에 추가해서 업데이트해줘."
+#     )
 
-    try:
-        response = client.models.generate_content(
-            model=MODEL_ID,
-            contents=history_to_contents(request.history, user_prompt),
-            config=types.GenerateContentConfig(
-                system_instruction=benchmark_analysis_system_instruction(
-                    diagram_json,
-                    request.projectContext
-                ),
-                response_mime_type="application/json",
-                response_schema=BenchmarkAnalysisResponse,
-                temperature=0.3,
-            )
-        )
+#     try:
+#         response = client.models.generate_content(
+#             model=MODEL_ID,
+#             contents=history_to_contents(request.history, user_prompt),
+#             config=types.GenerateContentConfig(
+#                 system_instruction=benchmark_analysis_system_instruction(
+#                     diagram_json,
+#                     request.projectContext
+#                 ),
+#                 response_mime_type="application/json",
+#                 response_schema=BenchmarkAnalysisResponse,
+#                 temperature=0.3,
+#             )
+#         )
 
-        payload = json.loads(response.text)
+#         payload = json.loads(response.text)
 
-        # autoApply가 False인 경우 원본 다이어그램 유지
-        final_diagram = (
-            payload.get("diagram") 
-            if request.autoApply and payload.get("diagram") 
-            else request.diagram.model_dump()
-        )
+#         # autoApply가 False인 경우 원본 다이어그램 유지
+#         final_diagram = (
+#             payload.get("diagram") 
+#             if request.autoApply and payload.get("diagram") 
+#             else request.diagram.model_dump()
+#         )
 
-        return BenchmarkAnalysisResponse(
-            similarServices=payload.get("similarServices", []),
-            improvements=payload.get("improvements", "").strip(),
-            diagram=DiagramRes(**final_diagram)
-        )
+#         return BenchmarkAnalysisResponse(
+#             similarServices=payload.get("similarServices", []),
+#             improvements=payload.get("improvements", "").strip(),
+#             diagram=DiagramRes(**final_diagram)
+#         )
 
-    except Exception as e:
-        handle_genai_error(e, "유사 서비스 벤치마킹 분석 및 다이어그램 업그레이드")
+#     except Exception as e:
+#         handle_genai_error(e, "유사 서비스 벤치마킹 분석 및 다이어그램 업그레이드")
