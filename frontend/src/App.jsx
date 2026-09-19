@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { useCanvasStore } from "./store/useCanvasStore";
 import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
@@ -8,6 +8,7 @@ import ProjectListPage from "./pages/ProjectListPage";
 import ProjectCreatePage from "./pages/ProjectCreatePage";
 import CanvasPage from "./pages/CanvasPage";
 import Guideline from "./pages/Guideline";
+import Landing from "./pages/Landing";
 
 export default function App() {
     useEffect(() => {
@@ -39,14 +40,12 @@ export default function App() {
   {/* 동적 라우트 */}
   <Route path="/canvas/:projectId" element={<CanvasPage />} />
                 
-                <Route path="/" element={<Navigate to="/login" replace />} />
+                <Route path="/" element={<Landing />} />
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/signup" element={<SignupPage />} />
                 <Route path="/projects" element={<ProjectListPage />}/>
                 <Route path="profile" element={<ProfilePage />}/>
                 <Route path="/projects/new" element={<ProjectCreatePage />} />
-                {/* URL에 projectId를 명시하도록 변경 */}
-                <Route path="/canvas/:projectId" element={<CanvasPage />} />
                 <Route path="/guideline" element={<Guideline />} />
             </Routes>
         </BrowserRouter>
