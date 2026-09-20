@@ -1,7 +1,7 @@
 import copy
 import json
 import logging
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, List, Literal, Optional
 
 from google.genai import types
 from pydantic import BaseModel, Field
@@ -26,9 +26,12 @@ PlanToolName = Literal[
 
 class PlannedStep(BaseModel):
     tool: PlanToolName = Field(description="실행할 툴 이름")
-    args: Dict[str, Any] = Field(
-        default_factory=dict,
-        description="해당 툴 인자. 예: add_method면 parentId, name",
+    args: str = Field(
+        default="{}",
+        description=(
+            '툴 인자를 JSON 문자열로. '
+            '예: {"id":"method_xxx","parentId":"cls_yyy","name":"findRestaurants"}'
+        ),
     )
 
 
@@ -39,16 +42,32 @@ class ModifyPlan(BaseModel):
     )
 
 
+def _parse_args(raw: Any) -> Optional[dict]:
+    if isinstance(raw, dict):
+        return raw
+    if not isinstance(raw, str):
+        return None
+    text = raw.strip()
+    if not text:
+        return {}
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
 def _normalize_steps(raw: Optional[list]) -> List[dict]:
     steps = []
     for item in raw or []:
         if isinstance(item, PlannedStep):
-            tool, args = item.tool, item.args or {}
+            tool, raw_args = item.tool, item.args
         elif isinstance(item, dict):
-            tool, args = item.get("tool"), item.get("args") or {}
+            tool, raw_args = item.get("tool"), item.get("args")
         else:
             continue
-        if tool not in TOOL_NAMES or not isinstance(args, dict):
+        args = _parse_args(raw_args)
+        if tool not in TOOL_NAMES or args is None:
             continue
         steps.append({"tool": tool, "args": args})
     return steps
