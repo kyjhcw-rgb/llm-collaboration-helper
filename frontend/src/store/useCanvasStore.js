@@ -449,6 +449,7 @@ export const useCanvasStore = create((set, get) => ({
     onlineUsers: [],
     canUndo: false,
     canRedo: false,
+    focusOnPosition: null, // FlowArea가 마운트되면 (x, y, width, height) => void 함수로 채워짐
     availableVersions: [], // { versionNumber, commitMessage, createdAt } 객체 배열
 
     // 팀원이 지금 캔버스에서 선택 중인 블록 실시간 표시용 (영구 저장 안 함).

@@ -34,10 +34,18 @@ const SidebarLeft = () => {
         if (!name) return;
 
         const state = useCanvasStore.getState();
+        // 기존 파일들과 겹치지 않도록, 가장 오른쪽 파일 옆에 이어서 배치
+        const existingFeatures = state.nodes.filter((n) => n.data?.type === 'feature');
+        const rightmostEdge = existingFeatures.reduce(
+            (max, n) => Math.max(max, (n.position?.x || 0) + (n.width || 400)),
+            0
+        );
+        const newX = existingFeatures.length > 0 ? rightmostEdge + 100 : 0;
+
         const newFile = {
             id: `feature_${Date.now()}`,
             type: 'custom',
-            position: { x: 0, y: 0 },
+            position: { x: newX, y: 0 },
             width: 400,
             height: 300,
             className: 'canvas-node feature-node',
@@ -131,7 +139,6 @@ const SidebarLeft = () => {
             if (node.data?.type === 'feature' && node.id === featureId) {
                 return {
                     ...node,
-                    position: { x: 100, y: 100 },
                     data: { ...node.data, hidden: false, lastUpdatedBy: myUserId, lastUpdatedAt: Date.now() },
                 };
             }
@@ -140,6 +147,12 @@ const SidebarLeft = () => {
 
         state.setNodes(nextNodes);
         setSelectedNodeId(featureId);
+
+        // 새로 열린 파일이 화면 밖에 있어서 열렸는지 안 열렸는지 헷갈리지 않도록, 그 위치로 캔버스 이동
+        const target = nextNodes.find((n) => n.id === featureId);
+        if (target) {
+            state.focusOnPosition?.(target.position.x, target.position.y, target.width, target.height);
+        }
     };
 
     const relatedMethodIds = useMemo(() => {
