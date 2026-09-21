@@ -34,6 +34,7 @@ const SidebarRight = () => {
     const [chatInput, setChatInput] = useState("");
     const [messages, setMessages] = useState([]);
     const [chatLoading, setChatLoading] = useState(false);
+    const [pendingMode, setPendingMode] = useState(null); // 응답 대기 중인 요청의 모드 ('ASK' | 'AGENT')
     const [chatMode, setChatMode] = useState("ask"); // 'ask' | 'agent'
     const chatBottomRef = useRef(null);
     const applyingProposalIdsRef = useRef(new Set()); // 연타로 agent/agree가 중복 호출되는 것 방지 (state는 반영 시차가 있어 ref로 동기 체크)
@@ -180,6 +181,7 @@ const SidebarRight = () => {
         clearTimeout(pending.timerId);
         pendingRequestRef.current = null;
         setChatLoading(false);
+        setPendingMode(null);
 
         if (!success) {
             console.error("AI 응답 실패:", result);
@@ -210,6 +212,7 @@ const SidebarRight = () => {
         if (pendingRequestRef.current !== pending) return;
         pendingRequestRef.current = null;
         setChatLoading(false);
+        setPendingMode(null);
 
         if (pending.mode === "ASK") {
             try {
@@ -250,6 +253,7 @@ const SidebarRight = () => {
         setMessages((prev) => [...prev, userMsg]);
         setChatInput("");
         setChatLoading(true);
+        setPendingMode(pending.mode);
 
         try {
             // Agent 모드는 제안만 받아오고 캔버스에는 반영하지 않음 (동의 시에만 적용)
@@ -269,6 +273,7 @@ const SidebarRight = () => {
             if (pendingRequestRef.current === pending) {
                 pendingRequestRef.current = null;
                 setChatLoading(false);
+                setPendingMode(null);
             }
             pushAssistantMessage("응답 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
         }
@@ -576,7 +581,11 @@ const SidebarRight = () => {
                             ))}
                             {chatLoading && (
                                 <div className="chat-msg ai chat-loading">
-                                    <div className="chat-loading-label">AI가 답변을 작성하는 중입니다. 다른 작업을 하셔도 됩니다.</div>
+                                    <div className="chat-loading-label">
+                                        {pendingMode === "AGENT"
+                                            ? "AI가 수정 제안을 만드는 중입니다. 지금 캔버스를 수정하면 제안을 적용할 때 덮어써질 수 있어요."
+                                            : "AI가 답변을 작성하는 중입니다. 다른 작업을 하셔도 됩니다."}
+                                    </div>
                                     <span>.</span><span>.</span><span>.</span>
                                 </div>
                             )}
