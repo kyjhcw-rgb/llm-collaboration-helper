@@ -118,7 +118,17 @@ const FlowContents = () => {
     const edgeTypes = useMemo(() => ({ custom: CustomEdge }), []);
 
     const { selectedNodeId, setSelectedNodeId, setSelectedEdgeId } = useCanvasStore();
-    const { screenToFlowPosition } = useReactFlow();
+    const { screenToFlowPosition, setCenter } = useReactFlow();
+
+    // 사이드바에서 파일을 열었을 때 그 블록이 있는 위치로 캔버스를 자동으로 이동시키기 위해,
+    // React Flow 인스턴스 밖(SidebarLeft 등)에서도 쓸 수 있도록 스토어에 등록해둠
+    useEffect(() => {
+        useCanvasStore.setState({
+            focusOnPosition: (x, y, width = 400, height = 300) => {
+                setCenter(x + width / 2, y + height / 2, { zoom: 1, duration: 500 });
+            },
+        });
+    }, [setCenter]);
 
     const isLive = useCanvasStore(state => state.currentVersion === 'live');
     const userRole = useCanvasStore(state => state.userRole);
@@ -735,7 +745,7 @@ const FlowContents = () => {
                 fitView
             >
                 <Background color="#aaa" gap={20} variant="dots" />
-                <Controls />
+                <Controls position="top-left" />
             </ReactFlow>
 
             {selectedNode && selectedNode.data?.type === 'method' && (

@@ -414,7 +414,18 @@ let ws = null;
 let syncDebounceTimer = null;
 let ydocUpdateHandler = null; // 추가: 이벤트 리스너 해제를 위한 참조 변수
 
-function resetYjsEnv() {
+// 헤더의 실행취소/재실행 버튼 활성화 여부를 위해 undo/redo 스택 유무를 스토어에 반영
+function bindUndoManagerEvents(set) {
+    const updateUndoRedoFlags = () => set({
+        canUndo: undoManager.undoStack.length > 0,
+        canRedo: undoManager.redoStack.length > 0,
+    });
+    undoManager.on('stack-item-added', updateUndoRedoFlags);
+    undoManager.on('stack-item-popped', updateUndoRedoFlags);
+    updateUndoRedoFlags();
+}
+
+function resetYjsEnv(set) {
     if (ydocUpdateHandler) {
         ydoc.off('update', ydocUpdateHandler);
         ydocUpdateHandler = null;
@@ -425,6 +436,7 @@ function resetYjsEnv() {
     undoManager = new Y.UndoManager([ynodesMap, yedgesMap], {
         trackedOrigins: new Set(['local']),
     });
+    bindUndoManagerEvents(set);
 }
 
 export const useCanvasStore = create((set, get) => ({
@@ -435,6 +447,9 @@ export const useCanvasStore = create((set, get) => ({
     myUserId: null, // 권한 변경 감지용
     projectMembers: [], // 멤버 정보 상태 추가
     onlineUsers: [],
+    canUndo: false,
+    canRedo: false,
+    focusOnPosition: null, // FlowArea가 마운트되면 (x, y, width, height) => void 함수로 채워짐
     availableVersions: [], // { versionNumber, commitMessage, createdAt } 객체 배열
 
     // 팀원이 지금 캔버스에서 선택 중인 블록 실시간 표시용 (영구 저장 안 함).
@@ -450,10 +465,6 @@ export const useCanvasStore = create((set, get) => ({
 
     selectedNodeId: null,
     selectedEdgeId: null,
-
-    // AI Agent 미리보기를 위한 상태
-    isAgentPreviewing: false,
-    backupState: null,
 
     setProjectName: (name) => set({ projectName: name }),
     setSelectedNodeId: (id) => set({ selectedNodeId: id, selectedEdgeId: null }),
@@ -643,10 +654,6 @@ export const useCanvasStore = create((set, get) => ({
                 ws.send(update);
             }
 
-            // AI 에이전트 수정 제안을 미리보기 중일 때는, Yjs 업데이트를 화면에 반영하지 않음
-            if (get().isAgentPreviewing) return;
-
-
             // 현재 Zustand에 있는 노드의 UI 전용 상태들(선택, 드래그, 크기 정보) 가져오기
             const currentNodes = get().nodes;
             const uiStateMap = new Map(currentNodes.map(n => [n.id, {
@@ -701,7 +708,7 @@ export const useCanvasStore = create((set, get) => ({
     resetProject: () => {
         localStorage.removeItem('canvas-storage');
         get().disconnectWebSocket();
-        resetYjsEnv();
+        resetYjsEnv(set);
         set({
             currentProjectId: null,
             projectName: '',
@@ -817,7 +824,7 @@ export const useCanvasStore = create((set, get) => ({
             const { yjsData } = data;   // 서버에서 전달받은 Base64 Yjs 바이너리
 
             // Yjs 평행우주 충돌 방지를 위해 REST 로드 시 아예 백지로 갈아끼우기
-            resetYjsEnv();
+            resetYjsEnv(set);
 
             // Yjs 바이너리 데이터가 있으면 Apply, 없으면 (구버전) 수동 주입
             if (yjsData) {
@@ -1036,40 +1043,11 @@ export const useCanvasStore = create((set, get) => ({
         }
     },
 
-    // ======== AI Agent 미리보기 & 적용 관련 기능 ========
-    // 1. 에이전트 수정안을 메모리 상(Zustand)에만 미리보기
-    previewAgentChanges: (blocks, edges) => {
-        const state = get();
-        const { nodes: parsedNodes, edges: parsedEdges } = parseCanvasData({ blocks, edges });
-        const finalNodes = sortNodesParentFirst(fixOverlapsAndRecalculate(parsedNodes));
-
-        set({
-            isAgentPreviewing: true,
-            backupState: { nodes: [...state.nodes], edges: [...state.edges] },
-            nodes: finalNodes,
-            edges: parsedEdges
-        });
-    },
-
-    // 2. 미리보기 거절 (백업 복원)
-    rollbackAgentChanges: () => {
-        const state = get();
-        if (!state.isAgentPreviewing || !state.backupState) return;
-
-        set({
-            isAgentPreviewing: false,
-            nodes: state.backupState.nodes,
-            edges: state.backupState.edges,
-            backupState: null
-        });
-    },
-
-    // 3. 에이전트 수정안을 최종 동의 시 실제 Yjs 맵에 적용
+    // ======== AI Agent 적용 관련 기능 ========
+    // 에이전트 수정안을 동의 시 실제 Yjs 맵에 적용 (되돌리기는 undo()로 처리)
     applyAgentChangesToYjs: (blocks, edges) => {
         const { nodes: parsedNodes, edges: parsedEdges } = parseCanvasData({ blocks, edges });
         const finalNodes = sortNodesParentFirst(fixOverlapsAndRecalculate(parsedNodes));
-
-        set({ isAgentPreviewing: false, backupState: null });
 
         ydoc.transact(() => {
             const currentNodesIds = new Set(finalNodes.map(n => n.id));
@@ -1087,9 +1065,11 @@ export const useCanvasStore = create((set, get) => ({
         }, 'local');
     },
 
-    // 4. API 전송용 Yjs Base64 데이터 추출
+    // API 전송용 Yjs Base64 데이터 추출
     getEncodedYjsData: () => {
         const yjsUpdate = Y.encodeStateAsUpdate(ydoc);
         return uint8ArrayToBase64(yjsUpdate);
     }
 }));
+
+bindUndoManagerEvents(useCanvasStore.setState);
