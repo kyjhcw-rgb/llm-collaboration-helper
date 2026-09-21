@@ -1,215 +1,267 @@
 package com.capstone.collaborationhelper.service;
 
-import com.capstone.collaborationhelper.client.LlmClient;
-import com.capstone.collaborationhelper.code2diagram.CodeToDiagramService;
-import com.capstone.collaborationhelper.dto.ProjectDtos.CreateReq;
-import com.capstone.collaborationhelper.dto.ProjectDtos.Res;
-import com.capstone.collaborationhelper.dto.TranslationDtos.DiagramRes;
-import com.capstone.collaborationhelper.dto.ProjectDtos.UpdateReq;
-import com.capstone.collaborationhelper.entity.Party;
-import com.capstone.collaborationhelper.entity.Project;
-import com.capstone.collaborationhelper.entity.User;
-import com.capstone.collaborationhelper.repository.PartyRepository;
-import com.capstone.collaborationhelper.repository.ProjectRepository;
-import com.capstone.collaborationhelper.repository.UserRepository;
-import jakarta.persistence.EntityManager;
+import com.capstone.collaborationhelper.dto.CanvasDtos;
+import com.capstone.collaborationhelper.entity.*;
+import com.capstone.collaborationhelper.repository.*;
+import com.capstone.collaborationhelper.websocket.CrdtWebSocketHandler.ForceReloadEvent;
+import com.capstone.collaborationhelper.websocket.CrdtWebSocketHandler.VersionCreatedEvent;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Comparator;
-import java.util.LinkedHashMap;
+import java.time.LocalDateTime;
+import java.time.ZonedDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class ProjectService {
-
-    public static final String ROLE_OWNER = "OWNER";
+public class CanvasService {
 
     private final ProjectRepository projectRepository;
-    private final PartyRepository partyRepository;
+    private final BlockRepository blockRepository;
+    private final EdgeRepository edgeRepository;
+    private final ProjectVersionRepository versionRepository;
+    private final ObjectMapper objectMapper;
     private final UserRepository userRepository;
+    private final PartyRepository partyRepository;
+    private final ProjectCrdtLogRepository crdtLogRepository;
 
-    private final CanvasService canvasService;
-    private final TranslationService translationService;
-    private final LlmClient llmClient;
-    private final CodeToDiagramService codeToDiagramService;
-
-    // 추가: DB 제약조건 오류를 우회하여 초고속 벌크 삭제를 수행하기 위한 의존성 주입
-    private final EntityManager entityManager;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional(readOnly = true)
-    public List<Res> getlist() {
-        User me = currentUser();
+    public CanvasDtos.SyncRes loadLiveCanvas(Integer projectId) {
+        assertPartyMember(projectId);
+        Project project = projectRepository.findById(projectId).orElseThrow();
+        List<Block> blocks = blockRepository.findByProjectIdAndIsDeletedFalse(projectId);
+        List<Edge> edges = edgeRepository.findByProjectIdAndIsDeletedFalse(projectId);
 
-        return partyRepository.findByUser(me).stream()
-                // 1. 프로젝트 최신 수정일 기준 정렬
-                .sorted(Comparator.comparing(
-                        (Party party) -> party.getProject().getUpdatedAt(),
-                        Comparator.nullsLast(Comparator.naturalOrder())
-                ).reversed())
-                // 2. 새로 만든 팩토리 메서드를 사용하여 Project와 Role을 한 번에 결합
-                .map(party -> Res.from(party.getProject(), party.getRole()))
-                .toList();
+        String yjsDataBase64 = project.getCrdtSnapshot() != null ?
+                java.util.Base64.getEncoder().encodeToString(project.getCrdtSnapshot()) : null;
+
+        return new CanvasDtos.SyncRes(mapBlocksToDto(blocks), mapEdgesToDto(edges), yjsDataBase64);
     }
-    
+
     @Transactional(readOnly = true)
-    public Res getById(Integer id) {
-        Project project = projectRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("프로젝트를 찾을 수 없습니다."));
-
-        // 권한 충돌 방지: 단건 조회 시에도 조회하려는 유저의 정확한 Role 정보를 함께 실어 보냄
-        User me = currentUser();
-        Party myParty = partyRepository.findByProjectAndUser(project, me)
-                .orElseThrow(() -> new RuntimeException("이 프로젝트에 접근할 권한이 없습니다."));
-
-        return Res.from(project, myParty.getRole());
+    public CanvasDtos.SyncRes loadVersionCanvas(Integer projectId, Integer versionNumber) {
+        assertPartyMember(projectId);
+        ProjectVersion version = versionRepository.findByProjectIdAndVersionNumber(projectId, versionNumber)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 버전입니다."));
+        try {
+            return objectMapper.readValue(version.getCrdtSnapshot(), CanvasDtos.SyncRes.class);
+        } catch (Exception e) {
+            throw new RuntimeException("스냅샷 파싱 실패", e);
+        }
     }
 
+    // [STEP 2] 프론트엔드의 최신 상태를 DB와 동기화
     @Transactional
-    public Res create(CreateReq req) {
-        log.info("▶ [ProjectService] 새 프로젝트 생성을 시작합니다. 제목: {}", req.getTitle());
+    public void syncLiveCanvas(Integer projectId, CanvasDtos.SyncReq req) {
+        LocalDateTime syncStartTime = LocalDateTime.now();
+        Project project = projectRepository.findById(projectId).orElseThrow();
+        assertNotGuest(projectId);
 
-        User owner = currentUser();
-        Project project = Project.builder()
-                .owner(owner)
-                .title(req.getTitle().trim())
-                .framework(req.getFramework())
-                .freedomLevel(req.getFreedomLevel())
-                .descriptionPrompt(req.getDescriptionPrompt())
-                .build();
+        project.setUpdatedAt(ZonedDateTime.now());
+
+        // yjsData가 명시적으로 전달되었을 때만 crdtSnapshot 업데이트
+        if (req.getYjsData() != null && !req.getYjsData().isBlank()) {
+            project.setCrdtSnapshot(java.util.Base64.getDecoder().decode(req.getYjsData()));
+        }
+        // yjsData가 오지 않은 경우(AI 수락 등) 기존 crdtSnapshot을 함부로 null로 초기화하지 않음
 
         projectRepository.save(project);
 
-        partyRepository.save(Party.builder()
-                .project(project)
-                .user(owner)
-                .role(ROLE_OWNER)
-                .build());
+        // 1. Block UPSERT
+        List<Block> existingBlocks = blockRepository.findByProjectId(projectId);
+        Map<String, Block> blockMap = existingBlocks.stream().collect(Collectors.toMap(Block::getFrontendId, b -> b));
 
+        if (req.getBlocks() != null) {
+            for (CanvasDtos.BlockDto dto : req.getBlocks()) {
+                Block block = blockMap.get(dto.getFrontendId());
+                if (block == null) {
+                    block = Block.builder().project(project).frontendId(dto.getFrontendId()).build();
+                }
+                applyBlockDto(block, dto);
+                blockRepository.save(block);
+                blockMap.remove(dto.getFrontendId());
+            }
+        }
+        List<Block> blocksToDelete = blockMap.values().stream().filter(b -> !b.isDeleted()).peek(b -> b.setDeleted(true)).toList();
+        blockRepository.saveAll(blocksToDelete);
+
+        // 2. Edge 검증 및 UPSERT (유효한 노드 간 연결만 저장)
+        Set<String> validBlockIds = blockRepository.findByProjectIdAndIsDeletedFalse(projectId).stream()
+                .map(Block::getFrontendId)
+                .collect(Collectors.toSet());
+
+        List<Edge> existingEdges = edgeRepository.findByProjectId(projectId);
+        Map<String, Edge> edgeMap = existingEdges.stream().collect(Collectors.toMap(Edge::getFrontendId, e -> e));
+
+        if (req.getEdges() != null) {
+            for (CanvasDtos.EdgeDto dto : req.getEdges()) {
+                // 출발/도착 노드가 실제 존재하는지 검증 (없으면 유령 엣지 방지를 위해 스킵)
+                if (!validBlockIds.contains(dto.getSourceFrontendId()) || !validBlockIds.contains(dto.getTargetFrontendId())) {
+                    log.warn("[Edge Sync Skip] 유효하지 않은 노드 연결 시도 - EdgeId: {}, Source: {}, Target: {}", 
+                            dto.getFrontendId(), dto.getSourceFrontendId(), dto.getTargetFrontendId());
+                    continue;
+                }
+
+                Edge edge = edgeMap.get(dto.getFrontendId());
+                if (edge == null) {
+                    edge = Edge.builder().project(project).frontendId(dto.getFrontendId()).build();
+                }
+                applyEdgeDto(edge, dto);
+                edgeRepository.save(edge);
+                edgeMap.remove(dto.getFrontendId());
+            }
+        }
+        List<Edge> edgesToDelete = edgeMap.values().stream().filter(e -> !e.isDeleted()).peek(e -> e.setDeleted(true)).toList();
+        edgeRepository.saveAll(edgesToDelete);
+
+        // 누적된 CRDT 로그 삭제 (yjsData가 새로 들어왔을 때만 안전하게 정리)
+        if (req.getYjsData() != null && !req.getYjsData().isBlank()) {
+            crdtLogRepository.deleteByProjectIdAndCreatedAtBefore(projectId, syncStartTime);
+        }
+    }
+
+    @Transactional
+    public Integer commitVersion(Integer projectId, String commitMessage) {
+        Project project = projectRepository.findById(projectId).orElseThrow();
+        assertOwner(projectId);
+
+        CanvasDtos.SyncRes currentState = loadLiveCanvas(projectId);
+        byte[] snapshotBytes;
         try {
-            InitialDiagram initial = resolveInitialDiagram(req);
-            if (initial == null) {
-                log.info("✔ [ProjectService] 초기 다이어그램 없이 빈 프로젝트를 생성합니다. 프로젝트 ID: {}", project.getId());
-                return Res.from(project, ROLE_OWNER);
-            }
-
-            translationService.importToDb(project.getId(), initial.diagram());
-            canvasService.commitVersion(project.getId(), initial.commitMessage());
-            log.info("✔ [ProjectService] 초기 다이어그램이 포함된 프로젝트 생성 완료. 프로젝트 ID: {}, source={}",
-                    project.getId(), initial.source());
+            snapshotBytes = objectMapper.writeValueAsBytes(currentState);
         } catch (Exception e) {
-            log.error("❌ [ProjectService] 초기 다이어그램 생성 및 연동 실패: ", e);
-            throw new RuntimeException("초기 아키텍처 다이어그램 생성에 실패하여 프로젝트 생성이 취소되었습니다.", e);
+            throw new RuntimeException("스냅샷 생성 실패", e);
         }
 
-        return Res.from(project, ROLE_OWNER);
-    }
+        List<ProjectVersion> versions = versionRepository.findByProjectIdOrderByVersionNumberDesc(projectId);
+        int nextVersion = versions.isEmpty() ? 1 : versions.get(0).getVersionNumber() + 1;
 
-    /**
-     * 우선순위: repoUrl(코드) &gt; descriptionPrompt(LLM) &gt; 없음(빈 프로젝트).
-     */
-    private InitialDiagram resolveInitialDiagram(CreateReq req) throws Exception {
-        String repoUrl = req.getRepoUrl();
-        if (repoUrl != null && !repoUrl.isBlank()) {
-            log.info("▶ [ProjectService] GitHub 레포에서 초기 다이어그램을 생성합니다.");
-            DiagramRes diagram = codeToDiagramService.fromGitHubUrl(repoUrl.trim());
-            return new InitialDiagram(diagram, "code", "초기 코드 다이어그램 생성");
-        }
+        ProjectVersion newVersion = ProjectVersion.builder()
+                .project(project)
+                .versionNumber(nextVersion)
+                .commitMessage(commitMessage)
+                .crdtSnapshot(snapshotBytes)
+                .build();
+        versionRepository.save(newVersion);
 
-        String prompt = req.getDescriptionPrompt();
-        if (prompt != null && !prompt.isBlank()) {
-            log.info("▶ [ProjectService] LlmClient를 통해 AI 다이어그램 생성을 요청합니다.");
-            DiagramRes diagram = llmClient.requestInitialDiagram(req);
-            if (diagram == null) {
-                return null;
-            }
-            return new InitialDiagram(diagram, "llm", "초기 AI 다이어그램 생성");
-        }
+        eventPublisher.publishEvent(new VersionCreatedEvent(projectId));
 
-        return null;
-    }
-
-    private record InitialDiagram(DiagramRes diagram, String source, String commitMessage) {
+        return nextVersion;
     }
 
     @Transactional
-    public Res update(Integer id, UpdateReq req) {
-        Project project = projectRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("프로젝트를 찾을 수 없습니다."));
+    public void restoreVersion(Integer projectId, Integer versionNumber) {
+        assertOwner(projectId);
 
-        assertOwner(project);
+        CanvasDtos.SyncRes snapshot = loadVersionCanvas(projectId, versionNumber);
 
-        if (req.getTitle() != null && !req.getTitle().isBlank()) {
-            project.setTitle(req.getTitle().trim());
-        }
-        if (req.getFramework() != null) {
-            project.setFramework(req.getFramework());
-        }
-        if (req.getFreedomLevel() != null) {
-            project.setFreedomLevel(req.getFreedomLevel());
-        }
-        if (req.getDescriptionPrompt() != null) {
-            project.setDescriptionPrompt(req.getDescriptionPrompt());
-        }
-        if (req.getDiagramState() != null) {
-            project.setDiagramState(req.getDiagramState());
-        }
+        CanvasDtos.SyncReq restoreReq = new CanvasDtos.SyncReq();
+        restoreReq.setBlocks(snapshot.getBlocks());
+        restoreReq.setEdges(snapshot.getEdges());
+        restoreReq.setYjsData(snapshot.getYjsData());
 
-        // 업데이트 이후 프론트엔드 갱신 데이터에서 권한이 날아가지 않도록 기존 Role을 재조회하여 함께 응답
-        User me = currentUser();
-        Party myParty = partyRepository.findByProjectAndUser(project, me)
-                .orElseThrow(() -> new RuntimeException("이 프로젝트에 접근할 권한이 없습니다."));
+        syncLiveCanvas(projectId, restoreReq);
+        log.info("[Restore] 프로젝트 {}의 라이브 화면이 버전 {} 상태로 덮어씌워졌습니다.", projectId, versionNumber);
 
-        return Res.from(project, myParty.getRole());
+        eventPublisher.publishEvent(new ForceReloadEvent(projectId));
+    }
+
+    @Transactional(readOnly = true)
+    public List<CanvasDtos.VersionDto> getVersionHistory(Integer projectId) {
+        assertPartyMember(projectId);
+        return versionRepository.findByProjectIdOrderByVersionNumberDesc(projectId).stream()
+                .map(v -> new CanvasDtos.VersionDto(v.getVersionNumber(), v.getCommitMessage(), v.getCreatedAt().toString())).toList();
     }
 
     @Transactional
-    public void delete(Integer id) {
-        Project project = projectRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("프로젝트를 찾을 수 없습니다."));
-
-        assertOwner(project);
-
-        // 핵심 해결: 실제 DB에 ON DELETE CASCADE가 반영되지 않은 상태를 방어하기 위한 'JPQL 벌크 삭제'
-        // JPA 캐시를 거치지 않고 DB에 직접 DELETE 쿼리를 날리므로 N+1 문제 없이 빛의 속도로 지워집니다.
-        entityManager.createQuery("DELETE FROM Party p WHERE p.project.id = :id").setParameter("id", id).executeUpdate();
-        entityManager.createQuery("DELETE FROM Block b WHERE b.project.id = :id").setParameter("id", id).executeUpdate();
-        entityManager.createQuery("DELETE FROM Edge e WHERE e.project.id = :id").setParameter("id", id).executeUpdate();
-        entityManager.createQuery("DELETE FROM ProjectCrdtLog c WHERE c.project.id = :id").setParameter("id", id).executeUpdate();
-        entityManager.createQuery("DELETE FROM ProjectVersion v WHERE v.project.id = :id").setParameter("id", id).executeUpdate();
-
-        // (※ 만약 다른 자식 테이블을 추가로 생성하면 똑같이 한 줄 추가하면됨)
-
-        // 자식 데이터가 모두 깔끔하게 지워졌으므로 이제 안전하게 부모(Project)를 삭제
-        projectRepository.delete(project);
+    public void deleteSpecificVersion(Integer projectId, Integer versionNumber) {
+        assertOwner(projectId);
+        versionRepository.findByProjectIdAndVersionNumber(projectId, versionNumber).ifPresent(versionRepository::delete);
     }
 
-    private void assertPartyMember(Project project) {
-        User me = currentUser();
-        if (partyRepository.findByProjectAndUser(project, me).isEmpty()) {
-            throw new RuntimeException("이 프로젝트에 접근할 권한이 없습니다.");
-        }
-    }
-
-    private void assertOwner(Project project) {
-        User me = currentUser();
-        Party myParty = partyRepository.findByProjectAndUser(project, me)
-                .orElseThrow(() -> new RuntimeException("이 프로젝트에 접근할 권한이 없습니다."));
-
-        if (!ROLE_OWNER.equals(myParty.getRole())) {
-            throw new RuntimeException("프로젝트 소유자(OWNER)만 이 작업을 할 수 있습니다.");
-        }
-    }
-
+    // ===============================================
+    // 내부 유틸리티
+    // ===============================================
     private User currentUser() {
         String username = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        return userRepository.findByUsername(username)
-                .orElseThrow(() -> new RuntimeException("로그인 사용자를 찾을 수 없습니다."));
+        return userRepository.findByUsername(username).orElseThrow();
     }
+
+    private Party getMyPartyInfo(Integer projectId) {
+        return partyRepository.findByProjectIdAndUserId(projectId, currentUser().getId()).orElseThrow();
+    }
+
+    private void assertPartyMember(Integer projectId) { getMyPartyInfo(projectId); }
+
+    private void assertNotGuest(Integer projectId) {
+        if ("GUEST".equals(getMyPartyInfo(projectId).getRole())) throw new RuntimeException("GUEST는 편집 불가");
+    }
+
+    private void assertOwner(Integer projectId) {
+        if (!"OWNER".equals(getMyPartyInfo(projectId).getRole())) throw new RuntimeException("방장만 가능");
+    }
+
+    private CanvasDtos.BlockDto mapBlockToDto(Block block) {
+        CanvasDtos.BlockDto dto = new CanvasDtos.BlockDto();
+        dto.setFrontendId(block.getFrontendId()); dto.setParentFrontendId(block.getParentFrontendId());
+        dto.setType(block.getType()); dto.setName(block.getName());
+        dto.setDescription(block.getDescription()); dto.setParameters(block.getParameters());
+        dto.setReturnType(block.getReturnType()); dto.setAnnotations(block.getAnnotations());
+        dto.setPosX(block.getPosX()); dto.setPosY(block.getPosY());
+        dto.setWidth(block.getWidth()); dto.setHeight(block.getHeight());
+        dto.setLastUpdatedBy(block.getLastUpdatedBy() != null ? block.getLastUpdatedBy().getId() : null);
+        return dto;
+    }
+
+    private CanvasDtos.EdgeDto mapEdgeToDto(Edge edge) {
+        CanvasDtos.EdgeDto dto = new CanvasDtos.EdgeDto();
+        dto.setFrontendId(edge.getFrontendId()); dto.setSourceFrontendId(edge.getSourceFrontendId());
+        dto.setTargetFrontendId(edge.getTargetFrontendId()); dto.setSourceHandle(edge.getSourceHandle());
+        dto.setTargetHandle(edge.getTargetHandle()); dto.setType(edge.getType());
+        dto.setBadgeCount(edge.getBadgeCount());
+        dto.setLastUpdatedBy(edge.getLastUpdatedBy() != null ? edge.getLastUpdatedBy().getId() : null);
+        return dto;
+    }
+
+    private void applyBlockDto(Block block, CanvasDtos.BlockDto dto) {
+        block.setDeleted(false); block.setParentFrontendId(dto.getParentFrontendId());
+        block.setType(dto.getType()); block.setName(dto.getName());
+        block.setDescription(dto.getDescription()); block.setParameters(dto.getParameters());
+        block.setReturnType(dto.getReturnType()); block.setAnnotations(dto.getAnnotations());
+        block.setPosX(dto.getPosX()); block.setPosY(dto.getPosY());
+        block.setWidth(dto.getWidth()); block.setHeight(dto.getHeight());
+
+        if (dto.getLastUpdatedBy() != null) {
+            block.setLastUpdatedBy(userRepository.getReferenceById(dto.getLastUpdatedBy()));
+        } else {
+            block.setLastUpdatedBy(null);
+        }
+    }
+
+    private void applyEdgeDto(Edge edge, CanvasDtos.EdgeDto dto) {
+        edge.setDeleted(false); edge.setSourceFrontendId(dto.getSourceFrontendId());
+        edge.setTargetFrontendId(dto.getTargetFrontendId()); edge.setSourceHandle(dto.getSourceHandle());
+        edge.setTargetHandle(dto.getTargetHandle()); edge.setType(dto.getType());
+        edge.setBadgeCount(dto.getBadgeCount());
+
+        if (dto.getLastUpdatedBy() != null) {
+            edge.setLastUpdatedBy(userRepository.getReferenceById(dto.getLastUpdatedBy()));
+        } else {
+            edge.setLastUpdatedBy(null);
+        }
+    }
+
+    private List<CanvasDtos.BlockDto> mapBlocksToDto(List<Block> blocks) { return blocks.stream().map(this::mapBlockToDto).toList(); }
+    private List<CanvasDtos.EdgeDto> mapEdgesToDto(List<Edge> edges) { return edges.stream().map(this::mapEdgeToDto).toList(); }
 }

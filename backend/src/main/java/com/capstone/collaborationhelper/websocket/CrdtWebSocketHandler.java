@@ -32,7 +32,7 @@ public class CrdtWebSocketHandler extends AbstractWebSocketHandler {
     private final CrdtService crdtService;
     private final JwtTokenProvider jwtTokenProvider;
     private final PartyRepository partyRepository;
-    private final UserRepository userRepository; // Username 조회를 위한 의존성 주입
+    private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
 
     private final Map<Integer, CopyOnWriteArrayList<WebSocketSession>> projectSessions = new ConcurrentHashMap<>();
@@ -43,11 +43,10 @@ public class CrdtWebSocketHandler extends AbstractWebSocketHandler {
     public record ForceReloadEvent(Integer projectId) {}
     public record VersionCreatedEvent(Integer projectId) {}
     public record MentionEvent(Integer projectId, Integer targetUserId, String senderNickname) {}
-
-    // 다이어그램 업데이트 이벤트 (수정 제안 수락 등)
     public record DiagramUpdatedEvent(Integer projectId, Integer senderId) {}
 
-    // --- 웹소켓 생명주기 및 CRDT 브로드캐스트 로직 ---
+    // [신규] 비동기 AI 처리 완료 이벤트 (Ask/Agent 모드 공통 지원)
+    public record AiCompletedEvent(Integer projectId, Integer userId, String mode, boolean success, Object result) {}
 
     private Integer extractProjectId(WebSocketSession session) {
         return Integer.parseInt(session.getUri().getPath().substring(session.getUri().getPath().lastIndexOf('/') + 1));
@@ -83,7 +82,6 @@ public class CrdtWebSocketHandler extends AbstractWebSocketHandler {
             return;
         }
 
-        // 이메일 조회가 아닌 UserId 기반의 안전한 파티원 조회로 변경
         Party party = partyRepository.findByProjectIdAndUserId(projectId, user.getId()).orElse(null);
 
         if (party == null) {
@@ -92,7 +90,6 @@ public class CrdtWebSocketHandler extends AbstractWebSocketHandler {
             return;
         }
 
-        // 세션 속성 저장 시 실제 유저의 진짜 이메일과, 토큰에서 뽑은 username을 명확하게 분리해서 저장
         session.getAttributes().put("email", user.getEmail());
         session.getAttributes().put("username", username);
         session.getAttributes().put("userId", party.getUser().getId());
@@ -105,17 +102,14 @@ public class CrdtWebSocketHandler extends AbstractWebSocketHandler {
         projectSessions.computeIfAbsent(projectId, k -> new CopyOnWriteArrayList<>()).add(session);
         log.info("웹소켓 연결 성공: 프로젝트 ID = {}, 유저 이메일 = {}", projectId, username);
 
-        // 누군가 접속하면 온라인 유저 목록 브로드캐스트
         broadcastOnlineUsers(projectId);
     }
 
-    // Yjs 바이너리 데이터 수신 시 (실시간 동시 편집)
     @Override
     protected void handleBinaryMessage(WebSocketSession session, BinaryMessage message) throws Exception {
         Integer userId = (Integer) session.getAttributes().get("userId");
         String role = (String) session.getAttributes().get("role");
 
-        // 권한이 없어서 쫓겨나는 중인 유저(userId가 셋팅 안됨)나 GUEST의 데이터는 즉시 무시
         if (userId == null || "GUEST".equalsIgnoreCase(role)) return;
 
         Integer projectId = extractProjectId(session);
@@ -137,16 +131,13 @@ public class CrdtWebSocketHandler extends AbstractWebSocketHandler {
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
         Integer userId = (Integer) session.getAttributes().get("userId");
-        // 비정상 세션 텍스트 명령어 무시
         if (userId == null) return;
 
         Integer projectId = extractProjectId(session);
 
-        // 프론트엔드의 상태 동기화 요청(REQUEST_SYNC) 완벽 대응
         try {
             JsonNode json = objectMapper.readTree(message.getPayload());
             if (json.has("type") && "REQUEST_SYNC".equals(json.get("type").asText())) {
-                // 백엔드가 쥐고 있는 스냅샷+로그들을 한 팩으로 묶어서 요청한 클라이언트에게만 응답
                 Map<String, Object> syncState = crdtService.getFullSyncState(projectId);
                 synchronized (session) {
                     session.sendMessage(new TextMessage(objectMapper.writeValueAsString(syncState)));
@@ -155,7 +146,6 @@ public class CrdtWebSocketHandler extends AbstractWebSocketHandler {
                 return;
             }
         } catch (Exception e) {
-            // JSON 파싱 에러나 일반 텍스트면 그냥 무시하고 브로드캐스트로 넘김
         }
 
         CopyOnWriteArrayList<WebSocketSession> sessions = projectSessions.get(projectId);
@@ -173,17 +163,13 @@ public class CrdtWebSocketHandler extends AbstractWebSocketHandler {
         Integer projectId = extractProjectId(session);
         if (projectSessions.containsKey(projectId)) {
             CopyOnWriteArrayList<WebSocketSession> sessions = projectSessions.get(projectId);
-
-            // 단순 객체 비교(remove) 대신 세션 ID로 확실하게 찾아 제거
             sessions.removeIf(s -> s.getId().equals(session.getId()));
 
             if (sessions.isEmpty()) {
                 projectSessions.remove(projectId);
             } else {
-                // 누군가 퇴장하면 남은 사람들에게 갱신된 온라인 유저 목록 브로드캐스트
                 broadcastOnlineUsers(projectId);
 
-                // 유저 접속이 완전히 끊겼을 때 (다른 탭 포함) 하이라이트 지우기
                 Integer userId = (Integer) session.getAttributes().get("userId");
                 if (userId != null) {
                     boolean isUserStillOnline = sessions.stream()
@@ -197,7 +183,34 @@ public class CrdtWebSocketHandler extends AbstractWebSocketHandler {
         }
     }
 
-    // --- 스프링 이벤트 리스너 (서비스 레이어에서 호출 시 반응) ---
+    // --- 스프링 이벤트 리스너 ---
+
+    // [신규] 백그라운드 AI 응답 완성 시 해당 유저/방에 이벤트를 Push 전송
+    @EventListener
+    public void handleAiCompletedEvent(AiCompletedEvent event) {
+        CopyOnWriteArrayList<WebSocketSession> sessions = projectSessions.get(event.projectId());
+        if (sessions != null) {
+            try {
+                Map<String, Object> payload = Map.of(
+                        "type", "AI_RESPONSE_READY",
+                        "mode", event.mode(),
+                        "success", event.success(),
+                        "result", event.result()
+                );
+                TextMessage textMsg = new TextMessage(objectMapper.writeValueAsString(payload));
+
+                for (WebSocketSession s : sessions) {
+                    if (s.isOpen() && event.userId().equals(s.getAttributes().get("userId"))) {
+                        synchronized (s) {
+                            try { s.sendMessage(textMsg); } catch (Exception e) { log.error("AI 결과 전송 실패", e); }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.error("AI 완료 이벤트 직렬화 에러", e);
+            }
+        }
+    }
 
     @EventListener
     public void handleRoleChangeEvent(RoleChangeEvent event) {
@@ -243,7 +256,6 @@ public class CrdtWebSocketHandler extends AbstractWebSocketHandler {
         }
     }
 
-    // 다이어그램 업데이트 이벤트 (제안 수락 시 발행되어 다른 클라이언트들을 갱신시킴)
     @EventListener
     public void handleDiagramUpdatedEvent(DiagramUpdatedEvent event) {
         CopyOnWriteArrayList<WebSocketSession> sessions = projectSessions.get(event.projectId());
@@ -251,7 +263,6 @@ public class CrdtWebSocketHandler extends AbstractWebSocketHandler {
             TextMessage textMsg = new TextMessage("{\"type\": \"DIAGRAM_UPDATED\"}");
             for (WebSocketSession s : sessions) {
                 if (s.isOpen()) {
-                    // 수락(적용)한 발신자 본인은 제외합니다 (본인 화면은 이미 갱신 절차를 수행 중)
                     if (!event.senderId().equals(s.getAttributes().get("userId"))) {
                         synchronized (s) { try { s.sendMessage(textMsg); } catch (Exception e) {} }
                     }
@@ -260,7 +271,6 @@ public class CrdtWebSocketHandler extends AbstractWebSocketHandler {
         }
     }
 
-    // 방장이 버전을 저장했을 때 접속 중인 팀원들에게 쏘는 이벤트 핸들러
     @EventListener
     public void handleVersionCreatedEvent(VersionCreatedEvent event) {
         CopyOnWriteArrayList<WebSocketSession> sessions = projectSessions.get(event.projectId());
@@ -278,11 +288,8 @@ public class CrdtWebSocketHandler extends AbstractWebSocketHandler {
     public void handleMentionEvent(MentionEvent event) {
         CopyOnWriteArrayList<WebSocketSession> sessions = projectSessions.get(event.projectId());
         if (sessions != null) {
-            // 전달할 JSON 메시지 포맷 구성
             TextMessage textMsg = new TextMessage(String.format("{\"type\": \"MENTIONED\", \"senderNickname\": \"%s\"}", event.senderNickname()));
-
             for (WebSocketSession s : sessions) {
-                // 멘션 대상자의 세션을 찾아 메시지 전송
                 if (s.isOpen() && event.targetUserId().equals(s.getAttributes().get("userId"))) {
                     synchronized (s) {
                         try { s.sendMessage(textMsg); } catch (Exception e) { log.error("멘션 실시간 알림 전송 실패", e); }
@@ -296,7 +303,6 @@ public class CrdtWebSocketHandler extends AbstractWebSocketHandler {
         CopyOnWriteArrayList<WebSocketSession> sessions = projectSessions.get(projectId);
         if (sessions == null) return;
 
-        // 중복 접속자(같은 유저가 여러 탭 띄운 경우) 방지를 위한 Set
         java.util.Set<Integer> onlineUserIds = new java.util.HashSet<>();
         java.util.List<java.util.Map<String, Object>> onlineUsers = new java.util.ArrayList<>();
 
@@ -332,7 +338,6 @@ public class CrdtWebSocketHandler extends AbstractWebSocketHandler {
         }
     }
 
-    // 유저가 오프라인이 될 때 선택을 지워주는 빈 브로드캐스트
     private void broadcastPresenceClear(Integer projectId, Integer userId) {
         CopyOnWriteArrayList<WebSocketSession> sessions = projectSessions.get(projectId);
         if (sessions == null) return;
