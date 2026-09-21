@@ -84,14 +84,6 @@
     height: 20px !important;
     background-color: #ff4d4f;
 }
-
-/* 핸들이 시각적으로는 작아도(8~14px), 클릭 판정 범위는 눈에 안 보이게 더 넓혀서
-   핸들을 살짝 빗맞혀도 노드 전체가 드래그되지 않고 연결(Connection)로 인식되게 함 */
-.react-flow__handle::after {
-    content: '';
-    position: absolute;
-    inset: -10px;
-}
 /* 캔버스 상단 중앙 플로팅 컨테이너 */
 .canvas-top-tabbar-container {
     position: absolute;
@@ -185,4 +177,52 @@
 
 .open-file-tab.active .open-file-tab-close:hover {
     background-color: rgba(255, 255, 255, 0.25);
+}
+/* 1. 핸들 Wrapper 히트 영역 확장 및 노드 드래그 차단 */
+.handle-wrapper {
+    position: absolute;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    cursor: crosshair;
+}
+
+.handle-wrapper.handle-top {
+    top: -12px;
+    left: calc(50% - 12px);
+}
+
+.handle-wrapper.handle-bottom {
+    bottom: -12px;
+    left: calc(50% - 12px);
+}
+
+/* 2. 실제 반응하는 가상 투명 히트 영역 (Hit Target) 확장 */
+.react-flow__handle {
+    width: 10px !important;
+    height: 10px !important;
+    background-color: #4953BE;
+    border: 2px solid #ffffff;
+    transition: all 0.2s ease;
+}
+
+/* ::after 의사 요소를 사용해 마우스 클릭/드래그가 감지되는 범위를 크게 확대 */
+.react-flow__handle::after {
+    content: '';
+    position: absolute;
+    top: -10px;
+    left: -10px;
+    right: -10px;
+    bottom: -10px;
+    background: transparent;
+    border-radius: 50%;
+}
+
+.react-flow__handle:hover {
+    width: 14px !important;
+    height: 14px !important;
+    background-color: #2563eb;
 }

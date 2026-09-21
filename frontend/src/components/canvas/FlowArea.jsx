@@ -720,6 +720,7 @@ const FlowContents = () => {
                 connectionMode={ConnectionMode.Loose}
                 nodesConnectable={isEditable}
                 nodesDraggable={isEditable}
+                noDragClassName="nodrag"
                 elementsSelectable={true}
                 onlyRenderVisibleElements={true}
                 onNodesChange={handleNodesChange}
@@ -748,41 +749,62 @@ const FlowContents = () => {
             </ReactFlow>
 
             {selectedNode && selectedNode.data?.type === 'method' && (
-                <div className="call-relation-panel" style={{
-                    position: 'absolute',
-                    bottom: 20,
-                    left: 20,
-                    right: 20,
-                    backgroundColor: '#ffffff',
-                    border: '1px solid #ccc',
-                    borderRadius: '10px',
-                    padding: '15px',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                    zIndex: 100
-                }}>
-                    <div style={{ fontSize: '15px',fontWeight: 'bold', marginBottom: '0px', color: '#333' }}>
-                        호출 관계 목록 <span style={{ color: '#0056b3' }}>{selectedNode.data?.label}</span>
-                    </div>
-                    {relatedCallMethods.length > 0 ? (
-                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                            {relatedCallMethods.map(m => (
-                                <span key={m.id} style={{
-                                    backgroundColor: '#fff3cd',
-                                    border: '1px solid #ffeba2',
-                                    color: '#856404',
-                                    padding: '5px 10px',
-                                    borderRadius: '5px',
-                                    fontSize: '15px'
-                                }}>
-                                    🔹 {m.data?.label}
-                                </span>
-                            ))}
-                        </div>
-                    ) : (
-                        <div style={{ fontSize: '15px', padding: '5px 10px',color: '#777' }}>연관된 호출 메서드가 없습니다.</div>
-                    )}
-                </div>
-            )}
+    <div className="call-relation-panel" style={{
+        position: 'absolute',
+        bottom: 20,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        width: 'calc(100% - 40px)',
+        maxWidth: '800px',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        gap: '20px',
+        backgroundColor: '#ffffff',
+        border: '1px solid #ccc',
+        borderRadius: '10px',
+        padding: '10px 20px',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+        zIndex: 100
+    }}>
+        <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '12px', 
+            fontSize: '15px', 
+            fontWeight: 'bold', 
+            color: '#333', 
+            whiteSpace: 'nowrap' 
+        }}>
+            <span>호출 관계 목록</span>
+            <span style={{ color: '#0056b3', backgroundColor: '#eef6ff', padding: '2px 8px', borderRadius: '4px' }}>
+                {selectedNode.data?.label}
+            </span>
+        </div>
+
+        {relatedCallMethods.length > 0 ? (
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                {relatedCallMethods.map(m => (
+                    <span key={m.id} style={{
+                        backgroundColor: '#fff3cd',
+                        border: '1px solid #ffeba2',
+                        color: '#856404',
+                        padding: '2px 10px',
+                        borderRadius: '5px',
+                        fontSize: '14px',
+                        whiteSpace: 'nowrap'
+                    }}>
+                        🔹 {m.data?.label}
+                    </span>
+                ))}
+            </div>
+        ) : (
+            <div style={{ fontSize: '14px', color: '#777', whiteSpace: 'nowrap' }}>
+                연관된 호출 메서드가 없습니다.
+            </div>
+        )}
+    </div>
+)}
         </div>
     );
 };

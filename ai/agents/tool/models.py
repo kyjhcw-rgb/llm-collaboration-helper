@@ -4,8 +4,9 @@ from pydantic import BaseModel, Field
 
 
 class AddFolderArgs(BaseModel):
-    id: Optional[str] = Field(
-        default=None, description="예: folder_controller. 생략 가능"
+    id: str = Field(
+        min_length=1,
+        description="고유 ID (예: folder_controller). 뒤 스텝 parentId 등에 이 값을 쓴다",
     )
     name: str = Field(description="소스 폴더명 (예: controller, service, dto)")
     description: str = Field(default="", description="한글 역할 설명 (예: API 계층)")
@@ -13,8 +14,9 @@ class AddFolderArgs(BaseModel):
 
 class AddClassArgs(BaseModel):
     parentId: str = Field(description="넣을 folder id")
-    id: Optional[str] = Field(
-        default=None, description="예: cls_user_service. 생략 가능"
+    id: str = Field(
+        min_length=1,
+        description="고유 ID (예: cls_user_service). 뒤 스텝 parentId 등에 이 값을 쓴다",
     )
     name: str = Field(description="클래스·인터페이스 이름 (예: UserService)")
     description: str = Field(default="", description="한글 역할 설명 (예: 회원 비즈니스 로직)")
@@ -26,8 +28,9 @@ class AddClassArgs(BaseModel):
 
 class AddMethodArgs(BaseModel):
     parentId: str = Field(description="넣을 class id")
-    id: Optional[str] = Field(
-        default=None, description="예: method_get_user. 생략 가능"
+    id: str = Field(
+        min_length=1,
+        description="고유 ID (예: method_get_user). 뒤 스텝 fromId/to 등에 이 값을 쓴다",
     )
     name: str = Field(description="메서드 이름 (예: getUser)")
     description: str = Field(default="", description="한글 역할 설명 (예: 회원 조회)")
