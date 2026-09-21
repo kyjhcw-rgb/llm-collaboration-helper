@@ -1,9 +1,7 @@
 package com.capstone.collaborationhelper.controller;
 
 import com.capstone.collaborationhelper.dto.CanvasDtos;
-import com.capstone.collaborationhelper.dto.ChatDtos.AgentRes;
 import com.capstone.collaborationhelper.dto.ChatDtos.ChatReq;
-import com.capstone.collaborationhelper.dto.ChatDtos.ChatRes;
 import com.capstone.collaborationhelper.dto.ChatDtos.MessageRes;
 import com.capstone.collaborationhelper.service.ChatService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -30,28 +28,25 @@ public class ChatController {
         return ResponseEntity.ok(chatService.getMessages(projectId));
     }
 
-    @Operation(summary = "Ask 모드", description = "현재 프로젝트의 라이브 다이어그램과 기획 설명을 바탕으로 AI에게 질문합니다. 다이어그램은 변경되지 않습니다.")
+    @Operation(summary = "Ask 모드", description = "비동기로 요청하며 완료 시 WebSocket(AI_RESPONSE_READY)으로 결과를 받습니다.")
     @PostMapping("/ask")
-    public ResponseEntity<ChatRes> chat(
+    public ResponseEntity<?> chat(
             @PathVariable Integer projectId,
             @Valid @RequestBody ChatReq req) {
-        return ResponseEntity.ok(chatService.chat(projectId, req));
+        chatService.chatAsync(projectId, req);
+        return ResponseEntity.accepted().body(Map.of("message", "Ask 요청이 접수되었습니다. 완료 시 웹소켓 알림이 전송됩니다."));
     }
 
-    @Operation(
-            summary = "Agent 모드",
-            description = "수정 제안을 생성합니다. reply와 canvas 형태(blocks/edges)를 반환하며 DB에는 반영하지 않습니다. "
-                    + "folders 트리는 translation mapper로 변환됩니다. 적용은 POST /agent/agree. GUEST는 사용할 수 없습니다.")
+    @Operation(summary = "Agent 모드", description = "비동기로 수정 제안 요청하며 완료 시 WebSocket(AI_RESPONSE_READY)으로 결과를 받습니다.")
     @PostMapping("/agent")
-    public ResponseEntity<AgentRes> agent(
+    public ResponseEntity<?> agent(
             @PathVariable Integer projectId,
             @Valid @RequestBody ChatReq req) {
-        return ResponseEntity.ok(chatService.agent(projectId, req));
+        chatService.agentAsync(projectId, req);
+        return ResponseEntity.accepted().body(Map.of("message", "Agent 제안 생성 요청이 접수되었습니다. 완료 시 웹소켓 알림이 전송됩니다."));
     }
 
-    @Operation(
-            summary = "Agent 제안 확정",
-            description = "POST /agent 응답의 blocks/edges를 그대로 보내 라이브 캔버스 DB에 반영합니다. GUEST는 사용할 수 없습니다.")
+    @Operation(summary = "Agent 제안 확정", description = "blocks/edges를 받아 라이브 캔버스 DB에 반영합니다.")
     @PostMapping("/agent/agree")
     public ResponseEntity<Map<String, String>> agree(
             @PathVariable Integer projectId,

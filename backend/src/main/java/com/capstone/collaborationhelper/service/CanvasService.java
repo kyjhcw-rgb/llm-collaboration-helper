@@ -17,6 +17,7 @@ import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -33,20 +34,19 @@ public class CanvasService {
     private final PartyRepository partyRepository;
     private final ProjectCrdtLogRepository crdtLogRepository;
 
-    private final ApplicationEventPublisher eventPublisher; // 직접 의존성 대신 이벤트 발행기 사용
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional(readOnly = true)
     public CanvasDtos.SyncRes loadLiveCanvas(Integer projectId) {
         assertPartyMember(projectId);
-        Project project = projectRepository.findById(projectId).orElseThrow(); // [추가된 부분] 프로젝트 조회
+        Project project = projectRepository.findById(projectId).orElseThrow();
         List<Block> blocks = blockRepository.findByProjectIdAndIsDeletedFalse(projectId);
         List<Edge> edges = edgeRepository.findByProjectIdAndIsDeletedFalse(projectId);
 
-        // DB에 저장된 Yjs Binary를 Base64로 변환하여 전달
         String yjsDataBase64 = project.getCrdtSnapshot() != null ?
                 java.util.Base64.getEncoder().encodeToString(project.getCrdtSnapshot()) : null;
 
-        return new CanvasDtos.SyncRes(mapBlocksToDto(blocks), mapEdgesToDto(edges), yjsDataBase64); // [수정된 부분] yjsDataBase64 포함 반환
+        return new CanvasDtos.SyncRes(mapBlocksToDto(blocks), mapEdgesToDto(edges), yjsDataBase64);
     }
 
     @Transactional(readOnly = true)
@@ -70,18 +70,15 @@ public class CanvasService {
 
         project.setUpdatedAt(ZonedDateTime.now());
 
-        // yjsData가 명시적으로 들어왔을 때만 스냅샷 처리 진행 (null이면 무시)
-        if (req.getYjsData() != null) {
-            if (!req.getYjsData().isBlank()) {
-                project.setCrdtSnapshot(java.util.Base64.getDecoder().decode(req.getYjsData()));
-            } else {
-                // 명시적으로 빈 문자열("")을 보냈을 때만 null로 초기화하여 기존 스냅샷 삭제
-                project.setCrdtSnapshot(null);
-            }
+        // yjsData가 명시적으로 전달되고 비어있지 않을 때만 안전하게 바이너리 스냅샷 업데이트
+        if (req.getYjsData() != null && !req.getYjsData().isBlank()) {
+            project.setCrdtSnapshot(java.util.Base64.getDecoder().decode(req.getYjsData()));
         }
+        // 빈 문자열("")이나 null이 들어오더라도 기존 crdtSnapshot을 함부로 null로 파괴하지 않음
+
         projectRepository.save(project);
 
-        // Block UPSERT
+        // 1. Block UPSERT
         List<Block> existingBlocks = blockRepository.findByProjectId(projectId);
         Map<String, Block> blockMap = existingBlocks.stream().collect(Collectors.toMap(Block::getFrontendId, b -> b));
 
@@ -99,12 +96,23 @@ public class CanvasService {
         List<Block> blocksToDelete = blockMap.values().stream().filter(b -> !b.isDeleted()).peek(b -> b.setDeleted(true)).toList();
         blockRepository.saveAll(blocksToDelete);
 
-        // Edge UPSERT
+        // 2. Edge 검증 및 UPSERT (유효한 노드 간 연결만 DB에 저장하도록 유령 엣지 검증 로직 추가)
+        Set<String> validBlockIds = blockRepository.findByProjectIdAndIsDeletedFalse(projectId).stream()
+                .map(Block::getFrontendId)
+                .collect(Collectors.toSet());
+
         List<Edge> existingEdges = edgeRepository.findByProjectId(projectId);
         Map<String, Edge> edgeMap = existingEdges.stream().collect(Collectors.toMap(Edge::getFrontendId, e -> e));
 
         if (req.getEdges() != null) {
             for (CanvasDtos.EdgeDto dto : req.getEdges()) {
+                // 출발/도착 노드가 실제 존재하는 유효한 노드인지 검증 (없을 경우 DB 저장 스킵하여 유령 엣지 방지)
+                if (!validBlockIds.contains(dto.getSourceFrontendId()) || !validBlockIds.contains(dto.getTargetFrontendId())) {
+                    log.warn("[Edge Sync Skip] 유효하지 않은 노드 연결 시도 - EdgeId: {}, Source: {}, Target: {}",
+                            dto.getFrontendId(), dto.getSourceFrontendId(), dto.getTargetFrontendId());
+                    continue;
+                }
+
                 Edge edge = edgeMap.get(dto.getFrontendId());
                 if (edge == null) {
                     edge = Edge.builder().project(project).frontendId(dto.getFrontendId()).build();
@@ -117,11 +125,12 @@ public class CanvasService {
         List<Edge> edgesToDelete = edgeMap.values().stream().filter(e -> !e.isDeleted()).peek(e -> e.setDeleted(true)).toList();
         edgeRepository.saveAll(edgesToDelete);
 
-        // 누적된 CRDT 로그 삭제
-        crdtLogRepository.deleteByProjectIdAndCreatedAtBefore(projectId, syncStartTime);
+        // Yjs 바이너리 스냅샷이 정상 업데이트된 경우에만 CRDT 로그 정리
+        if (req.getYjsData() != null && !req.getYjsData().isBlank()) {
+            crdtLogRepository.deleteByProjectIdAndCreatedAtBefore(projectId, syncStartTime);
+        }
     }
 
-    // [STEP 3] 영구 버전 박제 (Commit)
     @Transactional
     public Integer commitVersion(Integer projectId, String commitMessage) {
         Project project = projectRepository.findById(projectId).orElseThrow();
@@ -151,15 +160,12 @@ public class CanvasService {
         return nextVersion;
     }
 
-    // [STEP 4] 방장의 라이브 복원 (Restore)
     @Transactional
     public void restoreVersion(Integer projectId, Integer versionNumber) {
-        assertOwner(projectId); // 방장만 복원 가능
+        assertOwner(projectId);
 
-        // 1. 과거 버전의 스냅샷 가져오기
         CanvasDtos.SyncRes snapshot = loadVersionCanvas(projectId, versionNumber);
 
-        // 2. 과거 스냅샷 데이터를 Live 도화지에 덮어쓰기 (SyncReq로 변환 후 Sync 진행)
         CanvasDtos.SyncReq restoreReq = new CanvasDtos.SyncReq();
         restoreReq.setBlocks(snapshot.getBlocks());
         restoreReq.setEdges(snapshot.getEdges());
@@ -168,7 +174,6 @@ public class CanvasService {
         syncLiveCanvas(projectId, restoreReq);
         log.info("[Restore] 프로젝트 {}의 라이브 화면이 버전 {} 상태로 덮어씌워졌습니다.", projectId, versionNumber);
 
-        // 현재 접속중인 사용자들에게 강제 새로고침 트리거 전송
         eventPublisher.publishEvent(new ForceReloadEvent(projectId));
     }
 
@@ -185,9 +190,6 @@ public class CanvasService {
         versionRepository.findByProjectIdAndVersionNumber(projectId, versionNumber).ifPresent(versionRepository::delete);
     }
 
-    // ===============================================
-    // 내부 유틸리티
-    // ===============================================
     private User currentUser() {
         String username = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         return userRepository.findByUsername(username).orElseThrow();
@@ -207,7 +209,6 @@ public class CanvasService {
         if (!"OWNER".equals(getMyPartyInfo(projectId).getRole())) throw new RuntimeException("방장만 가능");
     }
 
-    // Entity -> DTO, DTO -> Entity 매핑 로직
     private CanvasDtos.BlockDto mapBlockToDto(Block block) {
         CanvasDtos.BlockDto dto = new CanvasDtos.BlockDto();
         dto.setFrontendId(block.getFrontendId()); dto.setParentFrontendId(block.getParentFrontendId());
