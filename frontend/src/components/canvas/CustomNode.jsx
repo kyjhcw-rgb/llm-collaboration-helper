@@ -17,14 +17,14 @@ const CustomNode = ({ id, data, selected }) => {
     const updater = projectMembers.find(m => m.userId === data.lastUpdatedBy);
     const updaterName = updater ? updater.nickname : null;
 
-    // 6번: 마지막 커밋 이후에 이 블록이 바뀌었는지 여부
+    // 마지막 커밋 이후에 이 블록이 바뀌었는지 여부
     const lastCommitAt = useCanvasStore(state => state.lastCommitAt);
     const changedSinceCommit = !!data.lastUpdatedAt && data.lastUpdatedAt > lastCommitAt;
 
     // 팀원 실시간 하이라이트: 지금 이 블록을 선택 중인 다른 유저들
-    const presence = useCanvasStore(state => state.presence);
+    const presence = useCanvasStore(state => state.presence || {});
     const viewerUserIds = Object.entries(presence)
-        .filter(([, ids]) => ids.includes(id))
+        .filter(([, ids]) => Array.isArray(ids) && ids.includes(id))
         .map(([userId]) => Number(userId));
     const viewerNames = viewerUserIds
         .map((uid) => projectMembers.find((m) => m.userId === uid)?.nickname)
@@ -40,6 +40,7 @@ const CustomNode = ({ id, data, selected }) => {
         updateNodeInternals(id);
     }, [id, updateNodeInternals]);
 
+    // 눈에 보이는 실제 핸들 스타일
     const handleStyle = (visible) => ({
         width: visible ? '14px' : '8px',
         height: visible ? '14px' : '8px',
@@ -50,12 +51,43 @@ const CustomNode = ({ id, data, selected }) => {
         opacity: visible ? 1 : 0,
         transition: 'all 0.15s ease',
         pointerEvents: 'all',
+        position: 'relative',
     });
+
+    // 핸들 주변 반응 영역(Hit Area) 확장을 위한 Wrapper 공통 스타일
+    // nodrag / nopan 클래스로 연결 드래그 시 블록 이동 방지
+    const getWrapperStyle = (position) => {
+        const base = {
+            position: 'absolute',
+            width: '30px',
+            height: '30px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 101,
+            pointerEvents: showHandles ? 'all' : 'none',
+        };
+
+        switch (position) {
+            case Position.Top:
+                return { ...base, top: '-15px', left: 'calc(50% - 15px)' };
+            case Position.Bottom:
+                return { ...base, bottom: '-15px', left: 'calc(50% - 15px)' };
+            case Position.Left:
+                return { ...base, left: '-15px', top: 'calc(50% - 15px)' };
+            case Position.Right:
+                return { ...base, right: '-15px', top: 'calc(50% - 15px)' };
+            default:
+                return base;
+        }
+    };
 
     return (
         <div
             style={{
-                width: '100%', height: '100%',
+                width: '100%', 
+                height: '100%',
+                position: 'relative',
                 ...(presenceColor ? { boxShadow: `inset 0 0 0 3px ${presenceColor}`, borderRadius: '6px' } : {}),
             }}
             onMouseEnter={() => setIsHovered(true)}
@@ -83,9 +115,7 @@ const CustomNode = ({ id, data, selected }) => {
                 </div>
             )}
 
-            {/* 엣지 연결 수 상위 25%(4분위) 블록 강조 배지.
-                method-node는 CSS에서 overflow:hidden이라 박스 밖으로 튀어나가는 배지는 잘리므로,
-                박스 안쪽 모서리에 작은 원형 아이콘으로 표시하고 title 툴팁으로 내용을 보완한다. */}
+            {/* 엣지 연결 수 상위 25%(4분위) 블록 강조 배지 */}
             {data.connectionTier === 4 && (
                 <div
                     title={`엣지 연결 ${data.connectionCount}개 (상위 25%)`}
@@ -102,7 +132,7 @@ const CustomNode = ({ id, data, selected }) => {
                 </div>
             )}
 
-            {/* 마지막 커밋 이후 변경된 블록 표시 (다음 커밋 전까지 유지) */}
+            {/* 마지막 커밋 이후 변경된 블록 표시 */}
             {changedSinceCommit && (
                 <div
                     title="마지막 커밋 이후 변경됨"
@@ -121,11 +151,47 @@ const CustomNode = ({ id, data, selected }) => {
 
             <NodeResizer color="#4953BE" isVisible={selected} minWidth={100} minHeight={40} />
 
-            <Handle type="source" position={Position.Top}    id="top"    style={handleStyle(showHandles)} />
-            <Handle type="source" position={Position.Left}   id="left"   style={handleStyle(showHandles)} />
-            <Handle type="source" position={Position.Bottom} id="bottom" style={handleStyle(showHandles)} />
-            <Handle type="source" position={Position.Right}  id="right"  style={handleStyle(showHandles)} />
+            {/* Top Handle Wrapper */}
+            <div className="nodrag nopan" style={getWrapperStyle(Position.Top)}>
+                <Handle
+                    type="source"
+                    position={Position.Top}
+                    id="top"
+                    style={handleStyle(showHandles)}
+                />
+            </div>
 
+            {/* Left Handle Wrapper */}
+            <div className="nodrag nopan" style={getWrapperStyle(Position.Left)}>
+                <Handle
+                    type="source"
+                    position={Position.Left}
+                    id="left"
+                    style={handleStyle(showHandles)}
+                />
+            </div>
+
+            {/* Bottom Handle Wrapper */}
+            <div className="nodrag nopan" style={getWrapperStyle(Position.Bottom)}>
+                <Handle
+                    type="source"
+                    position={Position.Bottom}
+                    id="bottom"
+                    style={handleStyle(showHandles)}
+                />
+            </div>
+
+            {/* Right Handle Wrapper */}
+            <div className="nodrag nopan" style={getWrapperStyle(Position.Right)}>
+                <Handle
+                    type="source"
+                    position={Position.Right}
+                    id="right"
+                    style={handleStyle(showHandles)}
+                />
+            </div>
+
+            {/* 노드 레이블 영역 */}
             <div style={{
                 position: 'absolute',
                 top: isMethod ? 0 : 8,
