@@ -1,6 +1,7 @@
 import { useEffect } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { useCanvasStore } from "./store/useCanvasStore";
+import Landing from "./pages/Landing"; // 1. Landing 컴포넌트 import 추가
 import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
 import ProfilePage from "./pages/ProfilePage";
@@ -33,20 +34,24 @@ export default function App() {
 
     return (
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-            <Routes>{/* 로그인 없이 바로 들어갈 수 있는 더미 라우트 */}
-  <Route path="/canvas/demo" element={<CanvasPage isDemo={true} />} />
-  
-  {/* 동적 라우트 */}
-  <Route path="/canvas/:projectId" element={<CanvasPage />} />
-                
-                <Route path="/" element={<Navigate to="/login" replace />} />
+            <Routes>
+                {/* 1. Root 경로를 Landing 페이지로 연결 */}
+                <Route path="/" element={<Landing />} />
+
+                {/* 인증 관련 라우트 */}
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/signup" element={<SignupPage />} />
-                <Route path="/projects" element={<ProjectListPage />}/>
-                <Route path="profile" element={<ProfilePage />}/>
+                <Route path="/profile" element={<ProfilePage />} />
+
+                {/* 프로젝트 관련 라우트 */}
+                <Route path="/projects" element={<ProjectListPage />} />
                 <Route path="/projects/new" element={<ProjectCreatePage />} />
-                {/* URL에 projectId를 명시하도록 변경 */}
+
+                {/* 캔버스 라우트 (중복 제거 완료) */}
+                <Route path="/canvas/demo" element={<CanvasPage isDemo={true} />} />
                 <Route path="/canvas/:projectId" element={<CanvasPage />} />
+
+                {/* 가이드라인 라우트 */}
                 <Route path="/guideline" element={<Guideline />} />
             </Routes>
         </BrowserRouter>
