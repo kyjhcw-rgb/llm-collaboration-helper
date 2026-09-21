@@ -4,19 +4,25 @@
     padding: 0;
     box-sizing: border-box;
 }
-.SignupBackground{
+
+/* 1. 회원가입 전체 배경 (세로 중앙 정렬) */
+.SignupBackground {
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
 
-    width: 100vw; height: 100vh;
+    width: 100vw;
+    height: 100vh;
     background: linear-gradient(
             224.86deg,
             rgba(213, 218, 240, 1) 0%,
-            rgba(41, 110, 223, 1) 100%);
+            rgba(41, 110, 223, 1) 100%
+    );
 }
-.SignupBox{
+
+/* 2. 회원가입 흰색 중앙 박스 (내부 요소들 세로 정렬) */
+.SignupBox {
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -26,89 +32,105 @@
     width: auto;
     height: auto;
     padding: 30px 50px;
-    gap: 10px;
+    gap: 15px; /* 내부 요소 간격 */
 }
-.Signupheader{
+
+.Signupheader {
     font-size: 13px;
     color: #4953BE;
-    margin-bottom: 20px;
+    margin-bottom: 10px;
 }
-.Signup1, .Signup2 , .Signup3 {
-    display: flex;
-    flex-direction: row;
-    justify-content: space-between;
-    gap: 10px;
-    width: 530px;
-}
-.Signup0{
+
+/* 3. 입력 폼 컴포넌트 내부 세로 정렬 세팅 */
+.Signup0 {
     display: flex;
     flex-direction: column;
-    justify-content:space-between;
+    justify-content: space-between;
     text-align: center;
     gap: 15px;
     width: 530px;
 }
+
 .Signup3 form {
     display: flex;
     flex-direction: column;
-    justify-content:space-between;
-    text-align: center;
+    justify-content: space-between;
+    align-items: center;
     gap: 15px;
     width: 530px;
     margin-top: 15px;
 }
-.Signup3 form input{
-    background-color: antiquewhite;
-}
-div {
+
+/* 4. [핵심] 한 줄(라벨 + 입력창/버튼)씩 들어가는 행 요소만 가로 정렬 */
+.Signup1, .Signup2, .Signup3 {
     display: flex;
     flex-direction: row;
     justify-content: space-between;
     align-items: center;
-    gap: 20px;
+    gap: 10px;
+    width: 530px;
 }
-label {
+
+.Signup3 form input {
+    background-color: antiquewhite;
+}
+
+/* 5. 스코프 내 라벨 및 인풋 스타일 지정 */
+.SignupBackground label {
     display: flex;
+    align-items: center;
     font-size: 18px;
     font-weight: bold;
-    padding: auto;
     color: #000;
 }
-.Signup1 label {width: 20%; }
 
-.Signup2 label {width: 20%;}
+.Signup1 label { width: 20%; }
+.Signup2 label { width: 20%; }
+.Signup3 label { width: 40%; }
 
-.Signup3 label {width: 40%;}
-input{
-    width: quto;
+.SignupBackground input {
+    flex: 1; /* 가로 행 안에서 남은 공간을 차지하도록 설정 */
+    width: auto;
     padding: 10px 20px;
     border-radius: 10px;
     border: none;
-    font-size: 20px;
+    font-size: 18px;
     font-weight: bold;
 }
-.Signupsubbutton{
+
+/* 6. 버튼 스타일 */
+.Signupsubbutton {
     width: 120px;
     height: 40px;
-    padding: auto;
     border-radius: 10px;
     border: none;
     font-size: 15px;
     font-weight: 500;
     background-color: gray;
-    color:white;
+    color: white;
+    cursor: pointer;
 }
-.Signupbutton{
+
+.Signupbutton {
     background-color: #4953BE;
     border-radius: 10px;
     border: none;
-    color:white;
+    color: white;
     width: 100%;
-    height: auto;
-    height: auto;
     padding: 15px;
     font-size: 20px;
     font-weight: bold;
-    margin-top: 20px;
+    margin-top: 10px;
+    cursor: pointer;
 }
-.SignupBackground nav{margin-top: 15px;}
+
+.SignupBackground nav {
+    margin-top: 15px;
+}
+
+.is-blurred {
+    filter: blur(5px); 
+    pointer-events: none;
+    user-select: none;
+    transition: filter 0.3s ease; 
+}
