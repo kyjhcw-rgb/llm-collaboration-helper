@@ -20,7 +20,7 @@ export default function Guideline() {
           <p>인터페이스와 메서드 뼈대만 생성합니다.</p>
 
           <h3>초안 설명 권장 길이</h3>
-          <p>-자 이상</p>
+          <p>100자 이상</p>
 
           <h3>추천 상황</h3>
           <ul>
@@ -36,7 +36,7 @@ export default function Guideline() {
           <p>JPA, Lombok 등 범용 라이브러리를 활용합니다.</p>
 
           <h3>초안 설명 권장 길이</h3>
-          <p>-자 이상</p>
+          <p>60자 이상</p>
 
           <h3>추천 상황</h3>
           <ul>
@@ -52,7 +52,7 @@ export default function Guideline() {
           <p>목적에 맞는 전체 구현 코드를 자유롭게 작성합니다.</p>
 
           <h3>초안 설명 권장 길이</h3>
-          <p>-자 이상</p>
+          <p>40자 이상</p>
 
           <h3>추천 상황</h3>
           <ul>

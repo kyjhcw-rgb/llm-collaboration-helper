@@ -204,7 +204,16 @@ const CustomNode = ({ id, data, selected }) => {
                 boxSizing: 'border-box',
                 pointerEvents: 'none',
             }}>
-                <div style={{ wordBreak: 'keep-all' }}>
+                <div style={{
+                    wordBreak: 'keep-all',
+                    ...(isMethod ? {
+                        maxWidth: '100%',
+                        minWidth: 0,
+                        overflow: 'hidden',
+                        whiteSpace: 'nowrap',
+                        textOverflow: 'ellipsis',
+                    } : {}),
+                }}>
                     {data.label || data.name}
                 </div>
             </div>

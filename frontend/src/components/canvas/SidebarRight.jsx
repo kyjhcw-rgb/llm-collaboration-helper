@@ -16,11 +16,13 @@ const SidebarRight = () => {
         deleteNode,  // 새롭게 만든 Yjs 기반 노드 삭제 함수
         deleteEdge,  // 새롭게 만든 Yjs 기반 엣지 삭제 함수
         saveProjectToServer,
-        loadProjectFromServer,
         userRole,
         currentProjectId,
         currentVersion,
-        myUserId, projectMembers
+        myUserId, projectMembers,
+        applyAgentChangesToYjs,
+        getEncodedYjsData,
+        undo,
     } = useCanvasStore();
 
     const [activeTab, setActiveTab] = useState("info");
@@ -203,7 +205,7 @@ const SidebarRight = () => {
         }
     };
 
-    // Agent 제안에 동의 → 이때만 백엔드에 적용 요청을 보내고, 성공 시 캔버스를 새로고침
+    // Agent 제안에 동의 → Yjs에 바로 반영 + yjsData와 함께 백엔드에 저장
     const handleAgentAgree = async (msgId) => {
         if (applyingProposalIdsRef.current.has(msgId)) return; // 연타 시 두 번째 클릭을 동기적으로 즉시 차단
         const target = messages.find((m) => m.id === msgId);
@@ -212,11 +214,12 @@ const SidebarRight = () => {
         applyingProposalIdsRef.current.add(msgId);
         setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, status: "applying" } : m)));
         try {
+            applyAgentChangesToYjs(target.blocks, target.edges);
+            const yjsData = getEncodedYjsData();
             await request(`/projects/${currentProjectId}/chat/agent/agree`, {
                 method: "POST",
-                body: JSON.stringify({ blocks: target.blocks, edges: target.edges }),
+                body: JSON.stringify({ blocks: target.blocks, edges: target.edges, yjsData }),
             });
-            await loadProjectFromServer(currentProjectId, null);
             setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, status: "applied" } : m)));
         } catch (e) {
             alert(e.message || "변경사항 적용에 실패했습니다.");
@@ -226,9 +229,19 @@ const SidebarRight = () => {
         }
     };
 
-    // 거부 시에는 로컬 상태만 지우고, 백엔드에는 어떤 요청도 보내지 않음
+    // 거절 시에는 로컬 상태만 지우고, 백엔드에는 어떤 요청도 보내지 않음
     const handleAgentDecline = (msgId) => {
         setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, status: "declined" } : m)));
+    };
+
+    // 적용된 변경을 되돌리기 (Ctrl+Z와 동일한 Yjs UndoManager 재사용)
+    const handleAgentRevert = async (msgId) => {
+        const target = messages.find((m) => m.id === msgId);
+        if (!target || target.status !== "applied") return;
+
+        undo();
+        await saveProjectToServer();
+        setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, status: "reverted" } : m)));
     };
 
     const handleChatKeyDown = (e) => {
@@ -448,10 +461,10 @@ const SidebarRight = () => {
                                         {msg.status === "pending" && (
                                             <div className="agent-proposal-actions">
                                                 <button className="agent-decline-btn" onClick={() => handleAgentDecline(msg.id)}>
-                                                    거부
+                                                    거절
                                                 </button>
                                                 <button className="agent-agree-btn" onClick={() => handleAgentAgree(msg.id)}>
-                                                    동의하고 적용
+                                                    확인
                                                 </button>
                                             </div>
                                         )}
@@ -459,10 +472,18 @@ const SidebarRight = () => {
                                             <div className="agent-proposal-status">적용 중...</div>
                                         )}
                                         {msg.status === "applied" && (
-                                            <div className="agent-proposal-status applied">✅ 캔버스에 적용됨</div>
+                                            <div className="agent-proposal-actions">
+                                                <div className="agent-proposal-status applied">✅ 캔버스에 적용됨</div>
+                                                <button className="agent-revert-btn" onClick={() => handleAgentRevert(msg.id)}>
+                                                    되돌리기
+                                                </button>
+                                            </div>
+                                        )}
+                                        {msg.status === "reverted" && (
+                                            <div className="agent-proposal-status declined">되돌려짐 (적용 이전 상태로 복구됨)</div>
                                         )}
                                         {msg.status === "declined" && (
-                                            <div className="agent-proposal-status declined">거부됨 (캔버스에 반영되지 않았습니다)</div>
+                                            <div className="agent-proposal-status declined">거절됨 (캔버스에 반영되지 않았습니다)</div>
                                         )}
                                     </div>
                                 ) : (
