@@ -683,16 +683,30 @@ const SidebarRight = () => {
                                                 ))}
                                             </ul>
                                         )}
-                                        <textarea
-                                            ref={commentInputRef}
-                                            className="comment-textarea"
-                                            placeholder="댓글을 입력하세요... (@로 멤버 멘션)"
-                                            value={commentInput}
-                                            onChange={handleCommentChange}
-                                        />
-                                        <div className="comment-input-actions">
-                                            {editingCommentId && <button className="cancel-btn" onClick={() => {setEditingCommentId(null); setCommentInput("");}}>취소</button>}
-                                            <button className="save-btn" onClick={handleSendComment}>{editingCommentId ? "수정" : "등록"}</button>
+                                        {editingCommentId && (
+                                            <div className="comment-editing-bar">
+                                                <span>댓글 수정 중</span>
+                                                <button className="cancel-btn" onClick={() => {setEditingCommentId(null); setCommentInput("");}}>취소</button>
+                                            </div>
+                                        )}
+                                        <div className="comment-textarea-row">
+                                            <textarea
+                                                ref={commentInputRef}
+                                                className="comment-textarea"
+                                                placeholder="댓글을 입력하세요... (@로 멤버 멘션)"
+                                                value={commentInput}
+                                                onChange={handleCommentChange}
+                                            />
+                                            <button
+                                                className="comment-send-icon-btn"
+                                                title={editingCommentId ? "수정" : "등록"}
+                                                onClick={handleSendComment}
+                                                disabled={!commentInput.trim()}
+                                            >
+                                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                    <path d="M2.01 21L23 12L2.01 3L2 10L17 12L2 14L2.01 21Z" fill="currentColor"/>
+                                                </svg>
+                                            </button>
                                         </div>
                                     </div>
                                 )}
