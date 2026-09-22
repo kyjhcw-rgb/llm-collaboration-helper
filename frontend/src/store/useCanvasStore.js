@@ -413,6 +413,9 @@ let undoManager = new Y.UndoManager([ynodesMap, yedgesMap], {
 let ws = null;
 let syncDebounceTimer = null;
 let ydocUpdateHandler = null; // 추가: 이벤트 리스너 해제를 위한 참조 변수
+// 캔버스(노드/엣지)가 바뀔 때마다 1씩 증가. AI 제안을 요청한 뒤에 캔버스가 수정됐는지 비교하는 용도.
+// 화면을 다시 그릴 필요가 없어서 스토어 상태가 아닌 모듈 변수로 둠.
+let canvasEditCount = 0;
 
 // 헤더의 실행취소/재실행 버튼 활성화 여부를 위해 undo/redo 스택 유무를 스토어에 반영
 function bindUndoManagerEvents(set) {
@@ -449,6 +452,8 @@ export const useCanvasStore = create((set, get) => ({
     onlineUsers: [],
     canUndo: false,
     canRedo: false,
+    aiResponse: null, // 웹소켓 AI_RESPONSE_READY 수신 결과 { mode, success, result, seq }
+    getCanvasEditCount: () => canvasEditCount,
     focusOnPosition: null, // FlowArea가 마운트되면 (x, y, width, height) => void 함수로 채워짐
     availableVersions: [], // { versionNumber, commitMessage, createdAt } 객체 배열
 
@@ -601,6 +606,9 @@ export const useCanvasStore = create((set, get) => ({
                         window.location.href = '/projects';
                     } else if (msg.type === 'MENTIONED') {
                         alert(`🔔 ${msg.senderNickname}님이 댓글에서 회원님을 멘션했습니다!`);
+                    } else if (msg.type === 'AI_RESPONSE_READY') {
+                        // Ask/Agent는 202로 접수만 되고 결과는 여기로 도착. 채팅창(SidebarRight)이 이 값을 구독해서 처리.
+                        set((state) => ({ aiResponse: { ...msg, seq: (state.aiResponse?.seq || 0) + 1 } }));
                     } else if (msg.type === 'PRESENCE_UPDATE') {
                         // 내 자신이 보낸 메시지가 다른 탭을 통해 되돌아오는 경우까지 방어적으로 무시
                         if (msg.userId === get().myUserId) return;
@@ -650,6 +658,7 @@ export const useCanvasStore = create((set, get) => ({
 
         // 💡 수정됨: Yjs 갱신 시 기존 로컬 UI 상태(selected, measured 등)를 병합하여 UI 튕김 방지
         ydocUpdateHandler = (update, origin) => {
+            canvasEditCount++;
             if (origin !== 'remote' && ws && ws.readyState === WebSocket.OPEN && get().currentVersion === 'live') {
                 ws.send(update);
             }
@@ -719,6 +728,7 @@ export const useCanvasStore = create((set, get) => ({
             selectedNodeId: null,
             selectedEdgeId: null,
             onlineUsers: [],
+            aiResponse: null,
             presence: {},
         });
     },
@@ -878,6 +888,7 @@ export const useCanvasStore = create((set, get) => ({
             ydocUpdateHandler = null;
         }
         ydocUpdateHandler = () => {
+            canvasEditCount++;
             const currentNodes = get().nodes;
             const uiStateMap = new Map(currentNodes.map(n => [n.id, { selected: n.selected, dragging: n.dragging, resizing: n.resizing, measured: n.measured }]));
             const rawNodes = Array.from(ynodesMap.values()).map(n => {

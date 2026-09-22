@@ -23,6 +23,8 @@ const SidebarRight = () => {
         applyAgentChangesToYjs,
         getEncodedYjsData,
         undo,
+        aiResponse,
+        getCanvasEditCount,
     } = useCanvasStore();
 
     const [activeTab, setActiveTab] = useState("info");
@@ -32,9 +34,13 @@ const SidebarRight = () => {
     const [chatInput, setChatInput] = useState("");
     const [messages, setMessages] = useState([]);
     const [chatLoading, setChatLoading] = useState(false);
+    const [pendingMode, setPendingMode] = useState(null); // 응답 대기 중인 요청의 모드 ('ASK' | 'AGENT')
     const [chatMode, setChatMode] = useState("ask"); // 'ask' | 'agent'
     const chatBottomRef = useRef(null);
     const applyingProposalIdsRef = useRef(new Set()); // 연타로 agent/agree가 중복 호출되는 것 방지 (state는 반영 시차가 있어 ref로 동기 체크)
+    // 202로 접수됐지만 아직 웹소켓 결과가 안 온 AI 요청 { mode, baseEditCount, lastServerId, timerId }
+    const pendingRequestRef = useRef(null);
+    const historyLoadedForRef = useRef(null);
 
     // 댓글 및 멘션 관련 상태
     const [comments, setComments] = useState([]);
@@ -76,12 +82,15 @@ const SidebarRight = () => {
         }
     }, [selectedEdgeId, edges]);
 
-    // LLM 탭 진입 시 이전 대화 기록 로드
+    // LLM 탭 첫 진입 시 이전 대화 기록 로드. 탭을 오갈 때마다 다시 덮어쓰면
+    // AI 응답을 기다리는 중인 질문이나 도착한 수정 제안 카드가 사라지므로 프로젝트당 한 번만 불러온다.
     useEffect(() => {
         if (activeTab !== "llm" || isMockMode) return;
+        if (historyLoadedForRef.current === currentProjectId) return;
+        historyLoadedForRef.current = currentProjectId;
         request(`/projects/${currentProjectId}/chat/messages`)
-            .then(setMessages)
-            .catch(() => {});
+            .then((history) => setMessages((prev) => [...history, ...prev.filter((m) => String(m.id).startsWith("tmp-"))]))
+            .catch(() => { historyLoadedForRef.current = null; });
     }, [activeTab, currentProjectId]);
 
     // 메시지 추가 시 스크롤 하단으로
@@ -155,53 +164,118 @@ const SidebarRight = () => {
         saveProjectToServer();
     };
 
+    const AI_RESPONSE_TIMEOUT_MS = 3 * 60 * 1000;
+
+    const pushAssistantMessage = (text) => {
+        setMessages((prev) => [
+            ...prev,
+            { id: `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, sender: "ASSISTANT", message: text },
+        ]);
+    };
+
+    // AI 결과(웹소켓 AI_RESPONSE_READY 또는 구버전 동기 응답)를 채팅창에 반영
+    const deliverAiResult = (mode, success, result) => {
+        const pending = pendingRequestRef.current;
+        // 내가 요청한 게 아니면(다른 탭 등) 무시
+        if (!pending || pending.mode !== mode) return;
+        clearTimeout(pending.timerId);
+        pendingRequestRef.current = null;
+        setChatLoading(false);
+        setPendingMode(null);
+
+        if (!success) {
+            console.error("AI 응답 실패:", result);
+            pushAssistantMessage("AI 응답에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+            return;
+        }
+        if (mode === "AGENT") {
+            setMessages((prev) => [
+                ...prev,
+                {
+                    id: `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                    sender: "ASSISTANT",
+                    type: "agent_proposal",
+                    message: result?.reply,
+                    blocks: result?.blocks || [],
+                    edges: result?.edges || [],
+                    status: "pending",
+                    baseEditCount: pending.baseEditCount,
+                },
+            ]);
+        } else {
+            pushAssistantMessage(result?.reply ?? "");
+        }
+    };
+
+    // 3분 안에 결과가 안 오면 로딩을 풀어주고, ASK는 서버에 저장된 답변이 있는지 한 번 확인해서 복구
+    const handleAiTimeout = async (pending, projectId) => {
+        if (pendingRequestRef.current !== pending) return;
+        pendingRequestRef.current = null;
+        setChatLoading(false);
+        setPendingMode(null);
+
+        if (pending.mode === "ASK") {
+            try {
+                const history = await request(`/projects/${projectId}/chat/messages`);
+                const recovered = history.some((m) => m.sender === "ASSISTANT" && m.mode === "ASK" && m.id > pending.lastServerId);
+                if (recovered) {
+                    setMessages((prev) => [...history, ...prev.filter((m) => m.type === "agent_proposal")]);
+                    return;
+                }
+            } catch { /* 복구 실패 시 아래 안내 표시 */ }
+        }
+        pushAssistantMessage("AI 응답을 받지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    };
+
+    useEffect(() => {
+        if (!aiResponse) return;
+        deliverAiResult(aiResponse.mode, aiResponse.success, aiResponse.result);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [aiResponse]);
+
+    useEffect(() => () => clearTimeout(pendingRequestRef.current?.timerId), []);
+
     const handleSendChat = async () => {
         const text = chatInput.trim();
         const usingAgent = chatMode === "agent";
         if (!text || chatLoading || isMockMode) return;
         if (usingAgent ? !canAgent : !canAsk) return;
 
+        const pending = {
+            mode: usingAgent ? "AGENT" : "ASK",
+            baseEditCount: getCanvasEditCount(),
+            lastServerId: messages.reduce((max, m) => (typeof m.id === "number" ? Math.max(max, m.id) : max), 0),
+            timerId: null,
+        };
+        pendingRequestRef.current = pending;
+
         const userMsg = { id: `tmp-${Date.now()}`, sender: "USER", message: text };
         setMessages((prev) => [...prev, userMsg]);
         setChatInput("");
         setChatLoading(true);
+        setPendingMode(pending.mode);
 
         try {
-            if (usingAgent) {
-                // Agent 모드: 제안만 받아오고 캔버스에는 반영하지 않음 (동의 시에만 적용)
-                const res = await request(`/projects/${currentProjectId}/chat/agent`, {
-                    method: "POST",
-                    body: JSON.stringify({ message: text }),
-                });
-                setMessages((prev) => [
-                    ...prev,
-                    {
-                        id: `tmp-${Date.now() + 1}`,
-                        sender: "ASSISTANT",
-                        type: "agent_proposal",
-                        message: res.reply,
-                        blocks: res.blocks || [],
-                        edges: res.edges || [],
-                        status: "pending",
-                    },
-                ]);
-            } else {
-                const res = await request(`/projects/${currentProjectId}/chat/ask`, {
-                    method: "POST",
-                    body: JSON.stringify({ message: text }),
-                });
-                setMessages((prev) => [
-                    ...prev,
-                    { id: `tmp-${Date.now() + 1}`, sender: "ASSISTANT", message: res.reply },
-                ]);
+            // Agent 모드는 제안만 받아오고 캔버스에는 반영하지 않음 (동의 시에만 적용)
+            const res = await request(`/projects/${currentProjectId}/chat/${usingAgent ? "agent" : "ask"}`, {
+                method: "POST",
+                body: JSON.stringify({ message: text }),
+            });
+
+            if (res && res.reply !== undefined) {
+                // 결과가 응답에 바로 담겨온 경우(구버전 동기 백엔드)
+                deliverAiResult(pending.mode, true, res);
+            } else if (pendingRequestRef.current === pending) {
+                // 202 접수 완료 — 결과는 웹소켓 AI_RESPONSE_READY로 도착
+                pending.timerId = setTimeout(() => handleAiTimeout(pending, currentProjectId), AI_RESPONSE_TIMEOUT_MS);
             }
         } catch {
-            setMessages((prev) => [
-                ...prev,
-                { id: `tmp-${Date.now() + 1}`, sender: "ASSISTANT", message: "응답 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요." },
-            ]);
-        } finally {
-            setChatLoading(false);
+            if (pendingRequestRef.current === pending) {
+                pendingRequestRef.current = null;
+                setChatLoading(false);
+                setPendingMode(null);
+            }
+            pushAssistantMessage("응답 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
         }
     };
 
@@ -210,6 +284,8 @@ const SidebarRight = () => {
         if (applyingProposalIdsRef.current.has(msgId)) return; // 연타 시 두 번째 클릭을 동기적으로 즉시 차단
         const target = messages.find((m) => m.id === msgId);
         if (!target || target.status !== "pending") return;
+        // 변경 사항이 없는 제안을 적용하면 캔버스가 통째로 비워지므로 차단
+        if (!target.blocks || target.blocks.length === 0) return;
 
         applyingProposalIdsRef.current.add(msgId);
         setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, status: "applying" } : m)));
@@ -458,7 +534,15 @@ const SidebarRight = () => {
                                         <div className="agent-proposal-summary">
                                             📋 블록 {msg.blocks.length}개 · 엣지 {msg.edges.length}개 변경 제안
                                         </div>
-                                        {msg.status === "pending" && (
+                                        {msg.status === "pending" && msg.blocks.length === 0 && (
+                                            <div className="agent-proposal-status declined">제안된 변경 사항이 없습니다.</div>
+                                        )}
+                                        {msg.status === "pending" && msg.blocks.length > 0 && msg.baseEditCount !== getCanvasEditCount() && (
+                                            <div className="agent-proposal-warning">
+                                                ⚠️ 요청 이후 캔버스가 수정되었습니다. 적용하면 그 수정이 덮어써집니다.
+                                            </div>
+                                        )}
+                                        {msg.status === "pending" && msg.blocks.length > 0 && (
                                             <div className="agent-proposal-actions">
                                                 <button className="agent-decline-btn" onClick={() => handleAgentDecline(msg.id)}>
                                                     거절
@@ -497,6 +581,11 @@ const SidebarRight = () => {
                             ))}
                             {chatLoading && (
                                 <div className="chat-msg ai chat-loading">
+                                    <div className="chat-loading-label">
+                                        {pendingMode === "AGENT"
+                                            ? "AI가 수정 제안을 만드는 중입니다. 지금 캔버스를 수정하면 제안을 적용할 때 덮어써질 수 있어요."
+                                            : "AI가 답변을 작성하는 중입니다. 다른 작업을 하셔도 됩니다."}
+                                    </div>
                                     <span>.</span><span>.</span><span>.</span>
                                 </div>
                             )}
