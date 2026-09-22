@@ -200,19 +200,32 @@ const FlowContents = () => {
     // ========================================================
     // 💡 핵심: 선택된 API별로 노드 및 엣지 필터링하기
     // ========================================================
+    const nodeMatchesApi = useCallback((node) => {
+        // 레이어/배경용 그룹 노드이거나 api 정보가 없는 노드는 항상 노출
+        if (node.data?.type === 'layer' || !node.data?.api) return true;
+
+        // 배열로 관리하는 경우: node.data.api.includes(selectedApi)
+        // 단일 문자열인 경우: node.data.api === selectedApi
+        if (Array.isArray(node.data?.api)) {
+            return node.data.api.includes(selectedApi);
+        }
+        return node.data?.api === selectedApi;
+    }, [selectedApi]);
+
+    const revealedNodesMap = useMemo(() => new Map(revealedNodes.map(n => [n.id, n])), [revealedNodes]);
+
     const apiFilteredNodes = useMemo(() => {
         return revealedNodes.filter(node => {
-            // 레이어/배경용 그룹 노드이거나 api 정보가 없는 노드는 항상 노출
-            if (node.data?.type === 'layer' || !node.data?.api) return true;
-            
-            // 배열로 관리하는 경우: node.data.api.includes(selectedApi)
-            // 단일 문자열인 경우: node.data.api === selectedApi
-            if (Array.isArray(node.data?.api)) {
-                return node.data.api.includes(selectedApi);
+            // 부모가 필터로 숨겨졌는데 자식만 남으면 React Flow가 "부모 노드를 찾을 수 없음" 에러로
+            // 앱 전체를 크래시시키므로, 자기 자신부터 최상위 조상까지 전부 API가 일치해야 노출한다.
+            let current = node;
+            while (current) {
+                if (!nodeMatchesApi(current)) return false;
+                current = current.parentNode ? revealedNodesMap.get(current.parentNode) : null;
             }
-            return node.data?.api === selectedApi;
+            return true;
         });
-    }, [revealedNodes, selectedApi]);
+    }, [revealedNodes, revealedNodesMap, nodeMatchesApi]);
 
     const apiFilteredNodeIds = useMemo(() => new Set(apiFilteredNodes.map(n => n.id)), [apiFilteredNodes]);
 
