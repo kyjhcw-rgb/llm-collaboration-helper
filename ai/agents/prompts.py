@@ -196,56 +196,6 @@ def meeting_extract_user_message(meeting_text: str) -> str:
     )
 
 
-def file_tree_system_instruction(target_framework: str) -> str:
-    return (
-        f"너는 다이어그램(JSON)을 [{target_framework}] "
-        "파일 경로로 옮기는 아키텍트야.\n"
-        "folder name은 디렉터리/패키지로, class name은 "
-        "파일 하나(클래스 하나)로 반영해.\n"
-        "기능 폴더(auth, member)를 새로 만들지 말고, "
-        "다이어그램에 있는 controller, service 같은 폴더를 따라라.\n"
-        "프레임워크 필수 파일(설정 등)만 보강하고, "
-        "실제 코드는 작성하지 마. "
-        "파일 경로와 해당 파일의 간단한 역할만 JSON으로 응답해."
-    )
-
-
-def file_tree_user_message(diagram_json: str) -> str:
-    return (
-        "[설계된 다이어그램 구조]\n"
-        f"{diagram_json}\n\n"
-        "위 구조를 바탕으로 생성해야 할 파일 트리를 "
-        "스키마에 맞춰 뽑아줘."
-    )
-
-
-def single_code_system_instruction(target_file_path: str) -> str:
-    return (
-        "너는 다이어그램(JSON)을 실제 소스 코드로 변환하는 "
-        "천재 개발자야.\n"
-        f"전체 다이어그램 구조를 바탕으로, "
-        f"요청받은 딱 하나의 파일 "
-        f"[{target_file_path}]의 소스 코드만 "
-        "완성도 있게 작성해줘.\n"
-        "다른 파일의 코드는 절대 포함하지 말고, "
-        "지정된 스키마에 맞춰 이 파일의 순수 코드만 응답해."
-    )
-
-
-def single_code_user_message(
-    diagram_json: str,
-    target_file_path: str,
-    target_framework: str
-) -> str:
-    return (
-        "[전체 다이어그램 구조]\n"
-        f"{diagram_json}\n\n"
-        "[생성할 대상 파일 경로]\n"
-        f"{target_file_path}\n\n"
-        f"위 파일 경로에 들어갈 "
-        f"[{target_framework}] 보일러플레이트 코드를 짜줘."
-    )
-
 def database_ddl_system_instruction(
     db_type: str,
     diagram_json: str,

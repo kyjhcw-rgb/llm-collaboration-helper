@@ -1,9 +1,9 @@
 import json
-from typing import Any, Dict, Optional
+from typing import Optional
 from fastapi import HTTPException
 
 from schemas.common import DiagramRes
-from agents.states import DiagramAgentState, CodeGenerationState
+from agents.states import DiagramAgentState
 
 
 def serialize_diagram(diagram: DiagramRes) -> str:
@@ -44,22 +44,4 @@ def build_diagram_agent_state(
         "plan_steps": None,
         "step_index": 0,
         "project_context": project_context,
-    }
-
-
-def build_code_agent_state(
-    mode: str,
-    system_instruction: str,
-    user_contents: list,
-    target_file_path: Optional[str] = None
-) -> CodeGenerationState:
-    """Code Agent 실행을 위한 초기 State 객체 생성"""
-    return {
-        "mode": mode,
-        "system_instruction": system_instruction,
-        "user_contents": user_contents,
-        "target_file_path": target_file_path,
-        "result": None,
-        "validation_error": None,
-        "retry_count": 0
     }
