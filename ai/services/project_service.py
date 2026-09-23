@@ -7,8 +7,13 @@ from agents.prompts import (
 )
 from core.exceptions import handle_genai_error
 from schemas.common import DiagramRes
-from schemas.project import DiagramGenerationRequest
+from schemas.project import (
+    DiagramGenerationRequest,
+    DiagramToCodeRequest,
+    DiagramToCodeResponse,
+)
 from utils.diagram_helper import build_diagram_agent_state
+from utils.diagram_to_code import convert_diagram_to_code
 
 
 def generate_initial_diagram(request: DiagramGenerationRequest) -> DiagramRes:
@@ -33,3 +38,21 @@ def generate_initial_diagram(request: DiagramGenerationRequest) -> DiagramRes:
         raise
     except Exception as e:
         handle_genai_error(e, "다이어그램 초기 생성")
+
+
+def generate_code_from_diagram(
+    request: DiagramToCodeRequest,
+) -> DiagramToCodeResponse:
+    files = convert_diagram_to_code(
+        diagram=request.diagram,
+        target_framework=request.targetFramework,
+        base_package=request.basePackage,
+    )
+
+    if not files:
+        raise HTTPException(
+            status_code=400,
+            detail="변환할 클래스 노드가 다이어그램에 없습니다.",
+        )
+
+    return DiagramToCodeResponse(files=files)
