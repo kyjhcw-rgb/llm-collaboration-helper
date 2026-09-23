@@ -154,7 +154,22 @@ const FlowContents = () => {
     const [contextMenu, setContextMenu] = useState(null);
 
     // 선택된 API 상태 관리
-    const [selectedApi, setSelectedApi] = useState("POST /api/v1/users");
+    const apiOptions = useMemo(() => {
+        const values = nodes.flatMap((node) => {
+            const api = node.data?.api;
+            return Array.isArray(api) ? api : [api];
+        });
+        return [...new Set(values.filter(Boolean))].sort();
+    }, [nodes]);
+    const [selectedApi, setSelectedApi] = useState('');
+
+    useEffect(() => {
+        if (apiOptions.length === 0) {
+            setSelectedApi('');
+        } else if (!apiOptions.includes(selectedApi)) {
+            setSelectedApi(apiOptions[0]);
+        }
+    }, [apiOptions, selectedApi]);
 
     const closeFile = useCallback((fileId) => {
         if (!isEditable) return;
@@ -633,7 +648,7 @@ const FlowContents = () => {
                     border: '1px solid #e2e8f0'
                 }}
             >
-                <span 
+                <span
                     style={{
                         backgroundColor: selectedApi.startsWith('POST') ? '#22c55e' : '#3b82f6',
                         color: '#ffffff',
@@ -643,11 +658,12 @@ const FlowContents = () => {
                         borderRadius: '4px'
                     }}
                 >
-                    {selectedApi.split(' ')[0]}
+                    {selectedApi ? selectedApi.split(' ')[0] : 'API'}
                 </span>
                 <select
                     value={selectedApi}
                     onChange={(e) => setSelectedApi(e.target.value)}
+                    disabled={apiOptions.length === 0}
                     style={{
                         border: 'none',
                         outline: 'none',
@@ -658,8 +674,11 @@ const FlowContents = () => {
                         cursor: 'pointer'
                     }}
                 >
-                    <option value="POST /api/v1/users">[POST] /api/v1/users (회원가입 API)</option>
-                    <option value="GET /api/v1/orders/{id}">[GET] /api/v1/orders/{'{id}'} (주문 단건 조회 API)</option>
+                    {apiOptions.length === 0 ? (
+                        <option value="">등록된 API가 없습니다</option>
+                    ) : apiOptions.map((api) => (
+                        <option key={api} value={api}>{api}</option>
+                    ))}
                 </select>
             </div>
 
