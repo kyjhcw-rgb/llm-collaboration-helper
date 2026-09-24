@@ -3,6 +3,8 @@ package com.capstone.collaborationhelper.client;
 import com.capstone.collaborationhelper.dto.ChatDtos.LlmChatReq;
 import com.capstone.collaborationhelper.dto.ChatDtos.LlmChatRes;
 import com.capstone.collaborationhelper.dto.ChatDtos.LlmModifyRes;
+import com.capstone.collaborationhelper.dto.CodeGenDtos.DiagramToCodeReq;
+import com.capstone.collaborationhelper.dto.CodeGenDtos.DiagramToCodeRes;
 import com.capstone.collaborationhelper.dto.ProjectDtos.CreateReq;
 import com.capstone.collaborationhelper.dto.TranslationDtos.DiagramRes;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -93,6 +95,29 @@ public class LlmClient {
         } catch (Exception e) {
             log.error("❌ [LlmClient] 다이어그램 수정 통신 에러: ", e);
             throw new RuntimeException("AI 다이어그램 수정 서버와의 통신에 실패했습니다.", e);
+        }
+    }
+
+    // [기능 4] 다이어그램 → 스켈레톤 코드 (/projects/diagram-to-code)
+    public DiagramToCodeRes requestDiagramToCode(DiagramRes diagram, String targetFramework, String basePackage) {
+        String url = getBaseUrl() + "/projects/diagram-to-code";
+        log.info("▶ [LlmClient] AI 서버로 다이어그램→코드 변환 요청. url={}, framework={}", url, targetFramework);
+
+        try {
+            DiagramToCodeReq body = new DiagramToCodeReq(diagram, targetFramework, basePackage);
+            DiagramToCodeRes response = restTemplate.postForObject(url, body, DiagramToCodeRes.class);
+
+            if (response == null || response.getFiles() == null || response.getFiles().isEmpty()) {
+                throw new RuntimeException("AI 서버가 코드 파일을 반환하지 않았습니다.");
+            }
+
+            log.info("✔ [LlmClient] 스켈레톤 코드 수신 완료 (파일 {}개)", response.getFiles().size());
+            return response;
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("❌ [LlmClient] 다이어그램→코드 통신 에러: ", e);
+            throw new RuntimeException("AI 코드 생성 서버와의 통신에 실패했습니다.", e);
         }
     }
 
