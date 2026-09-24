@@ -213,8 +213,7 @@ public class CanvasService {
         CanvasDtos.BlockDto dto = new CanvasDtos.BlockDto();
         dto.setFrontendId(block.getFrontendId()); dto.setParentFrontendId(block.getParentFrontendId());
         dto.setType(block.getType()); dto.setName(block.getName());
-        dto.setDescription(block.getDescription()); dto.setParameters(block.getParameters());
-        dto.setReturnType(block.getReturnType()); dto.setAnnotations(block.getAnnotations());
+        dto.setDescription(block.getDescription());
         dto.setPosX(block.getPosX()); dto.setPosY(block.getPosY());
         dto.setWidth(block.getWidth()); dto.setHeight(block.getHeight());
         dto.setLastUpdatedBy(block.getLastUpdatedBy() != null ? block.getLastUpdatedBy().getId() : null);
@@ -234,8 +233,7 @@ public class CanvasService {
     private void applyBlockDto(Block block, CanvasDtos.BlockDto dto) {
         block.setDeleted(false); block.setParentFrontendId(dto.getParentFrontendId());
         block.setType(dto.getType()); block.setName(dto.getName());
-        block.setDescription(dto.getDescription()); block.setParameters(dto.getParameters());
-        block.setReturnType(dto.getReturnType()); block.setAnnotations(dto.getAnnotations());
+        block.setDescription(dto.getDescription());
         block.setPosX(dto.getPosX()); block.setPosY(dto.getPosY());
         block.setWidth(dto.getWidth()); block.setHeight(dto.getHeight());
 

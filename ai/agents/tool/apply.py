@@ -18,8 +18,8 @@ from agents.tool.models import (
 ALLOWED_EDGE_KINDS = {"CALL", "INHERIT", "IMPLEMENT"}
 UPDATE_FIELDS = {
     "folder": {"name", "description"},
-    "class": {"name", "description", "annotations"},
-    "method": {"name", "description", "parameters", "returnType"},
+    "class": {"name", "description"},
+    "method": {"name", "description"},
 }
 
 
@@ -101,7 +101,6 @@ def add_class(diagram: dict, args: AddClassArgs) -> dict:
         "id": node_id,
         "name": args.name,
         "description": args.description or "",
-        "annotations": args.annotations,
         "methods": [],
     })
     return {"ok": True, "id": node_id, "message": f"class 추가: {node_id}"}
@@ -116,8 +115,6 @@ def add_method(diagram: dict, args: AddMethodArgs) -> dict:
         "id": node_id,
         "name": args.name,
         "description": args.description or "",
-        "parameters": args.parameters,
-        "returnType": args.returnType,
     })
     return {"ok": True, "id": node_id, "message": f"method 추가: {node_id}"}
 

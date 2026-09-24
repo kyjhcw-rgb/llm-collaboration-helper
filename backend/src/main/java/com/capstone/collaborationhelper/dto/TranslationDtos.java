@@ -31,7 +31,6 @@ public class TranslationDtos {
         private String id;
         private String name;
         private String description;
-        private String annotations;
         private List<MethodNode> methods;
     }
 
@@ -40,8 +39,6 @@ public class TranslationDtos {
         private String id;
         private String name;
         private String description;
-        private String parameters;
-        private String returnType;
     }
 
     /**

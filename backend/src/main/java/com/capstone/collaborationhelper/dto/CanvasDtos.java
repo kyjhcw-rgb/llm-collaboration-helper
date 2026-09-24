@@ -40,9 +40,6 @@ public class CanvasDtos {
         private String type;
         private String name;
         private String description;
-        private String parameters;
-        private String returnType;
-        private String annotations;
         private Double posX;
         private Double posY;
         private Double width;

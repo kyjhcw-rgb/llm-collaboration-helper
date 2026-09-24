@@ -25,11 +25,6 @@ public class Block {
     private String type;
     private String name;
     private String description;
-    private String parameters;
-
-    @Column(name = "return_type")
-    private String returnType;
-    private String annotations;
 
     @Column(name = "pos_x")
     private Double posX;

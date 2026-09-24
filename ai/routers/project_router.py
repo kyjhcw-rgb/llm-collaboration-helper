@@ -3,15 +3,12 @@ from fastapi import APIRouter
 from schemas.common import DiagramRes
 from schemas.project import (
     DiagramGenerationRequest,
-    FileStructureResponse,
-    FileTreeRequest,
-    SingleCodeGenerationRequest,
-    SingleCodeGenerationResponse,
+    DiagramToCodeRequest,
+    DiagramToCodeResponse,
 )
 from services.project_service import (
-    generate_file_tree,
+    generate_code_from_diagram,
     generate_initial_diagram,
-    generate_single_code,
 )
 
 router = APIRouter()
@@ -26,16 +23,8 @@ async def initial_diagram(request: DiagramGenerationRequest):
 
 
 @router.post(
-    "/projects/generate-file-tree",
-    response_model=FileStructureResponse
+    "/projects/diagram-to-code",
+    response_model=DiagramToCodeResponse,
 )
-async def generate_file_tree_endpoint(request: FileTreeRequest):
-    return generate_file_tree(request)
-
-
-@router.post(
-    "/projects/generate-single-code",
-    response_model=SingleCodeGenerationResponse
-)
-async def generate_single_code_endpoint(request: SingleCodeGenerationRequest):
-    return generate_single_code(request)
+async def diagram_to_code(request: DiagramToCodeRequest):
+    return generate_code_from_diagram(request)

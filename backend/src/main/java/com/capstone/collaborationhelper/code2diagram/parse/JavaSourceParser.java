@@ -7,8 +7,6 @@ import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.Modifier;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
-import com.github.javaparser.ast.body.Parameter;
-import com.github.javaparser.ast.expr.AnnotationExpr;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,7 +16,6 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * JavaParser로 .java 파일을 ParsedType IR로 변환한다.
@@ -67,10 +64,6 @@ public class JavaSourceParser {
         String simpleName = type.getNameAsString();
         String fqn = packageName.isEmpty() ? simpleName : packageName + "." + simpleName;
 
-        List<String> annotations = type.getAnnotations().stream()
-                .map(this::annotationSimpleName)
-                .toList();
-
         List<String> extended = type.getExtendedTypes().stream()
                 .map(ClassOrInterfaceType::getNameAsString)
                 .toList();
@@ -88,7 +81,6 @@ public class JavaSourceParser {
                 .packageName(packageName)
                 .fqn(fqn)
                 .kind(type.isInterface() ? "interface" : "class")
-                .annotations(new ArrayList<>(annotations))
                 .methods(new ArrayList<>(methods))
                 .extendedTypes(new ArrayList<>(extended))
                 .implementedTypes(new ArrayList<>(implemented))
@@ -97,14 +89,8 @@ public class JavaSourceParser {
     }
 
     private ParsedMethod toParsedMethod(MethodDeclaration method) {
-        String params = method.getParameters().stream()
-                .map(this::formatParameter)
-                .collect(Collectors.joining(", "));
-
         return ParsedMethod.builder()
                 .name(method.getNameAsString())
-                .parameters(params.isEmpty() ? null : params)
-                .returnType(method.getType().asString())
                 .isPublic(method.hasModifier(Modifier.Keyword.PUBLIC)
                         || method.getParentNode()
                         .filter(ClassOrInterfaceDeclaration.class::isInstance)
@@ -112,15 +98,5 @@ public class JavaSourceParser {
                         .map(ClassOrInterfaceDeclaration::isInterface)
                         .orElse(false))
                 .build();
-    }
-
-    private String formatParameter(Parameter parameter) {
-        return parameter.getType().asString() + " " + parameter.getNameAsString();
-    }
-
-    private String annotationSimpleName(AnnotationExpr annotation) {
-        String name = annotation.getNameAsString();
-        int dot = name.lastIndexOf('.');
-        return dot >= 0 ? name.substring(dot + 1) : name;
     }
 }

@@ -20,9 +20,6 @@ public class ParsedType {
     private String fqn;
     /** class | interface */
     private String kind;
-    /** 예: ["RestController", "RequestMapping"] — @ 제외 단순명 */
-    @Builder.Default
-    private List<String> annotations = new ArrayList<>();
     @Builder.Default
     private List<ParsedMethod> methods = new ArrayList<>();
     /** extends 대상 단순명 또는 FQN */
