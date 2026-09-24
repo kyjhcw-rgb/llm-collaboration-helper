@@ -1,7 +1,6 @@
 package com.capstone.collaborationhelper.service;
 
 import com.capstone.collaborationhelper.client.LlmClient;
-import com.capstone.collaborationhelper.code2diagram.CodeToDiagramService;
 import com.capstone.collaborationhelper.dto.ProjectDtos.CreateReq;
 import com.capstone.collaborationhelper.dto.ProjectDtos.Res;
 import com.capstone.collaborationhelper.dto.TranslationDtos.DiagramRes;
@@ -20,9 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -38,7 +35,6 @@ public class ProjectService {
     private final CanvasService canvasService;
     private final TranslationService translationService;
     private final LlmClient llmClient;
-    private final CodeToDiagramService codeToDiagramService;
 
     // 추가: DB 제약조건 오류를 우회하여 초고속 벌크 삭제를 수행하기 위한 의존성 주입
     private final EntityManager entityManager;
@@ -112,16 +108,9 @@ public class ProjectService {
     }
 
     /**
-     * 우선순위: repoUrl(코드) &gt; descriptionPrompt(LLM) &gt; 없음(빈 프로젝트).
+     * descriptionPrompt가 있으면 LLM 초기 다이어그램, 없으면 빈 프로젝트.
      */
     private InitialDiagram resolveInitialDiagram(CreateReq req) throws Exception {
-        String repoUrl = req.getRepoUrl();
-        if (repoUrl != null && !repoUrl.isBlank()) {
-            log.info("▶ [ProjectService] GitHub 레포에서 초기 다이어그램을 생성합니다.");
-            DiagramRes diagram = codeToDiagramService.fromGitHubUrl(repoUrl.trim());
-            return new InitialDiagram(diagram, "code", "초기 코드 다이어그램 생성");
-        }
-
         String prompt = req.getDescriptionPrompt();
         if (prompt != null && !prompt.isBlank()) {
             log.info("▶ [ProjectService] LlmClient를 통해 AI 다이어그램 생성을 요청합니다.");
