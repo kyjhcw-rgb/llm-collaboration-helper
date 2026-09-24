@@ -4,21 +4,23 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.springframework.security.task.DelegatingSecurityContextAsyncTaskExecutor;
 
 import java.util.concurrent.Executor;
 
 @Configuration
-@EnableAsync // Spring의 @Async 기능을 엔진 수준에서 활성화
+@EnableAsync
 public class AsyncConfig {
 
     @Bean(name = "taskExecutor")
     public Executor taskExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(10);       // 기본 스레드 수
-        executor.setMaxPoolSize(30);        // 동시 요청 폭주 시 최대 스레드 수
-        executor.setQueueCapacity(200);     // 대기 큐 크기
+        executor.setCorePoolSize(10);
+        executor.setMaxPoolSize(30);
+        executor.setQueueCapacity(200);
         executor.setThreadNamePrefix("AI-Async-");
         executor.initialize();
-        return executor;
+        // @Async 새 스레드에도 HTTP 요청의 SecurityContext(로그인)를 복사
+        return new DelegatingSecurityContextAsyncTaskExecutor(executor);
     }
 }
