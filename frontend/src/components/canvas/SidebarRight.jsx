@@ -48,6 +48,7 @@ const SidebarRight = () => {
     const [editingCommentId, setEditingCommentId] = useState(null);
     const [mentionQuery, setMentionQuery] = useState(null);
     const [membersList, setMembersList] = useState([]);
+    const [extracting, setExtracting] = useState(false);
     const commentInputRef = useRef(null);
 
     const isLive = currentVersion === 'live';
@@ -358,6 +359,39 @@ const SidebarRight = () => {
         setCommentInput(newText);
         setMentionQuery(null);
         commentInputRef.current?.focus();
+    };
+
+    const handleFoundationExtract = async () => {
+        if (!currentProjectId || extracting) return;
+        setExtracting(true);
+        try {
+            const token = localStorage.getItem("accessToken");
+            const headers = {};
+            if (token) headers.Authorization = `Bearer ${token}`;
+
+            const res = await fetch(`/api/projects/${currentProjectId}/foundation-code`, {
+                method: "POST",
+                headers,
+            });
+            if (!res.ok) throw new Error(`API Error: ${res.status}`);
+
+            const blob = await res.blob();
+            const cd = res.headers.get("Content-Disposition") || "";
+            const matched = cd.match(/filename="?([^"]+)"?/);
+            const filename = matched?.[1] || `project-${currentProjectId}-foundation.zip`;
+
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error(err);
+            alert("파운데이션 코드 추출에 실패했습니다.");
+        } finally {
+            setExtracting(false);
+        }
     };
 
     const handleSendComment = async () => {
@@ -717,8 +751,12 @@ const SidebarRight = () => {
             </div>
 
             <div className="extraction-section">
-                <button className="foundation-btn">
-                    파운데이션 코드 추출
+                <button
+                    className="foundation-btn"
+                    onClick={handleFoundationExtract}
+                    disabled={!currentProjectId || extracting}
+                >
+                    {extracting ? "추출 중..." : "파운데이션 코드 추출"}
                 </button>
             </div>
         </aside>
