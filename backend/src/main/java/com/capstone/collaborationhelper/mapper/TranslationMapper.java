@@ -38,7 +38,6 @@ public class TranslationMapper {
             blocks.add(block(
                     folder.getId(), null, CANVAS_FOLDER_TYPE,
                     folder.getName(), folder.getDescription(),
-                    null, null, null,
                     folderX, folderY
             ));
 
@@ -95,7 +94,6 @@ public class TranslationMapper {
             blocks.add(block(
                     classNode.getId(), folderId, "class",
                     classNode.getName(), classNode.getDescription(),
-                    null, null, classNode.getAnnotations(),
                     classX, classY
             ));
             appendMethods(blocks, classNode.getId(), classNode.getMethods());
@@ -120,7 +118,6 @@ public class TranslationMapper {
             blocks.add(block(
                     method.getId(), parentId, "method",
                     method.getName(), method.getDescription(),
-                    method.getParameters(), method.getReturnType(), null,
                     methodX, methodY
             ));
         }
@@ -147,7 +144,6 @@ public class TranslationMapper {
         classNode.setId(classBlock.getFrontendId());
         classNode.setName(classBlock.getName());
         classNode.setDescription(classBlock.getDescription());
-        classNode.setAnnotations(classBlock.getAnnotations());
 
         List<MethodNode> methods = childrenByParent.getOrDefault(classNode.getId(), List.of()).stream()
                 .filter(b -> "method".equalsIgnoreCase(normalizeCanvasType(b.getType())))
@@ -162,8 +158,6 @@ public class TranslationMapper {
         method.setId(methodBlock.getFrontendId());
         method.setName(methodBlock.getName());
         method.setDescription(methodBlock.getDescription());
-        method.setParameters(methodBlock.getParameters());
-        method.setReturnType(methodBlock.getReturnType());
         return method;
     }
 
@@ -209,7 +203,6 @@ public class TranslationMapper {
     private BlockDto block(
             String id, String parentId, String type,
             String name, String description,
-            String parameters, String returnType, String annotations,
             double posX, double posY
     ) {
         BlockDto dto = new BlockDto();
@@ -218,9 +211,6 @@ public class TranslationMapper {
         dto.setType(type);
         dto.setName(name != null ? name : "Untitled");
         dto.setDescription(description != null ? description : "");
-        dto.setParameters(parameters);
-        dto.setReturnType(returnType);
-        dto.setAnnotations(annotations);
         dto.setPosX(posX);
         dto.setPosY(posY);
         return dto;

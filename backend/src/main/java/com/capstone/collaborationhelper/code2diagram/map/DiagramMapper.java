@@ -67,7 +67,6 @@ public class DiagramMapper {
         node.setId(classId(type));
         node.setName(type.getSimpleName());
         node.setDescription("");
-        node.setAnnotations(formatAnnotations(type.getAnnotations()));
         node.setMethods(type.getMethods().stream()
                 .filter(ParsedMethod::isPublic)
                 .map(m -> toMethodNode(type, m))
@@ -80,8 +79,6 @@ public class DiagramMapper {
         node.setId(methodId(type, method));
         node.setName(method.getName());
         node.setDescription("");
-        node.setParameters(method.getParameters());
-        node.setReturnType(method.getReturnType());
         return node;
     }
 
@@ -139,15 +136,6 @@ public class DiagramMapper {
 
     private String methodId(ParsedType type, ParsedMethod method) {
         return "method_" + sanitize(type.getFqn()) + "_" + sanitize(method.getName());
-    }
-
-    private String formatAnnotations(List<String> annotations) {
-        if (annotations == null || annotations.isEmpty()) {
-            return null;
-        }
-        return annotations.stream()
-                .map(a -> a.startsWith("@") ? a : "@" + a)
-                .collect(Collectors.joining(" "));
     }
 
     private String simpleName(String typeName) {

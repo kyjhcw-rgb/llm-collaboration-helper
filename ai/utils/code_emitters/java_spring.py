@@ -2,45 +2,14 @@
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List
 
 from schemas.common import ClassNode, FolderNode, MethodNode
 from utils.code_emitters.base import ClassRelations
 from utils.code_path_mapper import ResolvedFile
 
 
-def _split_annotations(raw: Optional[str]) -> List[str]:
-    if not raw or not raw.strip():
-        return []
-    parts = []
-    for token in raw.replace(",", " ").split():
-        token = token.strip()
-        if not token:
-            continue
-        if not token.startswith("@"):
-            token = f"@{token}"
-        parts.append(token)
-    return parts
-
-
-def _default_return_expr(return_type: Optional[str]) -> str:
-    if not return_type or return_type.strip() in {"void", "Void"}:
-        return ""
-    rt = return_type.strip()
-    if rt in {"int", "long", "short", "byte"}:
-        return "return 0;"
-    if rt in {"float", "double"}:
-        return "return 0.0;"
-    if rt in {"boolean", "Boolean"}:
-        return "return false;"
-    if rt in {"char"}:
-        return "return '\\0';"
-    return "return null;"
-
-
 def _method_stub(method: MethodNode) -> str:
-    params = (method.parameters or "").strip()
-    return_type = (method.returnType or "void").strip() or "void"
     name = (method.name or "untitled").strip() or "untitled"
     desc = (method.description or "").strip()
 
@@ -48,16 +17,12 @@ def _method_stub(method: MethodNode) -> str:
         "    /**",
         f"     * {desc}" if desc else "     * TODO: implement",
         "     */",
-        f"    public {return_type} {name}({params}) {{",
+        f"    public void {name}() {{",
     ]
     if desc:
         lines.append(f"        // TODO: {desc}")
     else:
         lines.append("        // TODO: implement")
-
-    ret = _default_return_expr(return_type)
-    if ret:
-        lines.append(f"        {ret}")
     lines.append("    }")
     return "\n".join(lines)
 
@@ -88,9 +53,6 @@ class JavaSpringEmitter:
             lines.append("/**")
             lines.append(f" * {class_desc}")
             lines.append(" */")
-
-        for ann in _split_annotations(class_node.annotations):
-            lines.append(ann)
 
         header = f"public class {class_name}"
         if relations.extends:

@@ -20,10 +20,6 @@ class AddClassArgs(BaseModel):
     )
     name: str = Field(description="클래스·인터페이스 이름 (예: UserService)")
     description: str = Field(default="", description="한글 역할 설명 (예: 회원 비즈니스 로직)")
-    annotations: Optional[str] = Field(
-        default=None,
-        description="어노테이션 (예: @RestController)"
-    )
 
 
 class AddMethodArgs(BaseModel):
@@ -34,14 +30,6 @@ class AddMethodArgs(BaseModel):
     )
     name: str = Field(description="메서드 이름 (예: getUser)")
     description: str = Field(default="", description="한글 역할 설명 (예: 회원 조회)")
-    parameters: Optional[str] = Field(
-        default=None,
-        description="파라미터 (예: String email, String pwd)"
-    )
-    returnType: Optional[str] = Field(
-        default=None,
-        description="리턴 타입 (예: ResponseEntity)"
-    )
 
 
 class RemoveArgs(BaseModel):
@@ -52,18 +40,6 @@ class UpdateArgs(BaseModel):
     id: str = Field(description="바꿀 노드 id")
     name: Optional[str] = None
     description: Optional[str] = None
-    annotations: Optional[str] = Field(
-        default=None,
-        description="class만 해당"
-    )
-    parameters: Optional[str] = Field(
-        default=None,
-        description="method만 해당"
-    )
-    returnType: Optional[str] = Field(
-        default=None,
-        description="method만 해당"
-    )
 
 
 class MoveArgs(BaseModel):

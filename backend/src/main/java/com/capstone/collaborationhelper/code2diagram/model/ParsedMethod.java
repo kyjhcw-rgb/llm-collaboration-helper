@@ -10,9 +10,5 @@ import lombok.Data;
 @Builder
 public class ParsedMethod {
     private String name;
-    /** 예: "String email, String password" */
-    private String parameters;
-    /** 예: "ResponseEntity" — void면 "void" */
-    private String returnType;
     private boolean isPublic;
 }

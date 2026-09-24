@@ -144,10 +144,10 @@ def plan_system_instruction(
         "- 각 스텝의 args는 JSON 객체 문자열이다. "
         '예: {"id":"cls_xxx","parentId":"folder_service","name":"FooService"}\n'
         "- add_folder: id, name, description?\n"
-        "- add_class: id, parentId(folder id), name, description?, annotations?\n"
-        "- add_method: id, parentId(class id), name, description?, parameters?, returnType?\n"
+        "- add_class: id, parentId(folder id), name, description?\n"
+        "- add_method: id, parentId(class id), name, description?\n"
         "- remove: id (folder/class/method)\n"
-        "- update: id + 바꿀 필드만 (name, description, annotations, parameters, returnType)\n"
+        "- update: id + 바꿀 필드만 (name, description)\n"
         "- move: id, parentId\n"
         "- add_edge: fromId, to, kind(CALL|INHERIT|IMPLEMENT), id?\n"
         "- remove_edge: id\n"
