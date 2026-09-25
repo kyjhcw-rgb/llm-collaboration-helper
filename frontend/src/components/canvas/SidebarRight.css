@@ -194,7 +194,85 @@
     align-self: flex-start;
     max-width: 90%;
     word-break: break-word;
-    white-space: pre-wrap;
+}
+
+.chat-markdown > :first-child {
+    margin-top: 0;
+}
+
+.chat-markdown > :last-child {
+    margin-bottom: 0;
+}
+
+.chat-markdown p {
+    margin: 0 0 0.6em;
+}
+
+.chat-markdown ul,
+.chat-markdown ol {
+    margin: 0.3em 0 0.6em;
+    padding-left: 1.2em;
+}
+
+.chat-markdown li + li {
+    margin-top: 0.2em;
+}
+
+.chat-markdown h1,
+.chat-markdown h2,
+.chat-markdown h3,
+.chat-markdown h4 {
+    margin: 0.6em 0 0.3em;
+    font-size: 14px;
+    line-height: 1.4;
+    color: #222;
+}
+
+.chat-markdown a {
+    color: #4953BE;
+}
+
+.chat-markdown code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    background: #e8e8f0;
+    padding: 0 4px;
+    border-radius: 4px;
+}
+
+.chat-markdown pre {
+    margin: 0.4em 0;
+    padding: 8px 10px;
+    background: #1e1e2e;
+    color: #f4f4f9;
+    border-radius: 8px;
+    overflow-x: auto;
+    white-space: pre;
+}
+
+.chat-markdown pre code {
+    background: none;
+    color: inherit;
+    padding: 0;
+}
+
+.chat-markdown table {
+    border-collapse: collapse;
+    margin: 0.4em 0;
+    font-size: 12px;
+}
+
+.chat-markdown th,
+.chat-markdown td {
+    border: 1px solid #ddd;
+    padding: 4px 8px;
+}
+
+.chat-markdown blockquote {
+    margin: 0.4em 0;
+    padding-left: 10px;
+    border-left: 3px solid #c5c8e8;
+    color: #666;
 }
 
 .chat-msg.user {

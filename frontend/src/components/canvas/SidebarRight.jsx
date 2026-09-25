@@ -1,7 +1,19 @@
 import React, { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { useCanvasStore } from "../../store/useCanvasStore";
 import { request } from "../../api/http";
 import './SidebarRight.css';
+
+function AssistantMarkdown({ text }) {
+    return (
+        <div className="chat-markdown">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {text ?? ""}
+            </ReactMarkdown>
+        </div>
+    );
+}
 
 /** Content-Disposition에서 파일명 추출 (filename* UTF-8 우선) */
 function filenameFromContentDisposition(header, fallback) {
@@ -617,7 +629,7 @@ const SidebarRight = () => {
                             {messages.map((msg) => (
                                 msg.type === "agent_proposal" ? (
                                     <div key={msg.id} className="chat-msg ai agent-proposal">
-                                        <div>{msg.message}</div>
+                                        <AssistantMarkdown text={msg.message} />
                                         <div className="agent-proposal-summary">
                                             📋 블록 {msg.blocks.length}개 · 엣지 {msg.edges.length}개 변경 제안
                                         </div>
@@ -662,7 +674,11 @@ const SidebarRight = () => {
                                         key={msg.id}
                                         className={`chat-msg ${msg.sender === "USER" ? "user" : "ai"}`}
                                     >
-                                        {msg.message}
+                                        {msg.sender === "USER" ? (
+                                            msg.message
+                                        ) : (
+                                            <AssistantMarkdown text={msg.message} />
+                                        )}
                                     </div>
                                 )
                             ))}
