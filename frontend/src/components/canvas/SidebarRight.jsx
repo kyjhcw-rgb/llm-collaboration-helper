@@ -3,6 +3,22 @@ import { useCanvasStore } from "../../store/useCanvasStore";
 import { request } from "../../api/http";
 import './SidebarRight.css';
 
+/** Content-Disposition에서 파일명 추출 (filename* UTF-8 우선) */
+function filenameFromContentDisposition(header, fallback) {
+    if (!header) return fallback;
+    const star = header.match(/filename\*\s*=\s*(?:UTF-8''|utf-8'')([^;]+)/i);
+    if (star?.[1]) {
+        try {
+            return decodeURIComponent(star[1].trim().replace(/^"|"$/g, ""));
+        } catch {
+            /* fall through */
+        }
+    }
+    const basic = header.match(/filename\s*=\s*"([^"]+)"|filename\s*=\s*([^;]+)/i);
+    if (basic) return (basic[1] || basic[2] || "").trim() || fallback;
+    return fallback;
+}
+
 const SidebarRight = () => {
     const {
         nodes,
@@ -49,6 +65,8 @@ const SidebarRight = () => {
     const [mentionQuery, setMentionQuery] = useState(null);
     const [membersList, setMembersList] = useState([]);
     const [extracting, setExtracting] = useState(false);
+    const [extractingDdl, setExtractingDdl] = useState(false);
+    const [dbType, setDbType] = useState("mysql");
     const commentInputRef = useRef(null);
 
     const isLive = currentVersion === 'live';
@@ -362,7 +380,7 @@ const SidebarRight = () => {
     };
 
     const handleFoundationExtract = async () => {
-        if (!currentProjectId || extracting) return;
+        if (!currentProjectId || extracting || extractingDdl) return;
         setExtracting(true);
         try {
             const token = localStorage.getItem("accessToken");
@@ -376,9 +394,10 @@ const SidebarRight = () => {
             if (!res.ok) throw new Error(`API Error: ${res.status}`);
 
             const blob = await res.blob();
-            const cd = res.headers.get("Content-Disposition") || "";
-            const matched = cd.match(/filename="?([^"]+)"?/);
-            const filename = matched?.[1] || `project-${currentProjectId}-foundation.zip`;
+            const filename = filenameFromContentDisposition(
+                res.headers.get("Content-Disposition"),
+                `project-${currentProjectId}-foundation.zip`
+            );
 
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
@@ -391,6 +410,40 @@ const SidebarRight = () => {
             alert("파운데이션 코드 추출에 실패했습니다.");
         } finally {
             setExtracting(false);
+        }
+    };
+
+    const handleDdlExtract = async () => {
+        if (!currentProjectId || extracting || extractingDdl) return;
+        setExtractingDdl(true);
+        try {
+            const token = localStorage.getItem("accessToken");
+            const headers = {};
+            if (token) headers.Authorization = `Bearer ${token}`;
+
+            const res = await fetch(
+                `/api/projects/${currentProjectId}/database-ddl?dbType=${encodeURIComponent(dbType)}`,
+                { method: "POST", headers }
+            );
+            if (!res.ok) throw new Error(`API Error: ${res.status}`);
+
+            const blob = await res.blob();
+            const filename = filenameFromContentDisposition(
+                res.headers.get("Content-Disposition"),
+                `project-${currentProjectId}-${dbType}.sql`
+            );
+
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error(err);
+            alert("DDL 추출에 실패했습니다.");
+        } finally {
+            setExtractingDdl(false);
         }
     };
 
@@ -754,10 +807,28 @@ const SidebarRight = () => {
                 <button
                     className="foundation-btn"
                     onClick={handleFoundationExtract}
-                    disabled={!currentProjectId || extracting}
+                    disabled={!currentProjectId || extracting || extractingDdl}
                 >
                     {extracting ? "추출 중..." : "파운데이션 코드 추출"}
                 </button>
+                <div className="ddl-row">
+                    <select
+                        className="ddl-select"
+                        value={dbType}
+                        onChange={(e) => setDbType(e.target.value)}
+                        disabled={!currentProjectId || extracting || extractingDdl}
+                    >
+                        <option value="mysql">MySQL</option>
+                        <option value="postgresql">PostgreSQL</option>
+                    </select>
+                    <button
+                        className="ddl-btn"
+                        onClick={handleDdlExtract}
+                        disabled={!currentProjectId || extracting || extractingDdl}
+                    >
+                        {extractingDdl ? "추출 중..." : "DDL 추출"}
+                    </button>
+                </div>
             </div>
         </aside>
     );
