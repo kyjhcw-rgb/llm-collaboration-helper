@@ -5,6 +5,8 @@ import com.capstone.collaborationhelper.dto.ChatDtos.LlmChatRes;
 import com.capstone.collaborationhelper.dto.ChatDtos.LlmModifyRes;
 import com.capstone.collaborationhelper.dto.CodeGenDtos.DiagramToCodeReq;
 import com.capstone.collaborationhelper.dto.CodeGenDtos.DiagramToCodeRes;
+import com.capstone.collaborationhelper.dto.DatabaseDtos.GenerateDdlReq;
+import com.capstone.collaborationhelper.dto.DatabaseDtos.GenerateDdlRes;
 import com.capstone.collaborationhelper.dto.ProjectDtos.CreateReq;
 import com.capstone.collaborationhelper.dto.TranslationDtos.DiagramRes;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -118,6 +120,30 @@ public class LlmClient {
         } catch (Exception e) {
             log.error("❌ [LlmClient] 다이어그램→코드 통신 에러: ", e);
             throw new RuntimeException("AI 코드 생성 서버와의 통신에 실패했습니다.", e);
+        }
+    }
+
+    // [기능 5] 다이어그램 → DDL (/projects/generate-database-ddl)
+    public GenerateDdlRes requestDatabaseDdl(DiagramRes diagram, String dbType) {
+        String url = getBaseUrl() + "/projects/generate-database-ddl";
+        log.info("▶ [LlmClient] AI 서버로 DDL 생성 요청. url={}, dbType={}", url, dbType);
+
+        try {
+            GenerateDdlReq body = new GenerateDdlReq(diagram, dbType);
+            GenerateDdlRes response = restTemplate.postForObject(url, body, GenerateDdlRes.class);
+
+            if (response == null || response.getSql() == null || response.getSql().isBlank()) {
+                throw new RuntimeException("AI 서버가 DDL SQL을 반환하지 않았습니다.");
+            }
+
+            log.info("✔ [LlmClient] DDL 수신 완료 (sql {}자, dbType={})",
+                    response.getSql().length(), response.getDbType());
+            return response;
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("❌ [LlmClient] DDL 생성 통신 에러: ", e);
+            throw new RuntimeException("AI DDL 생성 서버와의 통신에 실패했습니다.", e);
         }
     }
 
