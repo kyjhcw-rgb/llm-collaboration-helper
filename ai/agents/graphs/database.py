@@ -2,14 +2,13 @@ from langgraph.graph import END, StateGraph
 
 from agents.nodes.generate_db import generate_db
 from agents.nodes.validate_db import validate_db
-from agents.states import MAX_CODE_RETRIES, CodeGenerationState
+from agents.states import MAX_DB_RETRIES, CodeGenerationState
 
 
 def route_db_validation(state: CodeGenerationState) -> str:
-    """DB DDL 검증 에러 발생 시 재시도 조건 제어"""
-    if state.get("validation_error"):
-        if state["retry_count"] <= MAX_CODE_RETRIES:
-            return "generate"
+    """검증 실패 시 MAX_DB_RETRIES번까지 재생성. retry_count는 실패마다 validate에서 증가한다."""
+    if state.get("validation_error") and state["retry_count"] <= MAX_DB_RETRIES:
+        return "generate"
 
     return "end"
 

@@ -17,11 +17,14 @@ import org.springframework.core.env.Environment;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.server.ResponseStatusException;
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -138,6 +141,9 @@ public class LlmClient {
             log.info("✔ [LlmClient] DDL 수신 완료 (sql {}자, dbType={})",
                     response.getSql().length(), response.getDbType());
             return response;
+        } catch (HttpServerErrorException e) {
+            log.error("❌ [LlmClient] DDL 생성 실패 (AI 서버 {}): {}", e.getStatusCode(), e.getResponseBodyAsString());
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "검증을 통과한 DDL을 생성하지 못했습니다. 다시 시도해 주세요.", e);
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {

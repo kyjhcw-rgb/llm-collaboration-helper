@@ -6,3 +6,4 @@ python-dotenv==1.2.2
 requests==2.33.0
 python-multipart==0.0.20
 langgraph==0.2.74
+sqlglot==30.19.0

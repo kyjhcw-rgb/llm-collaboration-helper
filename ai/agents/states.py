@@ -23,6 +23,7 @@ class CodeGenerationState(TypedDict):
     system_instruction: str
     user_contents: list
     target_file_path: Optional[str]
+    db_type: Optional[str]
 
     result: Optional[dict]
     validation_error: Optional[str]
@@ -31,3 +32,4 @@ class CodeGenerationState(TypedDict):
 
 MAX_DIAGRAM_RETRIES = 2
 MAX_CODE_RETRIES = 1
+MAX_DB_RETRIES = 2
