@@ -1,19 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { useCanvasStore } from "../../store/useCanvasStore";
-import { request } from "../../api/http";
+import { request, requestUpload } from "../../api/http";
+import { useAudioRecorder } from "../../hooks/useAudioRecorder";
 import './SidebarRight.css';
-
-function AssistantMarkdown({ text }) {
-    return (
-        <div className="chat-markdown">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {text ?? ""}
-            </ReactMarkdown>
-        </div>
-    );
-}
 
 /** Content-Disposition에서 파일명 추출 (filename* UTF-8 우선) */
 function filenameFromContentDisposition(header, fallback) {
@@ -62,7 +51,7 @@ const SidebarRight = () => {
     const [chatInput, setChatInput] = useState("");
     const [messages, setMessages] = useState([]);
     const [chatLoading, setChatLoading] = useState(false);
-    const [pendingMode, setPendingMode] = useState(null); // 응답 대기 중인 요청의 모드 ('ASK' | 'AGENT')
+    const [pendingMode, setPendingMode] = useState(null); // 로딩 문구용 대기 모드 ('ASK' | 'AGENT' | 'MEETING')
     const [chatMode, setChatMode] = useState("ask"); // 'ask' | 'agent'
     const chatBottomRef = useRef(null);
     const applyingProposalIdsRef = useRef(new Set()); // 연타로 agent/agree가 중복 호출되는 것 방지 (state는 반영 시차가 있어 ref로 동기 체크)
@@ -87,6 +76,12 @@ const SidebarRight = () => {
     // Ask 모드는 GUEST도 사용 가능(백엔드 assertPartyMember만 적용), Agent 모드는 GUEST 불가(assertNotGuest)
     const canAsk = !isMockMode && isLive;
     const canAgent = canAsk && userRole !== 'GUEST';
+
+    const { isRecording, toggleRecording } = useAudioRecorder({
+        onStop: (blob) => handleMeetingAudio(blob),
+    });
+    // 녹음 중 모드를 바꿔도 정지 버튼이 사라지지 않도록 유지
+    const showMeetingMic = !isMockMode && (chatMode === "agent" || isRecording);
 
     useEffect(() => {
         if (selectedNodeId) {
@@ -195,7 +190,7 @@ const SidebarRight = () => {
         saveProjectToServer();
     };
 
-    const AI_RESPONSE_TIMEOUT_MS = 3 * 60 * 1000;
+    const AI_RESPONSE_TIMEOUT_MS = 6 * 60 * 1000;
 
     const pushAssistantMessage = (text) => {
         setMessages((prev) => [
@@ -238,7 +233,7 @@ const SidebarRight = () => {
         }
     };
 
-    // 3분 안에 결과가 안 오면 로딩을 풀어주고, ASK는 서버에 저장된 답변이 있는지 한 번 확인해서 복구
+    // 6분 안에 결과가 안 오면 로딩을 풀어주고, ASK는 서버에 저장된 답변이 있는지 한 번 확인해서 복구
     const handleAiTimeout = async (pending, projectId) => {
         if (pendingRequestRef.current !== pending) return;
         pendingRequestRef.current = null;
@@ -307,6 +302,41 @@ const SidebarRight = () => {
                 setPendingMode(null);
             }
             pushAssistantMessage("응답 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
+        }
+    };
+
+    // 회의 녹음 업로드 → 202 접수. 결과는 Agent 제안과 같은 AI_RESPONSE_READY(mode=AGENT)로 도착
+    const handleMeetingAudio = async (blob) => {
+        if (!blob || blob.size === 0 || chatLoading || !canAgent) return;
+
+        const pending = {
+            mode: "AGENT",
+            baseEditCount: getCanvasEditCount(),
+            lastServerId: messages.reduce((max, m) => (typeof m.id === "number" ? Math.max(max, m.id) : max), 0),
+            timerId: null,
+        };
+        pendingRequestRef.current = pending;
+
+        setMessages((prev) => [...prev, { id: `tmp-${Date.now()}`, sender: "USER", message: "[회의 녹음] 분석 요청" }]);
+        setChatLoading(true);
+        setPendingMode("MEETING");
+
+        try {
+            const ext = blob.type.includes("mp4") ? "mp4" : "webm";
+            const formData = new FormData();
+            formData.append("file", blob, `meeting.${ext}`);
+            await requestUpload(`/projects/${currentProjectId}/meeting-audio`, formData);
+
+            if (pendingRequestRef.current === pending) {
+                pending.timerId = setTimeout(() => handleAiTimeout(pending, currentProjectId), AI_RESPONSE_TIMEOUT_MS);
+            }
+        } catch {
+            if (pendingRequestRef.current === pending) {
+                pendingRequestRef.current = null;
+                setChatLoading(false);
+                setPendingMode(null);
+            }
+            pushAssistantMessage("회의 녹음 전송에 실패했습니다. 잠시 후 다시 시도해 주세요.");
         }
     };
 
@@ -629,7 +659,7 @@ const SidebarRight = () => {
                             {messages.map((msg) => (
                                 msg.type === "agent_proposal" ? (
                                     <div key={msg.id} className="chat-msg ai agent-proposal">
-                                        <AssistantMarkdown text={msg.message} />
+                                        <div>{msg.message}</div>
                                         <div className="agent-proposal-summary">
                                             📋 블록 {msg.blocks.length}개 · 엣지 {msg.edges.length}개 변경 제안
                                         </div>
@@ -674,18 +704,16 @@ const SidebarRight = () => {
                                         key={msg.id}
                                         className={`chat-msg ${msg.sender === "USER" ? "user" : "ai"}`}
                                     >
-                                        {msg.sender === "USER" ? (
-                                            msg.message
-                                        ) : (
-                                            <AssistantMarkdown text={msg.message} />
-                                        )}
+                                        {msg.message}
                                     </div>
                                 )
                             ))}
                             {chatLoading && (
                                 <div className="chat-msg ai chat-loading">
                                     <div className="chat-loading-label">
-                                        {pendingMode === "AGENT"
+                                        {pendingMode === "MEETING"
+                                            ? "회의 녹음을 분석해 수정 제안을 만드는 중입니다. 몇 분 걸릴 수 있어요. 지금 캔버스를 수정하면 제안을 적용할 때 덮어써질 수 있어요."
+                                            : pendingMode === "AGENT"
                                             ? "AI가 수정 제안을 만드는 중입니다. 지금 캔버스를 수정하면 제안을 적용할 때 덮어써질 수 있어요."
                                             : "AI가 답변을 작성하는 중입니다. 다른 작업을 하셔도 됩니다."}
                                     </div>
@@ -713,7 +741,7 @@ const SidebarRight = () => {
                                 )}
                             </div>
                         )}
-                        <div className="chat-input-wrapper">
+                        <div className={`chat-input-wrapper ${showMeetingMic ? "chat-input-wrapper--with-mic" : ""}`}>
                             <textarea
                                 className="chat-textarea"
                                 placeholder={
@@ -730,6 +758,24 @@ const SidebarRight = () => {
                                 onKeyDown={handleChatKeyDown}
                                 disabled={isMockMode || !canAsk || chatLoading}
                             />
+                            {showMeetingMic && (
+                                <button
+                                    className={`chat-mic-icon-btn ${isRecording ? "recording" : ""}`}
+                                    title={isRecording ? "녹음 종료 후 분석" : "회의 녹음 시작"}
+                                    onClick={toggleRecording}
+                                    disabled={!isRecording && (!canAgent || chatLoading)}
+                                >
+                                    {isRecording ? (
+                                        <svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                            <rect x="4" y="4" width="16" height="16" rx="2" fill="currentColor"/>
+                                        </svg>
+                                    ) : (
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z" fill="currentColor"/>
+                                        </svg>
+                                    )}
+                                </button>
+                            )}
                             <button
                                 className="chat-send-icon-btn"
                                 title="전송"

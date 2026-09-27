@@ -2,10 +2,19 @@ package com.capstone.collaborationhelper.dto;
 
 import com.capstone.collaborationhelper.entity.Project;
 import jakarta.validation.constraints.NotBlank;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 import java.time.ZonedDateTime;
 public class ProjectDtos {
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class MeetingDescriptionRes {
+        private String description;
+    }
 
     @Data
     public static class CreateReq {

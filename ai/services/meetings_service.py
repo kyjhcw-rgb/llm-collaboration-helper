@@ -6,7 +6,12 @@ from fastapi import HTTPException, UploadFile
 from google.genai import types
 from pydantic import BaseModel, Field
 
-from agents.prompts import meeting_extract_instruction, meeting_extract_user_message
+from agents.prompts import (
+    meeting_description_instruction,
+    meeting_description_user_message,
+    meeting_extract_instruction,
+    meeting_extract_user_message,
+)
 from core.config import MODEL_ID, client
 from core.exceptions import handle_genai_error
 from schemas.chat import ChatRequest, ModifyResponse
@@ -53,6 +58,30 @@ def extract_diagram_changes(
     payload = json.loads(response.text)
     raw = payload.get("changes") or []
     return [item.strip() for item in raw if isinstance(item, str) and item.strip()]
+
+
+class ProjectDescriptionExtract(BaseModel):
+    description: str = Field(
+        default="",
+        description="초기 다이어그램 생성용 프로젝트 설명",
+    )
+
+
+def extract_project_description(meeting_text: str) -> str:
+    response = client.models.generate_content(
+        model=MODEL_ID,
+        contents=meeting_description_user_message(meeting_text),
+        config=types.GenerateContentConfig(
+            system_instruction=meeting_description_instruction(),
+            response_mime_type="application/json",
+            response_schema=ProjectDescriptionExtract,
+            temperature=0.2,
+        ),
+    )
+
+    payload = json.loads(response.text)
+    description = payload.get("description") or ""
+    return description.strip() if isinstance(description, str) else ""
 
 
 def _changes_to_agent_message(changes: List[str]) -> str:
@@ -125,3 +154,43 @@ async def process_meeting_audio(
         raise
     except Exception as e:
         handle_genai_error(e, "회의 음성 처리 및 다이어그램 반영")
+
+
+def process_meeting_description(file: UploadFile) -> str:
+    try:
+        audio_bytes = file.file.read()
+
+        if not audio_bytes:
+            raise HTTPException(
+                status_code=400,
+                detail="업로드된 음성 파일이 비어있습니다."
+            )
+
+        meeting_text = request_clova_stt(
+            file_bytes=audio_bytes,
+            filename=file.filename,
+            content_type=file.content_type
+        )
+
+        if not meeting_text.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="음성에서 인식된 회의 내용 텍스트가 없습니다."
+            )
+
+        logger.info(f"초기 설계 회의 STT 변환 완료:\n{meeting_text}")
+
+        description = extract_project_description(meeting_text)
+
+        if not description:
+            raise HTTPException(
+                status_code=502,
+                detail="회의에서 프로젝트 설명을 정리하지 못했습니다."
+            )
+
+        return description
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        handle_genai_error(e, "회의 음성 기반 프로젝트 설명 정리")

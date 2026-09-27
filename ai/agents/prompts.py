@@ -196,6 +196,30 @@ def meeting_extract_user_message(meeting_text: str) -> str:
     )
 
 
+def meeting_description_instruction() -> str:
+    return (
+        "당신은 프로젝트 초기 설계 회의 STT를 읽고, "
+        "초기 아키텍처 다이어그램 생성에 쓸 프로젝트 설명을 정리한다.\n"
+        "\n"
+        "[규칙]\n"
+        "1. 회의에서 합의된 내용만 쓴다. 말하지 않은 기능/기술을 지어내지 않는다.\n"
+        "2. 잡담, 일정, 역할 분담, 인사말은 제외한다.\n"
+        "3. 결론이 나지 않은 부분은 '(논의 중)'으로 표시한다.\n"
+        "4. 아래 항목 순서의 한글 평문으로 작성한다. 해당 내용이 없는 항목은 생략한다.\n"
+        "   - 프로젝트 개요: 무엇을 만드는지 1~2문장\n"
+        "   - 주요 기능: 합의된 기능 목록. 외부 서비스 연동(지도 API, 결제 등)이 있으면 함께 적는다.\n"
+        "   - 구조 / 주요 모듈: 회의에서 명시적으로 나누기로 한 경우에만 적고, 없으면 생략한다.\n"
+    )
+
+
+def meeting_description_user_message(meeting_text: str) -> str:
+    return (
+        "[회의 STT]\n"
+        f"{meeting_text}\n\n"
+        "위 회의를 바탕으로 프로젝트 설명을 정리하세요."
+    )
+
+
 def database_ddl_system_instruction(
     db_type: str,
     diagram_json: str,

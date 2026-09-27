@@ -16,18 +16,18 @@ export default function ProjectCreatePage() {
   const [freedomLevel, setFreedomLevel] = useState(1);
   const [descriptionPrompt, setDescriptionPrompt] = useState('');
 
-  // 녹음 파일은 별도 DB/스토리지 없이 메모리(Blob)에만 보관하다가
-  // 프로젝트 생성 직후 백엔드로 바로 전송하고 버림
+  // 녹음 파일은 메모리(Blob)에만 보관하다가, 사용자가 "설명으로 정리하기"를 누르면 전송하고 버림
   const [audioBlob, setAudioBlob] = useState(null);
-  const { isRecording, mediaRecorderRef, toggleRecording } = useAudioRecorder({
-    onStop: (blob) => setAudioBlob(blob),
+  const [describing, setDescribing] = useState(false);
+  const { isRecording, toggleRecording } = useAudioRecorder({
+    onStop: (blob) => {
+      if (!blob || blob.size === 0) {
+        alert('녹음된 내용이 없습니다.');
+        return;
+      }
+      setAudioBlob(blob);
+    },
   });
-
-  // 녹음 중에 "생성하기"를 눌렀을 때, 녹음 정지(비동기)가 끝나고 audioBlob이
-  // 채워진 뒤에 생성 요청이 이어지도록 하기 위한 대기 상태
-  const [pendingSubmit, setPendingSubmit] = useState(false);
-  const pendingSubmitRef = useRef(false); // 연타 시 두 번째 클릭을 동기적으로 즉시 차단하기 위한 ref (state는 반영 시차가 있음)
-  const handleCreateRef = useRef(null);
 
   const handleResizeHeight = useCallback(() => {
     if (textareaRef.current) {
@@ -36,9 +36,38 @@ export default function ProjectCreatePage() {
     }
   }, []);
 
+  // 녹음 정리 결과처럼 코드로 값이 바뀌어도 높이가 따라가도록
+  useEffect(() => {
+    handleResizeHeight();
+  }, [descriptionPrompt, handleResizeHeight]);
+
   const handleDiscardRecording = () => {
     setAudioBlob(null);
   };
+
+  // 회의 녹음 → 프로젝트 설명 정리 → 설명란에 이어 붙이기
+  const handleDescribe = async () => {
+    if (!audioBlob || describing) return;
+    setDescribing(true);
+    try {
+      const ext = audioBlob.type.includes('mp4') ? 'mp4' : 'webm';
+      const formData = new FormData();
+      formData.append('file', audioBlob, `meeting.${ext}`);
+      const res = await requestUpload('/projects/meeting-description', formData);
+      const description = (res?.description || '').trim();
+      if (description) {
+        setDescriptionPrompt((prev) => (prev.trim() ? `${prev.trim()}\n\n${description}` : description));
+      }
+      setAudioBlob(null);
+    } catch (e) {
+      console.error('회의 내용 정리 실패:', e);
+      alert('회의 내용을 정리하지 못했습니다. 다시 시도해 주세요.');
+    } finally {
+      setDescribing(false);
+    }
+  };
+
+  const hasPendingAudio = isRecording || describing || !!audioBlob;
 
   // 🌟 API 연결 부분 (절대 수정 금지)
   const handleCreate = async () => {
@@ -59,18 +88,6 @@ export default function ProjectCreatePage() {
         })
       });
 
-        // 녹음된 음성이 있으면 프로젝트 생성 직후 바로 백엔드로 전송 (로컬에는 보관하지 않음)
-        if (audioBlob) {
-          try {
-            const formData = new FormData();
-            formData.append('file', audioBlob, 'recording.webm');
-            await requestUpload(`/projects/${res.id}/meeting-audio`, formData);
-          } catch (audioError) {
-            console.error("음성 파일 전송 실패:", audioError);
-            alert("프로젝트는 생성되었지만 녹음 파일 전송에는 실패했습니다.");
-          }
-        }
-
         // [수정] 새로 생성된 프로젝트 ID 기반의 URL로 이동
         navigate(`/canvas/${res.id}`);
     } catch (error) {
@@ -80,34 +97,10 @@ export default function ProjectCreatePage() {
     }
   };
 
-  // handleCreate의 최신 버전을 항상 ref에 보관 (매 렌더마다 최신 audioBlob을 closure로 가짐)
-  useEffect(() => {
-    handleCreateRef.current = handleCreate;
-  });
-
-  // 녹음 정지가 완료(isRecording=false)되면, 대기 중이던 제출을 이어서 실행
-  useEffect(() => {
-    if (pendingSubmit && !isRecording) {
-      pendingSubmitRef.current = false;
-      setPendingSubmit(false);
-      handleCreateRef.current?.();
-    }
-  }, [pendingSubmit, isRecording]);
-
-  // "생성하기" 버튼의 진입점. 녹음 중이면 정지부터 시키고, 정지가 끝난 뒤(위 useEffect가
-  // 감지해서) handleCreate를 이어서 실행한다 — handleCreate 본체는 건드리지 않음.
+  // 녹음 중이거나 정리 전/정리 중인 녹음이 있으면 생성을 막는다 (녹음해 두고 잊은 채 생성하는 것 방지)
   const handleSubmit = () => {
-    if (pendingSubmitRef.current) return; // 연타 방지: state 갱신을 기다리지 않고 즉시 차단
-
-    const recorder = mediaRecorderRef.current;
-    if (isRecording && recorder && recorder.state === 'recording') {
-      pendingSubmitRef.current = true;
-      setPendingSubmit(true);
-      recorder.stop();
-      return;
-    }
-
-    handleCreateRef.current?.();
+    if (hasPendingAudio) return;
+    handleCreate();
   };
 
   if (isLoading) {
@@ -183,6 +176,7 @@ export default function ProjectCreatePage() {
               className={`voice-mic-btn ${isRecording ? 'recording' : ''}`}
               title={isRecording ? '녹음 종료' : '음성으로 녹음하기'}
               onClick={toggleRecording}
+              disabled={!isRecording && (describing || !!audioBlob)}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" fill="currentColor"/>
@@ -196,9 +190,17 @@ export default function ProjectCreatePage() {
               🔴 녹음 중입니다... 마이크 버튼을 다시 누르면 종료됩니다.
             </div>
           )}
-          {!isRecording && audioBlob && (
+          {describing && (
             <div className="recording-status">
-              🎙️ 녹음이 완료되었습니다. 프로젝트 생성 시 함께 전송됩니다.
+              ⏳ 회의 내용을 정리하는 중입니다...
+            </div>
+          )}
+          {!isRecording && !describing && audioBlob && (
+            <div className="recording-status">
+              🎙️ 녹음이 완료되었습니다.
+              <button type="button" className="recording-describe-btn" onClick={handleDescribe}>
+                설명으로 정리하기
+              </button>
               <button type="button" className="recording-discard-btn" onClick={handleDiscardRecording}>
                 삭제
               </button>
@@ -207,7 +209,7 @@ export default function ProjectCreatePage() {
         </div>
 
         <div className="button-group">
-          <button className="submit-btn" onClick={handleSubmit} disabled={pendingSubmit}>생성하기</button>
+          <button className="submit-btn" onClick={handleSubmit} disabled={hasPendingAudio}>생성하기</button>
           <button className="cancel-btn" onClick={() => navigate(-1)}>취소</button>
         </div>
       </div>

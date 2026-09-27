@@ -247,3 +247,29 @@
     border-color: #999;
     color: #555;
 }
+
+.recording-describe-btn {
+    background-color: #4953BE;
+    border: 1px solid #4953BE;
+    border-radius: 6px;
+    padding: 2px 10px;
+    font-size: 12px;
+    color: #fff;
+    cursor: pointer;
+}
+
+.recording-describe-btn:hover {
+    background-color: #3b449e;
+}
+
+.voice-mic-btn:disabled {
+    background-color: #f0f2fb;
+    color: #aaa;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.submit-btn:disabled {
+    background-color: #aaa;
+    cursor: not-allowed;
+}

@@ -91,6 +91,37 @@ public class LlmAsyncService {
         }
     }
 
+    /** 회의 음성 비동기 처리. 결과는 Agent 제안과 같은 형태로 전달 */
+    @Async
+    public void processMeetingAsync(Integer projectId, Integer userId, byte[] audio, String filename) {
+        try {
+            String projectContext = projectRepository.findDescriptionPromptById(projectId).orElse(null);
+            DiagramRes diagram = translationService.exportFromDb(projectId, null);
+
+            LlmModifyRes llmRes = llmClient.processMeetingAudio(
+                    audio, filename, diagram, projectContext, "session_project_" + projectId);
+
+            if (llmRes == null || llmRes.getDiagram() == null) {
+                throw new RuntimeException("AI 서버가 수정된 다이어그램을 반환하지 않았습니다.");
+            }
+
+            CanvasDtos.SyncReq canvasProposal = translationService.toCanvas(llmRes.getDiagram());
+
+            log.info("▶ [LlmAsyncService] 회의 음성 제안 비동기 완료. projectId={}, userId={}", projectId, userId);
+
+            AgentRes agentRes = new AgentRes(
+                    llmRes.getReply(),
+                    canvasProposal.getBlocks(),
+                    canvasProposal.getEdges()
+            );
+
+            eventPublisher.publishEvent(new AiCompletedEvent(projectId, userId, ChatService.MODE_AGENT, true, agentRes));
+        } catch (Exception e) {
+            log.error("회의 음성 비동기 처리 오류 (projectId={})", projectId, e);
+            eventPublisher.publishEvent(new AiCompletedEvent(projectId, userId, ChatService.MODE_AGENT, false, e.getMessage()));
+        }
+    }
+
     @Transactional(readOnly = true)
     public LlmChatReq buildLlmChatReq(Integer projectId, Integer userId, String message) {
         String descriptionPrompt = projectRepository.findDescriptionPromptById(projectId).orElse(null);

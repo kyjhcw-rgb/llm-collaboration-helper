@@ -8,6 +8,7 @@ import com.capstone.collaborationhelper.dto.CodeGenDtos.DiagramToCodeRes;
 import com.capstone.collaborationhelper.dto.DatabaseDtos.GenerateDdlReq;
 import com.capstone.collaborationhelper.dto.DatabaseDtos.GenerateDdlRes;
 import com.capstone.collaborationhelper.dto.ProjectDtos.CreateReq;
+import com.capstone.collaborationhelper.dto.ProjectDtos.MeetingDescriptionRes;
 import com.capstone.collaborationhelper.dto.TranslationDtos.DiagramRes;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -21,8 +22,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
-import org.springframework.web.multipart.MultipartFile;
-
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -148,9 +147,9 @@ public class LlmClient {
     }
 
     // [신규 기능] 회의 음성 처리 및 다이어그램 수정 반영 (/projects/process-meeting-audio)
-    public LlmModifyRes processMeetingAudio(MultipartFile file, DiagramRes currentDiagram, String projectContext, String sessionId) {
+    public LlmModifyRes processMeetingAudio(byte[] audio, String filename, DiagramRes currentDiagram, String projectContext, String sessionId) {
         String url = getBaseUrl() + "/projects/process-meeting-audio";
-        log.info("▶ [LlmClient] AI 서버로 회의 음성 처리 요청. url={}, fileName={}", url, file.getOriginalFilename());
+        log.info("▶ [LlmClient] AI 서버로 회의 음성 처리 요청. url={}, fileName={}", url, filename);
 
         try {
             HttpHeaders headers = new HttpHeaders();
@@ -158,10 +157,10 @@ public class LlmClient {
 
             MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
 
-            ByteArrayResource fileResource = new ByteArrayResource(file.getBytes()) {
+            ByteArrayResource fileResource = new ByteArrayResource(audio) {
                 @Override
                 public String getFilename() {
-                    return file.getOriginalFilename() != null ? file.getOriginalFilename() : "meeting_audio.webm";
+                    return filename;
                 }
             };
             body.add("file", fileResource);
@@ -180,6 +179,43 @@ public class LlmClient {
         } catch (Exception e) {
             log.error("❌ [LlmClient] 회의 음성 처리 통신 에러: ", e);
             throw new RuntimeException("AI 회의 음성 처리 서버와의 통신에 실패했습니다.", e);
+        }
+    }
+
+    // 초기 설계 회의 음성 → 프로젝트 설명 정리 (/projects/meeting-description)
+    public String requestMeetingDescription(byte[] audio, String filename, String contentType) {
+        String url = getBaseUrl() + "/projects/meeting-description";
+        log.info("▶ [LlmClient] AI 서버로 회의 기반 프로젝트 설명 요청. url={}, fileName={}", url, filename);
+
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+
+            ByteArrayResource fileResource = new ByteArrayResource(audio) {
+                @Override
+                public String getFilename() {
+                    return filename;
+                }
+            };
+            HttpHeaders partHeaders = new HttpHeaders();
+            partHeaders.setContentType(MediaType.parseMediaType(contentType));
+
+            MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+            body.add("file", new HttpEntity<>(fileResource, partHeaders));
+
+            MeetingDescriptionRes res = restTemplate.postForObject(
+                    url, new HttpEntity<>(body, headers), MeetingDescriptionRes.class);
+
+            if (res == null || res.getDescription() == null || res.getDescription().isBlank()) {
+                throw new RuntimeException("AI 서버가 프로젝트 설명을 반환하지 않았습니다.");
+            }
+            return res.getDescription();
+        } catch (RuntimeException e) {
+            log.error("❌ [LlmClient] 회의 기반 프로젝트 설명 요청 에러: ", e);
+            throw e;
+        } catch (Exception e) {
+            log.error("❌ [LlmClient] 회의 기반 프로젝트 설명 통신 에러: ", e);
+            throw new RuntimeException("AI 회의 설명 정리 서버와의 통신에 실패했습니다.", e);
         }
     }
 }

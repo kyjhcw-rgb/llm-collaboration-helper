@@ -1,11 +1,16 @@
 from typing import Optional
 
 from fastapi import APIRouter, File, Form, UploadFile
+from pydantic import BaseModel
 
 from schemas.chat import ModifyResponse
-from services.meetings_service import process_meeting_audio
+from services.meetings_service import process_meeting_audio, process_meeting_description
 
 router = APIRouter()
+
+
+class MeetingDescriptionResponse(BaseModel):
+    description: str
 
 
 @router.post(
@@ -24,3 +29,12 @@ async def process_meeting_audio_endpoint(
         project_context=projectContext,
         session_id=sessionId
     )
+
+
+# Clova/LLM 호출이 모두 동기라 def로 둬서 스레드풀에서 실행되게 한다.
+@router.post(
+    "/projects/meeting-description",
+    response_model=MeetingDescriptionResponse
+)
+def meeting_description_endpoint(file: UploadFile = File(...)):
+    return MeetingDescriptionResponse(description=process_meeting_description(file))
