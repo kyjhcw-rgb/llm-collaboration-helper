@@ -1055,24 +1055,75 @@ export const useCanvasStore = create((set, get) => ({
     },
 
     // ======== AI Agent 적용 관련 기능 ========
-    // 에이전트 수정안을 동의 시 실제 Yjs 맵에 적용 (되돌리기는 undo()로 처리)
+    // 에이전트 수정안을 동의 시 실제 Yjs 맵에 적용.
+    // 나중에 "이 제안만" 되돌릴 수 있도록, 이 트랜잭션이 실제로 건드리는 노드/엣지의 '적용 전' 값을
+    // diff로 함께 기록해서 반환한다 (없던 것을 추가했으면 null로 기록 -> 되돌릴 때 삭제 신호).
+    // 전역 undo()와 달리, 그 사이 다른 블록에 대한 무관한 편집이 끼어들어도 영향받지 않는다.
     applyAgentChangesToYjs: (blocks, edges) => {
         const { nodes: parsedNodes, edges: parsedEdges } = parseCanvasData({ blocks, edges });
         const finalNodes = sortNodesParentFirst(fixOverlapsAndRecalculate(parsedNodes));
+
+        const diff = { nodes: {}, edges: {} };
 
         ydoc.transact(() => {
             const currentNodesIds = new Set(finalNodes.map(n => n.id));
             const currentEdgesIds = new Set(parsedEdges.map(e => e.id));
 
+            // 이번 제안으로 삭제되는 노드/엣지: 되돌릴 때 복원할 수 있도록 삭제 전 값을 기록
             Array.from(ynodesMap.keys()).forEach(id => {
-                if (!currentNodesIds.has(id)) ynodesMap.delete(id);
+                if (!currentNodesIds.has(id)) {
+                    diff.nodes[id] = ynodesMap.get(id);
+                    ynodesMap.delete(id);
+                }
             });
             Array.from(yedgesMap.keys()).forEach(id => {
-                if (!currentEdgesIds.has(id)) yedgesMap.delete(id);
+                if (!currentEdgesIds.has(id)) {
+                    diff.edges[id] = yedgesMap.get(id);
+                    yedgesMap.delete(id);
+                }
             });
 
-            finalNodes.forEach(node => ynodesMap.set(node.id, stripUIProps(node)));
-            parsedEdges.forEach(edge => yedgesMap.set(edge.id, stripUIProps(edge)));
+            // 새로 추가되거나 내용이 바뀌는 노드/엣지: 적용 전 값(없었으면 null)을 기록한 뒤 덮어쓰기
+            finalNodes.forEach(node => {
+                const cleanNode = stripUIProps(node);
+                const existing = ynodesMap.get(cleanNode.id);
+                if (!existing || JSON.stringify(existing) !== JSON.stringify(cleanNode)) {
+                    diff.nodes[cleanNode.id] = existing || null;
+                    ynodesMap.set(cleanNode.id, cleanNode);
+                }
+            });
+            parsedEdges.forEach(edge => {
+                const cleanEdge = stripUIProps(edge);
+                const existing = yedgesMap.get(cleanEdge.id);
+                if (!existing || JSON.stringify(existing) !== JSON.stringify(cleanEdge)) {
+                    diff.edges[cleanEdge.id] = existing || null;
+                    yedgesMap.set(cleanEdge.id, cleanEdge);
+                }
+            });
+        }, 'local');
+
+        return diff;
+    },
+
+    // applyAgentChangesToYjs가 반환한 diff만 골라서 정확히 원상복구.
+    // (그 사이 다른 블록에 생긴 무관한 편집은 건드리지 않음 — 전역 undo()와의 핵심 차이)
+    revertAgentChangesToYjs: (diff) => {
+        if (!diff) return;
+        ydoc.transact(() => {
+            Object.entries(diff.nodes || {}).forEach(([id, priorValue]) => {
+                if (priorValue === null) {
+                    ynodesMap.delete(id); // 이 제안이 새로 추가했던 노드 -> 제거
+                } else {
+                    ynodesMap.set(id, priorValue); // 이 제안이 삭제/수정했던 노드 -> 적용 전 값으로 복원
+                }
+            });
+            Object.entries(diff.edges || {}).forEach(([id, priorValue]) => {
+                if (priorValue === null) {
+                    yedgesMap.delete(id);
+                } else {
+                    yedgesMap.set(id, priorValue);
+                }
+            });
         }, 'local');
     },
 
