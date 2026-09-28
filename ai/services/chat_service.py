@@ -48,7 +48,8 @@ def modify_diagram(request: ChatRequest) -> ModifyResponse:
     )
 
     try:
-        result = modify_agent_app.invoke(initial_state)
+        # act가 스텝 하나당 노드 1회라, 스텝이 많은 수정은 기본 한도(25)를 넘는다
+        result = modify_agent_app.invoke(initial_state, config={"recursion_limit": 100})
 
         if not result.get("generated_diagram"):
             raise HTTPException(
