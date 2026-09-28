@@ -38,8 +38,8 @@ const SidebarRight = () => {
         currentVersion,
         myUserId, projectMembers,
         applyAgentChangesToYjs,
+        revertAgentChangesToYjs,
         getEncodedYjsData,
-        undo,
         aiResponse,
         getCanvasEditCount,
     } = useCanvasStore();
@@ -351,13 +351,14 @@ const SidebarRight = () => {
         applyingProposalIdsRef.current.add(msgId);
         setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, status: "applying" } : m)));
         try {
-            applyAgentChangesToYjs(target.blocks, target.edges);
+            // revertDiff: 이 제안이 실제로 건드린 노드/엣지의 적용 전 값. 되돌리기 클릭 시 이것만 정확히 복원한다.
+            const revertDiff = applyAgentChangesToYjs(target.blocks, target.edges);
             const yjsData = getEncodedYjsData();
             await request(`/projects/${currentProjectId}/chat/agent/agree`, {
                 method: "POST",
                 body: JSON.stringify({ blocks: target.blocks, edges: target.edges, yjsData }),
             });
-            setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, status: "applied" } : m)));
+            setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, status: "applied", revertDiff } : m)));
         } catch (e) {
             alert(e.message || "변경사항 적용에 실패했습니다.");
             setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, status: "pending" } : m)));
@@ -371,12 +372,13 @@ const SidebarRight = () => {
         setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, status: "declined" } : m)));
     };
 
-    // 적용된 변경을 되돌리기 (Ctrl+Z와 동일한 Yjs UndoManager 재사용)
+    // 적용된 변경을 되돌리기. 전역 undo()(Ctrl+Z) 대신, 이 제안이 실제로 건드린 노드/엣지만
+    // 기록해둔 revertDiff로 정확히 복원한다 — 그 사이 다른 블록에 무관한 편집이 있었어도 영향받지 않는다.
     const handleAgentRevert = async (msgId) => {
         const target = messages.find((m) => m.id === msgId);
         if (!target || target.status !== "applied") return;
 
-        undo();
+        revertAgentChangesToYjs(target.revertDiff);
         await saveProjectToServer();
         setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, status: "reverted" } : m)));
     };
